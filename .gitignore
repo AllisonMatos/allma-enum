@@ -1,0 +1,37 @@
+# Ignorar saída da ferramenta
+output/
+outputs/
+
+# Ignorar módulos compilados
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Ignorar arquivos temporários
+*.tmp
+*.temp
+*.log
+
+# Ignorar arquivos de relatório temporário
+*.pdf~
+*.html~
+*.bak
+
+# Ignorar artefatos do sistema operacional
+.DS_Store
+Thumbs.db
+
+# Ignorar virtualenv (caso use)
+venv/
+.env/
+.venv/
+
+# Ignorar arquivos de ferramentas
+.idea/
+.vscode/
+
+# Ignorar arquivos de backup
+*~
+*.swp
+*.swo
