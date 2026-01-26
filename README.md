@@ -26,7 +26,7 @@ Allma-Enum é uma suíte completa para pentest e bug bounty, focada em automaç�
 - **JS Analysis**: Extração de endpoints e rotas de arquivos JavaScript.
 - **Vulnerabilidades**: Verificação básica de misconfigs.
 
-### 📊 Relatórios Profissionais (Novo!)
+### 📊 Relatórios Profissionais 
 Gera relatórios HTML visuais, interativos e prontos para apresentar a clientes ou time técnico.
 - **6 Estilos Disponíveis**:
   - *Modern SaaS*, *Corporate Admin*, *Material Design* (Estilo Website).
