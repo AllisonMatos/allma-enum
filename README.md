@@ -95,8 +95,3 @@ output/example.com/
 ├── jsscanner/        # Análise de arquivos JS
 └── ...
 ```
-
----
-
-## ⚠️ Disclaimer
-Esta ferramenta foi desenvolvida para fins educacionais e testes de segurança autorizados. O autor não se responsabiliza pelo mau uso.
