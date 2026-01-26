@@ -30,7 +30,7 @@ from .utils import ensure_outdir
 # ============================
 def http_get_text_meta(url, timeout=6):
     try:
-        import httpx
+        import httpx # type: ignore
         try:
             with httpx.Client(follow_redirects=True, timeout=timeout) as c:
                 r = c.get(url)

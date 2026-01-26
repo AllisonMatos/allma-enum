@@ -31,6 +31,11 @@ def httpx_validate(in_file: Path, out_file: Path, want_status: str = WANT_STATUS
         httpx,
         "-l", str(in_file),
         "-mc", want_status,
+        "-retries", "2",
+        "-timeout", "15",
+        "-random-agent",
+
+        "-follow-redirects",
         "-o", str(out_file),
         "-silent",
     ]
@@ -94,12 +99,49 @@ def run(context: dict):
         url_completas.unlink()
 
     # ============================================================
+    # ETAPA 1.5 — Filtrar URLs estáticas (Otimização)
+    # ============================================================
+    info(f"{C.BOLD}{C.BLUE}🧹 Filtrando arquivos estáticos para otimizar urlfinder...{C.END}")
+    
+    # Extensões para ignorar no urlfinder (crawling)
+    # O usuário pediu especificamente para ignorar JS, mas adicionamos outras estáticas
+    ignored_exts = {
+        ".js", ".css", ".png", ".jpg", ".jpeg", ".gif", ".svg", ".ico", 
+        ".woff", ".woff2", ".ttf", ".eot", ".mp4", ".mp3", ".pdf", ".zip", 
+        ".rar", ".tar", ".gz", ".7z", ".xml", ".txt", ".json"
+    }
+    
+    urls_to_scan = []
+    skipped_count = 0
+    
+    if domain_200.exists():
+        for line in domain_200.read_text(errors="ignore").splitlines():
+            line = line.strip()
+            if not line: continue
+            
+            # Verificar extensão na URL (ignorando query params)
+            path = line.split("?")[0].lower()
+            if any(path.endswith(ext) for ext in ignored_exts):
+                skipped_count += 1
+                continue
+                
+            urls_to_scan.append(line)
+            
+    urls_filtered_file = outdir / "urls_for_urlfinder.txt"
+    urls_filtered_file.write_text("\n".join(urls_to_scan))
+    
+    info(f"   URLs originais: {len(domain_200.read_text().splitlines())}")
+    info(f"   URLs ignoradas: {skipped_count} (arquivos estáticos/js)")
+    info(f"   URLs para scan: {len(urls_to_scan)}")
+
+    # ============================================================
     # ETAPA 2 — Executar urlfinder
     # ============================================================
     info(f"{C.BOLD}{C.BLUE}🌐 Coletando URLs com urlfinder...{C.END}")
 
     urlfinder = require_binary("urlfinder")
-    cmd = [urlfinder, "-list", str(domain_200), "-silent"]
+    # Usa o arquivo filtrado em vez do original
+    cmd = [urlfinder, "-list", str(urls_filtered_file), "-silent"]
 
     try:
         with url_completas.open("w", encoding="utf-8", errors="ignore") as fout:

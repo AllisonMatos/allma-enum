@@ -31,7 +31,7 @@ RE_KEY  = re.compile(r"(?i)(apikey|token|secret|bearer)[\s'\":=]{1,8}([A-Za-z0-9
 def extract_js_from_html(url):
     """Baixa HTML e extrai <script src=""> (.js)"""
     try:
-        import httpx
+        import httpx # type: ignore
         with httpx.Client(follow_redirects=True, timeout=8) as c:
             r = c.get(url)
             if r.status_code != 200:
@@ -81,6 +81,11 @@ def gather_js_urls(target: str) -> list:
             if l.strip().lower().endswith(".js")
         ]
 
+    f4 = Path("output") / target / "domain" / "extracted_js.txt"
+    if f4.exists():
+        info(f"📄 Lendo JS extraído pelo módulo DOMAIN em {f4}")
+        return [l.strip() for l in f4.read_text().splitlines() if l.strip()]
+
     return []
 
 
@@ -121,7 +126,7 @@ def run_external_jsscanner(script: Path, list_file: Path, regex_file: Path, raw_
 # ============================================================
 def download_js(url):
     try:
-        import httpx
+        import httpx # type: ignore
         r = httpx.get(url, follow_redirects=True, timeout=10)
         return r.text if r.status_code == 200 else None
     except:
