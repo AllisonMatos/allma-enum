@@ -12,19 +12,19 @@ TECH_FINGERPRINTS = {
     # CMS
     "WordPress": {
         "headers": {"x-powered-by": r"WordPress"},
-        "meta": {"generator": r"WordPress"},
+        "meta": {"generator": r"WordPress ?([\d\.]+)"},
         "html": [r"/wp-content/", r"/wp-includes/", r"wp-json"],
         "scripts": [r"wp-content", r"wp-includes"],
         "cookies": ["wordpress_"]
     },
     "Drupal": {
-        "headers": {"x-drupal-cache": r".*", "x-generator": r"Drupal"},
-        "meta": {"generator": r"Drupal"},
+        "headers": {"x-drupal-cache": r".*", "x-generator": r"Drupal ?([\d\.]+)"},
+        "meta": {"generator": r"Drupal ?([\d\.]+)"},
         "html": [r"Drupal\.settings", r"/sites/default/files/"],
         "scripts": [r"drupal\.js", r"drupal\.min\.js"]
     },
     "Joomla": {
-        "meta": {"generator": r"Joomla"},
+        "meta": {"generator": r"Joomla! (- Open Source Content Management)? ?([\d\.]+)"},
         "html": [r"/media/jui/", r"/components/com_"],
         "scripts": [r"joomla\.javascript\.js"]
     },
@@ -32,31 +32,31 @@ TECH_FINGERPRINTS = {
     # Frameworks Frontend
     "React": {
         "html": [r"data-reactroot", r"data-reactid", r"__NEXT_DATA__", r"_next/static"],
-        "scripts": [r"react\.production\.min\.js", r"react-dom", r"react\.min\.js"]
+        "scripts": [r"react\.production\.min\.js", r"react-dom", r"react\.min\.js", r"react@([\d\.]+)"]
     },
     "Vue.js": {
         "html": [r"data-v-[a-f0-9]", r"v-cloak", r"__vue__"],
-        "scripts": [r"vue\.min\.js", r"vue\.global", r"vue\.runtime"]
+        "scripts": [r"vue\.min\.js", r"vue\.global", r"vue\.runtime", r"vue@([\d\.]+)"]
     },
     "Angular": {
-        "html": [r"ng-version", r"ng-app", r"ng-controller", r"\[\(ngModel\)\]"],
-        "scripts": [r"angular\.min\.js", r"angular\.js", r"zone\.js"]
+        "html": [r"ng-version=\"([\d\.]+)\"", r"ng-app", r"ng-controller", r"\[\(ngModel\)\]"],
+        "scripts": [r"angular\.min\.js", r"angular\.js", r"zone\.js", r"angular@([\d\.]+)"]
     },
     "Next.js": {
         "html": [r"__NEXT_DATA__", r"_next/static"],
-        "headers": {"x-powered-by": r"Next\.js"}
+        "headers": {"x-powered-by": r"Next\.js ?([\d\.]+)?"}
     },
     "Nuxt.js": {
         "html": [r"__NUXT__", r"_nuxt/"],
         "scripts": [r"nuxt\.js"]
     },
     "jQuery": {
-        "scripts": [r"jquery[\.-][\d\.]+\.min\.js", r"jquery\.min\.js", r"jquery\.js"]
+        "scripts": [r"jquery[\.-]([\d\.]+)\.min\.js", r"jquery\.min\.js", r"jquery-([\d\.]+)\.js", r"jquery\.js"]
     },
     "Bootstrap": {
         "html": [r"class=\"[^\"]*\bcontainer\b", r"class=\"[^\"]*\brow\b", r"class=\"[^\"]*\bcol-"],
-        "scripts": [r"bootstrap\.min\.js", r"bootstrap\.bundle"],
-        "css": [r"bootstrap\.min\.css", r"bootstrap\.css"]
+        "scripts": [r"bootstrap\.min\.js", r"bootstrap\.bundle", r"bootstrap@([\d\.]+)"],
+        "css": [r"bootstrap\.min\.css", r"bootstrap\.css", r"bootstrap@([\d\.]+)"]
     },
     "Tailwind CSS": {
         "html": [r"class=\"[^\"]*\b(flex|grid|p-\d|m-\d|text-\w+-\d|bg-\w+-\d)"]
@@ -81,7 +81,7 @@ TECH_FINGERPRINTS = {
         "headers": {"x-powered-by": r"Express"}
     },
     "ASP.NET": {
-        "headers": {"x-powered-by": r"ASP\.NET", "x-aspnet-version": r".*"},
+        "headers": {"x-powered-by": r"ASP\.NET", "x-aspnet-version": r"([\d\.]+)?"},
         "html": [r"__VIEWSTATE", r"__EVENTVALIDATION", r"aspnetForm"],
         "cookies": ["ASP.NET_SessionId", ".AspNetCore."]
     },
@@ -92,13 +92,13 @@ TECH_FINGERPRINTS = {
     
     # Servidores
     "Nginx": {
-        "headers": {"server": r"nginx"}
+        "headers": {"server": r"nginx/?([\d\.]+)?"}
     },
     "Apache": {
-        "headers": {"server": r"Apache"}
+        "headers": {"server": r"Apache/?([\d\.]+)?"}
     },
     "IIS": {
-        "headers": {"server": r"Microsoft-IIS"}
+        "headers": {"server": r"Microsoft-IIS/?([\d\.]+)?"}
     },
     "Cloudflare": {
         "headers": {"server": r"cloudflare", "cf-ray": r".*"}
@@ -158,7 +158,7 @@ TECH_FINGERPRINTS = {
     
     # Outras
     "PHP": {
-        "headers": {"x-powered-by": r"PHP", "set-cookie": r"PHPSESSID"}
+        "headers": {"x-powered-by": r"PHP/?([\d\.]+)?"}
     },
     "Java": {
         "cookies": ["JSESSIONID"]
@@ -201,30 +201,42 @@ def detect_technologies(
     for tech_name, fingerprints in TECH_FINGERPRINTS.items():
         confidence = 0
         evidence = []
+        version = None
         
         # Verificar headers
         if "headers" in fingerprints:
             for header, pattern in fingerprints["headers"].items():
                 if header in headers_lower:
-                    if re.search(pattern, headers_lower[header], re.I):
+                    match = re.search(pattern, headers_lower[header], re.I)
+                    if match:
                         confidence += 30
                         evidence.append(f"Header: {header}")
+                        if match.groups():
+                            version = match.group(1)
         
         # Verificar meta tags
         if "meta" in fingerprints and html:
             for meta_name, pattern in fingerprints["meta"].items():
                 meta_pattern = rf'<meta[^>]+name=["\']?{meta_name}["\']?[^>]+content=["\']([^"\']+)["\']'
                 match = re.search(meta_pattern, html, re.I)
-                if match and re.search(pattern, match.group(1), re.I):
-                    confidence += 40
-                    evidence.append(f"Meta tag: {meta_name}")
+                if match:
+                    content_val = match.group(1)
+                    sub_match = re.search(pattern, content_val, re.I)
+                    if sub_match:
+                        confidence += 40
+                        evidence.append(f"Meta tag: {meta_name}")
+                        if sub_match.groups():
+                            version = sub_match.group(1)
         
         # Verificar patterns HTML
         if "html" in fingerprints and html:
             for pattern in fingerprints["html"]:
-                if re.search(pattern, html, re.I):
+                match = re.search(pattern, html, re.I)
+                if match:
                     confidence += 20
                     evidence.append(f"HTML pattern matched")
+                    if match.groups():
+                        version = match.group(1)
                     break
         
         # Verificar scripts
@@ -232,15 +244,22 @@ def detect_technologies(
             for pattern in fingerprints["scripts"]:
                 # Verificar na lista de scripts
                 for script in scripts:
-                    if re.search(pattern, script, re.I):
+                    match = re.search(pattern, script, re.I)
+                    if match:
                         confidence += 25
                         evidence.append(f"Script: {pattern}")
+                        if match.groups():
+                            version = match.group(1)
                         break
                 # Verificar no HTML tambem
-                if html and re.search(rf'src=["\'][^"\']*{pattern}', html, re.I):
-                    confidence += 25
-                    evidence.append(f"Script in HTML")
-                    break
+                if not version and html: # Prioriza versao ja encontrada
+                    match = re.search(rf'src=["\'][^"\']*{pattern}', html, re.I)
+                    if match:
+                        confidence += 25
+                        evidence.append(f"Script in HTML")
+                        if match.groups():
+                             version = match.group(1)
+                        break
         
         # Verificar cookies
         if "cookies" in fingerprints:
@@ -257,7 +276,8 @@ def detect_technologies(
                 "name": tech_name,
                 "confidence": min(confidence, 100),  # Cap at 100
                 "evidence": evidence,
-                "category": get_tech_category(tech_name)
+                "category": get_tech_category(tech_name),
+                "version": version
             })
     
     # Ordenar por confidence

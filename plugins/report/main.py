@@ -724,6 +724,7 @@ def build_subdomains_content(subdomains: Dict) -> str:
                 tech_rows += f'''
                 <tr>
                     <td><strong>{html.escape(tech["name"])}</strong></td>
+                    <td><span class="tag tag-low" style="background:#444; color:#fff">{html.escape(str(tech.get("version") or ""))}</span></td>
                     <td>{html.escape(tech.get("category", "Unknown"))}</td>
                     <td><span class="tag {conf_class}">{conf}%</span></td>
                 </tr>'''
@@ -733,7 +734,7 @@ def build_subdomains_content(subdomains: Dict) -> str:
                 <p><strong>Technologies ({tech_count}):</strong></p>
                 <div class="table-wrapper">
                     <table>
-                        <thead><tr><th>Technology</th><th>Category</th><th>Confidence</th></tr></thead>
+                        <thead><tr><th>Technology</th><th>Version</th><th>Category</th><th>Confidence</th></tr></thead>
                         <tbody>{tech_rows}</tbody>
                     </table>
                 </div>
