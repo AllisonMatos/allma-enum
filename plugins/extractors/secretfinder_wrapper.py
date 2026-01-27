@@ -76,7 +76,7 @@ class SecretFinderWrapper:
 
     def get_context_lines(self, content, match_start, context_size=5):
         """
-        Retorna linhas de contexto ao redor do match.
+        Retorna linhas de contexto ao redor do match de forma estruturada.
         """
         lines = content.splitlines()
         
@@ -92,11 +92,20 @@ class SecretFinderWrapper:
         start_line = max(0, line_idx - context_size)
         end_line = min(len(lines), line_idx + context_size + 1)
         
-        context_lines = lines[start_line:end_line]
+        # Split logic
+        before = lines[start_line:line_idx]
+        match_line = lines[line_idx]
+        after = lines[line_idx+1:end_line]
+        
+        # Construct full text for fallback
+        full_context = "\\n".join(lines[start_line:end_line])
         
         return {
             "line_number": line_idx + 1,
-            "full_context": "\\n".join(context_lines)
+            "full_context": full_context,
+            "before": before,
+            "match_line": match_line,
+            "after": after
         }
 
     def scan(self, content):
@@ -119,7 +128,10 @@ class SecretFinderWrapper:
                         "match": key_val[:10] + "..." if len(key_val) > 10 else key_val,
                         "context": {
                             "full": context_data["full_context"],
-                            "line": context_data["line_number"]
+                            "line": context_data["line_number"],
+                            "before": context_data["before"],
+                            "match_line": context_data["match_line"],
+                            "after": context_data["after"]
                         }
                     }
                     

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import shutil
 """
 plugins/urls/main.py - Coleta URLs a partir das URLs válidas do módulo domain
 e valida novamente com httpx.
@@ -58,6 +59,45 @@ def httpx_validate(in_file: Path, out_file: Path, want_status: str = WANT_STATUS
 
     success(f"✨ {len(urls)} URLs válidas salvas em: {C.GREEN}{out_file}{C.END}")
     return urls
+
+
+# ============================================================
+# Coleta Histórica (gau / waybackurls)
+# ============================================================
+def run_historical_discovery(target: str, out_file: Path):
+    """
+    Executa gau ou waybackurls para encontrar URLs históricas.
+    """
+    info(f"{C.BOLD}{C.BLUE}🕰️ Iniciando descoberta de URLs históricas...{C.END}")
+    
+    gau = shutil.which("gau")
+    waybackurls = shutil.which("waybackurls")
+    tool = gau or waybackurls
+    
+    if not tool:
+        warn("⚠️ Nem 'gau' nem 'waybackurls' encontrados. Pulando histórico.")
+        return []
+        
+    tool_name = Path(tool).name
+    info(f"   🛠️ Usando ferramenta: {C.YELLOW}{tool_name}{C.END}")
+    
+    cmd = [tool, target]
+    if "gau" in tool:
+        cmd.extend(["--threads", "10"])
+        
+    try:
+        with out_file.open("w", encoding="utf-8", errors="ignore") as fout:
+            subprocess.run(cmd, stdout=fout, stderr=subprocess.DEVNULL, timeout=300)
+            
+        if out_file.exists() and out_file.stat().st_size > 0:
+            count = len(out_file.read_text(errors="ignore").splitlines())
+            success(f"📜 {count} URLs históricas salvas em: {C.GREEN}{out_file.name}{C.END}")
+            return [l.strip() for l in out_file.read_text(errors="ignore").splitlines() if l.strip()]
+            
+    except Exception as e:
+        error(f"Erro na coleta histórica: {e}")
+        
+    return []
 
 
 # ============================================================
@@ -155,11 +195,29 @@ def run(context: dict):
 
     except Exception as e:
         error(f"❌ Falha ao executar urlfinder: {e}")
-        return []
+        # Dont return here, continue to historical
+        
+    # ============================================================
+    # ETAPA 2.5 — Coleta Histórica
+    # ============================================================
+    historical_file = outdir / "historical_raw.txt"
+    run_historical_discovery(target, historical_file)
+    
+    # Merge files
+    all_raw_urls = []
+    
+    if url_completas.exists():
+         all_raw_urls.extend(url_completas.read_text(errors="ignore").splitlines())
+         
+    if historical_file.exists():
+         all_raw_urls.extend(historical_file.read_text(errors="ignore").splitlines())
 
-    if not url_completas.exists() or url_completas.stat().st_size == 0:
-        warn("⚠️ urlfinder não retornou nenhuma URL.")
-        return []
+    if not all_raw_urls:
+         warn("⚠️ Nenhuma URL encontrada (urlfinder + histórico).")
+         return []
+    
+    # Write combined back to url_completas for deduplication
+    url_completas.write_text("\n".join(all_raw_urls))
 
     # ============================================================
     # ETAPA 3 — Deduplicar URLs

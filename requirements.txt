@@ -5,3 +5,4 @@ lxml
 reportlab
 matplotlib
 weasyprint
+dnspython

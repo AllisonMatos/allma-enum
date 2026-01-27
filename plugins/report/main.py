@@ -63,7 +63,12 @@ def calculate_stats(target: str) -> Dict:
         "js_files": 0,
         "keys_found": 0,
         "routes_found": 0,
-        "technologies": 0
+        "technologies": 0,
+        "cloud_buckets": 0,
+        "cve_vulns": 0,
+        "endpoints_count": 0,
+        "xss_vulns": 0,
+        "headers_count": 0
     }
     
     # Count ports
@@ -87,7 +92,45 @@ def calculate_stats(target: str) -> Dict:
     if tech_data:
         for host_data in tech_data.values():
             stats["technologies"] += len(host_data.get("technologies", []))
+            
+    # Cloud Buckets
+    buckets_file = base / "cloud" / "buckets.txt"
+    if buckets_file.exists():
+        stats["cloud_buckets"] = len([l for l in buckets_file.read_text().splitlines() if l.strip()])
+
+    # CVEs
+    cve_file = base / "cve" / "potential_vulns.json"
+    if cve_file.exists():
+        try:
+            cve_data = json.loads(cve_file.read_text())
+            stats["cve_vulns"] = len(cve_data)
+        except: pass
+            
+    # Endpoints
+    endpoints_file = base / "endpoint" / "endpoints.txt"
+    if endpoints_file.exists():
+        stats["endpoints_count"] += len([l for l in endpoints_file.read_text(errors="ignore").splitlines() if l.strip()])
     
+    graphql_file = base / "endpoint" / "graphql.txt"
+    if graphql_file.exists():
+        stats["endpoints_count"] += len([l for l in graphql_file.read_text(errors="ignore").splitlines() if l.strip()])
+
+    # XSS
+    xss_file = base / "xss" / "final_report.txt"
+    if xss_file.exists():
+        # Heuristic: count "Vulnerable" lines or just check file size > 0
+        content = xss_file.read_text(errors="ignore")
+        if "Vulnerable" in content or "[POC]" in content:
+            stats["xss_vulns"] = content.count("[POC]") or 1
+            
+    # Headers
+    headers_file = base / "fingerprint" / "headers.txt"
+    if headers_file.exists():
+        try:
+             h_data = json.loads(headers_file.read_text(errors="ignore"))
+             stats["headers_count"] = len(h_data)
+        except: pass
+
     return stats
 
 
@@ -137,6 +180,59 @@ def aggregate_by_subdomain(target: str) -> Dict:
         for host, data in tech_data.items():
             if host in subdomains:
                 subdomains[host]["technologies"] = data.get("technologies", [])
+                
+    # Load CVEs
+    cve_data = read_json_file(base / "cve" / "potential_vulns.json")
+    if cve_data:
+        # CVE data is keyed by "tech version", not host directly. But we can match by tech name.
+        # This is a simplification. Ideally, CVE plugin should output per-host or we cross-reference here.
+        # Let's simple check if the host has the tech that has CVE.
+        for host, host_data in subdomains.items():
+            techs = host_data["technologies"]
+            for tech in techs:
+                name = tech["name"]
+                version = tech.get("version")
+                search_term = name + (f" {version}" if version else "")
+                search_term_lower = search_term.lower()
+                
+                # Check exact match first
+                tech["cve_exploits"] = []
+                tech["cve_priority"] = "low"
+                
+                # Logic: prefer version match
+                if version and search_term_lower in cve_data:
+                    tech["cve_exploits"] = cve_data[search_term_lower]["exploits"]
+                    tech["cve_priority"] = "high"
+                # Fallback to generic name if no version match or no version
+                elif name.lower() in cve_data:
+                    tech["cve_exploits"] = cve_data[name.lower()]["exploits"]
+                    # If we had a version but fell back, priority is ambiguous/medium? 
+                    # If we had NO version, priority is low (generic).
+                    if version:
+                        tech["cve_priority"] = "medium" # Version present but partial match
+                    else:
+                        tech["cve_priority"] = "low" # Generic match
+
+                tech["cve_count"] = len(tech["cve_exploits"])
+
+    # Load Screenshots
+    screenshots_dir = base / "visual" / "screenshots"
+    if screenshots_dir.exists():
+        for screenshot in screenshots_dir.glob("*"):
+            # Filename format: https---sub-domain-com-443-.jpeg or http-sub-domain-com-80.png
+            name = screenshot.name
+            
+            for host in subdomains:
+                # 1. Normalize host (dot to dash)
+                host_normalized = host.replace(".", "-")
+                
+                # 2. Check strict containment
+                # Ex: "api-google-com" in "http-api-google-com-80.png"
+                if host_normalized in name:
+                    subdomains[host]["screenshot"] = f"../visual/screenshots/{screenshot.name}"
+                    # Don't break, keep looking for best match or just assign (first match likely ok)
+                    # Ideally we want exact match of host part, but this is better than before
+                    break
     
     # Mark login pages (from explicit file OR heuristic)
     login_keywords = ["login", "signin", "auth", "portal", "admin", "entrar", "acesso"]
@@ -553,13 +649,16 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         <div class="nav-content">
             <button class="nav-btn active" data-section="dashboard">Dashboard</button>
             <button class="nav-btn" data-section="subdomains">Subdomains<span class="count">{stats_subdomains}</span></button>
+            <button class="nav-btn" data-section="security">Security<span class="count">{stats_xss}</span></button>
+            <button class="nav-btn" data-section="cve">CVEs Techs<span class="count">{stats_cves}</span></button>
             <button class="nav-btn" data-section="services">Services<span class="count">{stats_ports}</span></button>
             <button class="nav-btn" data-section="urls">URLs & Discovered<span class="count">{stats_urls_combined}</span></button>
             <button class="nav-btn" data-section="keys">Keys<span class="count">{stats_keys}</span></button>
-            <button class="nav-btn" data-section="routes">API Routes<span class="count">{stats_routes}</span></button>
+            <button class="nav-btn" data-section="routes">Endpoints<span class="count">{stats_endpoints}</span></button>
             <button class="nav-btn" data-section="js">JS Files<span class="count">{stats_js}</span></button>
             <button class="nav-btn" data-section="params">Params<span class="count">{stats_params}</span></button>
-
+            <button class="nav-btn" data-section="cloud">Cloud<span class="count">{stats_buckets}</span></button>
+            
             <button class="nav-btn" data-section="files">Files</button>
         </div>
     </nav>
@@ -600,6 +699,22 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                     <div class="value">{stats_routes}</div>
                     <div class="label">API Routes</div>
                 </div>
+                <div class="stat-card">
+                    <div class="value">{stats_endpoints}</div>
+                    <div class="label">Endpoints</div>
+                </div>
+                <div class="stat-card">
+                    <div class="value">{stats_buckets}</div>
+                    <div class="label">Cloud Buckets</div>
+                </div>
+                <div class="stat-card danger">
+                    <div class="value">{stats_xss}</div>
+                    <div class="label">XSS Alerts</div>
+                </div>
+                <div class="stat-card danger">
+                    <div class="value">{stats_cves}</div>
+                    <div class="label">Potential CVEs</div>
+                </div>
             </div>
             
             <div class="card">
@@ -617,6 +732,16 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         <!-- Subdomains -->
         <section class="section" id="subdomains">
             {subdomains_content}
+        </section>
+
+        <!-- Security (XSS + Fingerprint) -->
+        <section class="section" id="security">
+            {security_content}
+        </section>
+        
+        <!-- CVEs -->
+        <section class="section" id="cve">
+            {cve_content}
         </section>
         
         <!-- Services -->
@@ -656,6 +781,12 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         <section class="section" id="params">
             {params_content}
         </section>
+        
+        <!-- Cloud -->
+        <section class="section" id="cloud">
+            {cloud_content}
+        </section>
+        
         
 
         
@@ -701,7 +832,19 @@ def build_subdomains_content(subdomains: Dict) -> str:
     
     html_parts = []
     
-    for host, data in sorted(subdomains.items()):
+    # Sort by relevance: Has Data (Ports/URLs) > Has Tech > No Data
+    def sort_key(item):
+        host, data = item
+        score = 0
+        if data["ports"]: score += 100
+        if data["urls"]: score += 50
+        if data["technologies"]: score += 10
+        if data["is_login"]: score += 500  # Login pages to top
+        
+        # Negative score for descending relevance, then host for alphabetical
+        return (-score, host)
+
+    for host, data in sorted(subdomains.items(), key=sort_key):
         ports_str = ", ".join(sorted(set(data["ports"]), key=int)) if data["ports"] else "None"
         urls_count = len(data["urls"])
         tech_count = len(data["technologies"])
@@ -727,6 +870,7 @@ def build_subdomains_content(subdomains: Dict) -> str:
                     <td><span class="tag tag-low" style="background:#444; color:#fff">{html.escape(str(tech.get("version") or ""))}</span></td>
                     <td>{html.escape(tech.get("category", "Unknown"))}</td>
                     <td><span class="tag {conf_class}">{conf}%</span></td>
+                    <td>{f'<span class="tag tag-high">⚠️ {tech["cve_count"]} CVEs</span>' if tech.get("cve_count") else '-'}</td>
                 </tr>'''
             
             content_parts.append(f'''
@@ -734,7 +878,7 @@ def build_subdomains_content(subdomains: Dict) -> str:
                 <p><strong>Technologies ({tech_count}):</strong></p>
                 <div class="table-wrapper">
                     <table>
-                        <thead><tr><th>Technology</th><th>Version</th><th>Category</th><th>Confidence</th></tr></thead>
+                        <thead><tr><th>Technology</th><th>Version</th><th>Category</th><th>Confidence</th><th>Vulns</th></tr></thead>
                         <tbody>{tech_rows}</tbody>
                     </table>
                 </div>
@@ -747,6 +891,15 @@ def build_subdomains_content(subdomains: Dict) -> str:
             
             urls_list = "<br>".join(urls_list_items)
             content_parts.append(f'<p><strong>Validated URLs ({urls_count}):</strong><br>{urls_list}</p>')
+            
+        if "screenshot" in data:
+            content_parts.append(f'''
+            <div style="margin-top:12px;">
+                <p><strong>Screenshot:</strong></p>
+                <a href="{data["screenshot"]}" target="_blank">
+                    <img src="{data["screenshot"]}" style="max-width:300px; border:1px solid #444; border-radius:4px; margin-top:4px;">
+                </a>
+            </div>''')
         
         content = "".join(content_parts) if content_parts else "<p>No additional data</p>"
         
@@ -900,33 +1053,79 @@ def build_keys_content(target: str) -> str:
         if source_file:
              source_display += f' <span class="tag tag-low" style="margin-left:8px;">{html.escape(source_file)}</span>'
              
-        # Context - melhorado com múltiplas linhas
+        # -------------------------------------------------------------------------
+        # Logic to handle both Structured (New) and Unstructured (Legacy) Context
+        # -------------------------------------------------------------------------
         context = key.get("context", {})
+        
         before_lines = context.get("before", [])
         match_line = context.get("match_line", "")
         after_lines = context.get("after", [])
         
+        # Fallback: If structured data is missing, try to parse from "full"
+        if not match_line and context.get("full"):
+            try:
+                full_raw = str(context["full"])
+                # Handle literal escaped newlines common in JSON dumps
+                if "\\n" in full_raw:
+                    lines = full_raw.replace("\\n", "\n").split("\n")
+                else:
+                    lines = full_raw.splitlines()
+                
+                # Filter empty leading/trailing lines often found in scrapes
+                lines = [l for l in lines] # keep empty lines for spacing logic
+                
+                # Attempt to find the "match line"
+                # 1. Use line number if available (relative to start of snippet?)
+                # Warning: source_line is absolute. Snippet might be partial.
+                # Heuristic: Find the line containing the match string
+                
+                target_idx = -1
+                for i, line in enumerate(lines):
+                    if match_val in line or (len(match_val) > 10 and match_val[:10] in line):
+                        target_idx = i
+                        break
+                
+                if target_idx != -1:
+                    start = max(0, target_idx - 5)
+                    end = min(len(lines), target_idx + 6)
+                    
+                    before_lines = lines[start:target_idx]
+                    match_line = lines[target_idx]
+                    after_lines = lines[target_idx+1:end]
+                else:
+                    # Fallback if match not found: just show everything as "match_line" or "before"
+                    match_line = "\n".join(lines)
+            except Exception:
+                pass
+
         # Construir contexto formatado com destaque na linha do match
         context_html = ""
-        line_num = max(1, source_line - len(before_lines)) if isinstance(source_line, int) else 1
+        
+        # Calculate starting line number for display
+        # If we have a source_line, assumes match_line is AT that source_line
+        current_line_num = 1
+        if isinstance(source_line, int) and source_line > 0:
+            current_line_num = max(1, source_line - len(before_lines))
         
         for line in before_lines:
-            context_html += f'<span style="color:#6e7681;">{line_num:4d} │</span> {html.escape(str(line))}\n'
-            line_num += 1
+            context_html += f'<span style="color:#6e7681;">{current_line_num:4d} │</span> {html.escape(str(line))}\n'
+            current_line_num += 1
             
         # Linha do match destacada
         if match_line:
-            context_html += f'<span style="color:#f85149;">▶{source_line:4d} │</span> <span style="background:#3d1d1f;color:#ffa198;">{html.escape(str(match_line))}</span>\n'
-            line_num += 1
+            context_html += f'<span style="color:#f85149;">▶{current_line_num:4d} │</span> <span style="background:#3d1d1f;color:#ffa198;">{html.escape(str(match_line))}</span>\n'
+            current_line_num += 1
         
         for line in after_lines:
-            context_html += f'<span style="color:#6e7681;">{line_num:4d} │</span> {html.escape(str(line))}\n'
-            line_num += 1
+            context_html += f'<span style="color:#6e7681;">{current_line_num:4d} │</span> {html.escape(str(line))}\n'
+            current_line_num += 1
         
-        # Fallback se não tiver contexto estruturado
+        # Final Fallback
         if not context_html.strip():
-            context_full = context.get("full", "Context not available")
-            context_html = html.escape(str(context_full))
+             # Clean up the full context representation
+             clean_full = str(context.get("full", "Context not available")).replace("\\n", "\n")
+             context_html = html.escape(clean_full)
         
         html_parts.append(f'''
         <div class="card open" style="border-left: 4px solid var(--accent-{ 'red' if risk == 'CRITICAL' else 'orange' if risk == 'HIGH' else 'green' });">
@@ -999,10 +1198,22 @@ def build_services_content(target: str) -> str:
 
 def build_routes_content(target: str) -> str:
     base = Path("output") / target
-    routes_data = read_json_file(base / "domain" / "extracted_routes.json")
+    routes_data = read_json_file(base / "domain" / "extracted_routes.json") or []
     
-    if not routes_data:
-        return '<div class="empty-state"><p>No API routes found</p></div>'
+    # Load raw endpoints
+    raw_endpoints = []
+    ep_file = base / "endpoint" / "endpoints.txt"
+    if ep_file.exists():
+        raw_endpoints = [l.strip() for l in ep_file.read_text(errors="ignore").splitlines() if l.strip()]
+        
+    # Load GraphQL
+    graphql = []
+    gql_file = base / "endpoint" / "graphql.txt"
+    if gql_file.exists():
+        graphql = [l.strip() for l in gql_file.read_text(errors="ignore").splitlines() if l.strip()]
+    
+    if not routes_data and not raw_endpoints and not graphql:
+        return '<div class="empty-state"><p>No API routes or endpoints found</p></div>'
         
     # Group by subdomain
     grouped = {}
@@ -1014,6 +1225,21 @@ def build_routes_content(target: str) -> str:
         
     html_parts = []
     
+    
+    # 2. GraphQL
+    if graphql:
+        html_parts.append(f'''
+        <div class="card" style="border-left: 4px solid var(--accent-purple);">
+            <div class="card-header">
+                <span class="card-title">⚛️ GraphQL Endpoints</span>
+                <span class="card-badge">{len(graphql)} items</span>
+            </div>
+            <div class="card-content">
+                <pre>{html.escape("\\n".join(graphql))}</pre>
+            </div>
+        </div>''')
+
+    # 3. Structured Routes
     for sub, routes in sorted(grouped.items()):
         route_rows = ""
         for r in routes:
@@ -1065,6 +1291,7 @@ def build_js_content(target: str) -> str:
         grouped[sub].append(j)
         
     html_parts = []
+    
     
     for sub, files in sorted(grouped.items()):
         file_rows = ""
@@ -1218,6 +1445,12 @@ def build_discovered_urls(target: str) -> str:
             if x.get("found_in"):
                  found_in_html = f'<div style="font-size:10px;color:var(--text-secondary);margin-top:2px;">Found in: <a href="{x["found_in"]}" target="_blank" style="color:var(--text-secondary);">{html.escape(x["found_in"].split("/")[-1])}</a></div>'
             
+            # Origin badges
+            origins = ""
+            for src in x.get("sources", []):
+                cls = "tag-purple" if src == "DeepScan" else "tag-blue" if src == "Katana" else "tag-orange"
+                origins += f'<span class="tag {cls}">{src}</span> '
+
             rows_html += f'''
             <tr>
                 <td style="width:60px;vertical-align:top;">{st_html}</td>
@@ -1226,9 +1459,13 @@ def build_discovered_urls(target: str) -> str:
                     {details}
                     {found_in_html}
                 </td>
+                <td style="width:100px;vertical-align:top;">{origins}</td>
             </tr>
             '''
         return rows_html
+
+    # Explanation Header - REMOVED
+
 
     # A. Subdomínios (In-Scope)
     for host, items in sorted(grouped.items()):
@@ -1241,6 +1478,7 @@ def build_discovered_urls(target: str) -> str:
             <div class="card-content">
                 <div class="table-wrapper" style="max-height: 500px; overflow-y: auto;">
                     <table style="width:100%;">
+                        <thead><tr><th style="width:60px">Status</th><th>URL / Context</th><th style="width:100px">Origin</th></tr></thead>
                         <tbody>{render_rows(items)}</tbody>
                     </table>
                 </div>
@@ -1260,6 +1498,7 @@ def build_discovered_urls(target: str) -> str:
             <div class="card-content">
                 <div class="table-wrapper" style="max-height: 500px; overflow-y: auto;">
                     <table style="width:100%;">
+                        <thead><tr><th style="width:60px">External</th><th>URL / Context</th><th style="width:100px">Origin</th></tr></thead>
                         <tbody>{render_rows(external)}</tbody>
                     </table>
                 </div>
@@ -1437,7 +1676,360 @@ def build_params_content(target: str) -> str:
     
     return "".join(html_parts)
     return "".join(html_parts)
-# Main Function
+    
+def build_cloud_content(target: str) -> str:
+    base = Path("output") / target
+    buckets_file = base / "cloud" / "buckets.txt"
+    
+    if not buckets_file.exists():
+        return '<div class="empty-state"><p>No cloud buckets found</p></div>'
+        
+    lines = read_file_lines(buckets_file)
+    if not lines:
+        return '<div class="empty-state"><p>No cloud buckets found</p></div>'
+        
+    rows = ""
+    for line in lines:
+        # Format: Provider \t Name \t Status \t URL
+        if not line.strip(): continue
+        parts = line.split("\t")
+        if len(parts) < 4: continue
+        
+        provider, name, status, url = parts
+        
+        status_class = "tag-green" if status == "OPEN" else "tag-orange" if status == "PROTECTED" else "tag-low"
+        
+        rows += f'''
+        <tr>
+            <td><strong>{html.escape(provider)}</strong></td>
+            <td>{html.escape(name)}</td>
+            <td><span class="tag {status_class}">{status}</span></td>
+            <td><a href="{url}" target="_blank">{html.escape(url)}</a></td>
+        </tr>'''
+        
+    return f'''
+    <div class="card open">
+        <div class="card-header">
+            <span class="card-title">Cloud Buckets</span>
+            <span class="card-badge">{len(lines)} discovered</span>
+        </div>
+        <div class="card-content">
+            <div class="table-wrapper">
+                <table>
+                    <thead><tr><th>Provider</th><th>Bucket Name</th><th>Status</th><th>URL</th></tr></thead>
+                    <tbody>{rows}</tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    '''
+
+def build_cve_content(subdomains: Dict) -> str:
+    """Gera a aba de vulnerabilidades detalhada e priorizada"""
+    
+    # Coletar subdominios vulneraveis
+    vuln_hosts = []
+    
+    for host, data in subdomains.items():
+        vulnerable_techs = [t for t in data["technologies"] if t.get("cve_count", 0) > 0]
+        if vulnerable_techs:
+            vuln_hosts.append({
+                "host": host,
+                "techs": vulnerable_techs
+            })
+            
+    if not vuln_hosts:
+        return '<div class="empty-state"><p>No potential vulnerabilities correlated.</p></div>'
+        
+    html_parts = []
+    
+    # Contadores de resumo
+    total_exploits_count = sum([sum([t.get("cve_count", 0) for t in h["techs"]]) for h in vuln_hosts])
+    high_priority_count = sum([len([t for t in h["techs"] if t.get("cve_priority") == "high"]) for h in vuln_hosts])
+    
+    # Resumo
+    html_parts.append(f'''
+    <div class="stats-grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); margin-bottom: 20px;">
+        <div class="stat-card danger">
+            <div class="value">{total_exploits_count}</div>
+            <div class="label">Total Potential Exploits</div>
+        </div>
+        <div class="stat-card" style="border-left: 3px solid var(--accent-red);">
+            <div class="value">{high_priority_count}</div>
+            <div class="label">High Priority (Version Match)</div>
+        </div>
+        <div class="stat-card warning">
+            <div class="value">{len(vuln_hosts)}</div>
+            <div class="label">Vulnerable Subdomains</div>
+        </div>
+    </div>
+    ''')
+    
+    # Listar hosts (Priorizar os que tem High Priority techs)
+    vuln_hosts.sort(key=lambda h: max([2 if t.get("cve_priority") == "high" else 1 for t in h["techs"]]), reverse=True)
+    
+    for item in vuln_hosts:
+        host = item["host"]
+        techs = item["techs"]
+        
+        # Order techs: High priority first
+        techs.sort(key=lambda t: (t.get("cve_priority") != "high", -t.get("cve_count", 0)))
+        
+        tech_rows = ""
+        for t in techs:
+            prio = t.get("cve_priority", "low")
+            prio_badge = '<span class="tag tag-high">HIGH PRIORITY</span>' if prio == "high" else '<span class="tag tag-medium">Medium</span>' if prio == "medium" else '<span class="tag tag-low">Generic Match</span>'
+            prio_style = 'border-left: 3px solid var(--accent-red);' if prio == "high" else ''
+            
+            # Exploits list (collapsible details)
+            exploits_html = ""
+            for exp in t.get("cve_exploits", []):
+                title = exp.get("Title", "Unknown")
+                edb_id = exp.get("EDB-ID", "?")
+                type_ = exp.get("Type", "remote")
+                
+                exploits_html += f'''
+                <div style="padding: 4px 0; border-bottom: 1px solid var(--border-color); display:flex; justify-content:space-between; align-items:center;">
+                    <span style="font-size:12px; color:var(--text-primary);">{html.escape(title)}</span>
+                    <div>
+                        <span class="tag tag-low">{type_}</span>
+                        <a href="https://www.exploit-db.com/exploits/{edb_id}" target="_blank" style="font-size:11px; margin-left:8px;">EDB-{edb_id}</a>
+                    </div>
+                </div>
+                '''
+            
+            details_id = f"exp-{host}-{t['name']}".replace(".", "-").replace(" ", "")
+            
+            tech_rows += f'''
+            <div style="background:var(--bg-primary); border:1px solid var(--border-color); border-radius:4px; margin-bottom:8px; {prio_style}">
+                <div style="padding:10px; display:flex; justify-content:space-between; align-items:center; cursor:pointer;" onclick="document.getElementById('{details_id}').style.display = document.getElementById('{details_id}').style.display === 'none' ? 'block' : 'none'">
+                    <div>
+                        <span style="font-weight:600; color:var(--text-primary); margin-right:8px;">{html.escape(t["name"])} {html.escape(str(t.get("version") or ""))}</span>
+                        {prio_badge}
+                    </div>
+                    <div>
+                        <span class="tag tag-high" style="background:#3d1d1f; color:#ffa198;">{t.get("cve_count")} Exploits ▼</span>
+                    </div>
+                </div>
+                <div id="{details_id}" style="display:none; padding:10px; border-top:1px solid var(--border-color); background:var(--bg-secondary);">
+                    {exploits_html}
+                </div>
+            </div>
+            '''
+            
+        html_parts.append(f'''
+        <div class="card">
+            <div class="card-header">
+                <span class="card-title">{html.escape(host)}</span>
+                <span class="card-badge">{len(techs)} vulnerable technologies</span>
+            </div>
+            <div class="card-content" style="display:block;">
+                {tech_rows}
+            </div>
+        </div>
+        ''')
+        
+    return "".join(html_parts)
+
+
+
+def build_security_content(target: str) -> str:
+    """Consolida XSS, Headers e Certificados."""
+    base = Path("output") / target
+    html_parts = []
+    
+    # -------------------------------------------------------------------------
+    # 1. XSS Report
+    # -------------------------------------------------------------------------
+    xss_dir = base / "xss"
+    if xss_dir.exists():
+        xss_final = xss_dir / "final_report.txt"
+        xss_reflections = xss_dir / "reflections.txt"
+        
+        # Priority: Final Report
+        if xss_final.exists():
+            content = xss_final.read_text(errors="ignore")
+            if content.strip():
+                 html_parts.append(f'''
+                <div class="card open" style="border-left: 4px solid var(--accent-red);">
+                    <div class="card-header">
+                        <span class="card-title">🚨 XSS Scanning Report (Dalfox/Reflections)</span>
+                    </div>
+                    <div class="card-content">
+                        <pre>{html.escape(content)}</pre>
+                    </div>
+                </div>''')
+        
+        # Reflections fallback
+        elif xss_reflections.exists():
+             content = xss_reflections.read_text(errors="ignore")
+             if content.strip():
+                 html_parts.append(f'''
+                <div class="card" style="border-left: 4px solid var(--accent-orange);">
+                    <div class="card-header">
+                        <span class="card-title">⚠️ Reflected Parameters</span>
+                    </div>
+                    <div class="card-content">
+                        <pre>{html.escape(content)}</pre>
+                    </div>
+                </div>''')
+
+    # -------------------------------------------------------------------------
+    # 2. SSL/TLS Certificates
+    # -------------------------------------------------------------------------
+    cert_file = base / "fingerprint" / "cert_info.txt"
+    rows = ""
+    has_content = False
+    
+    if cert_file.exists():
+        try:
+            certs = json.loads(cert_file.read_text(errors="ignore"))
+            if certs:
+                rows = ""
+                has_content = False
+                for host, info_data in certs.items():
+                    # Handle if info_data is dict or string error
+                    if isinstance(info_data, dict) and "error" not in info_data:
+                        # Skip empty dicts (capture failed/empty)
+                        if not info_data:
+                            continue
+                            
+                        has_content = True
+                        # Extract common fields safely (assuming peercert structure)
+                        subject = str(info_data.get("subject", ""))
+                        issuer = str(info_data.get("issuer", ""))
+                        # Flatten for display
+                        rows += f'<tr><td>{html.escape(host)}</td><td><div style="font-size:11px">{html.escape(subject[:100])}</div></td><td><div style="font-size:11px">{html.escape(issuer[:100])}</div></td></tr>'
+                    elif isinstance(info_data, dict) and "error" in info_data:
+                         has_content = True
+                         rows += f'<tr><td>{html.escape(host)}</td><td colspan="2" style="color:var(--accent-red)">Error: {html.escape(str(info_data["error"]))}</td></tr>'
+                    else:
+                         # String or other format
+                         has_content = True
+                         rows += f'<tr><td>{html.escape(host)}</td><td colspan="2" style="color:var(--accent-red)">{html.escape(str(info_data))}</td></tr>'
+                
+                if has_content:
+                    html_parts.append(f'''
+                    <div class="card">
+                        <div class="card-header"><span class="card-title">🔒 SSL/TLS Certificates</span></div>
+                        <div class="card-content">
+                            <div class="table-wrapper">
+                                <table><thead><tr><th>Host</th><th>Subject</th><th>Issuer</th></tr></thead><tbody>{rows}</tbody></table>
+                            </div>
+                        </div>
+                    </div>''')
+        except: pass
+
+    # 2b. Fallback: Parse Nmap Services if no rich cert data
+    if not has_content:
+        try:
+            service_dir = base / "services"
+            scan_files = list(service_dir.glob("scanFinal_*.txt"))
+            
+            fallback_rows = []
+            for sf in scan_files:
+                content = sf.read_text(errors="ignore")
+                current_host = "Unknown"
+                
+                # Simple parsing of Nmap -oN output
+                for line in content.splitlines():
+                    if "Nmap scan report for" in line:
+                        parts = line.split()
+                        if len(parts) >= 5:
+                            current_host = parts[4] # host
+                    
+                    if "/tcp" in line and "open" in line and ("ssl" in line or "443" in line or "8443" in line):
+                        # 443/tcp open  ssl/https     cloudflare
+                        parts = line.split(maxsplit=3)
+                        port = parts[0]
+                        service = parts[2] if len(parts) > 2 else "ssl"
+                        details = parts[3] if len(parts) > 3 else "detected"
+                        
+                        fallback_rows.append((current_host, port, service, details))
+            
+            if fallback_rows:
+                has_content = True
+                unique_rows = sorted(list(set(fallback_rows)))
+                for host, port, service, details in unique_rows:
+                     rows += f'<tr><td>{html.escape(host)}</td><td><span class="tag tag-blue">{html.escape(port)}</span></td><td><div style="font-size:11px">{html.escape(service)} {html.escape(details)}</div></td></tr>'
+                
+                html_parts.append(f'''
+                <div class="card">
+                    <div class="card-header"><span class="card-title">🔒 SSL/TLS Certificates (Service Discovery)</span></div>
+                    <div class="card-content">
+                        <div class="table-wrapper">
+                            <table><thead><tr><th>Host</th><th>Port</th><th>Service Details</th></tr></thead><tbody>{rows}</tbody></table>
+                        </div>
+                        <p style="margin-top:10px;font-size:11px;color:var(--text-secondary);">* Detailed certificate info not available. Showing open SSL ports.</p>
+                    </div>
+                </div>''')
+
+        except: pass
+
+    # -------------------------------------------------------------------------
+    # 3. Security Headers (Compact / Grouped)
+    # -------------------------------------------------------------------------
+    headers_file = base / "fingerprint" / "headers.txt"
+    if headers_file.exists():
+        try:
+            headers_data = json.loads(headers_file.read_text(errors="ignore"))
+            if headers_data:
+                # Group by headers logic
+                # Actually, user wants "Valid Domain" and not huge list
+                # Strategy: Group by Hostname, show 1 representative URL per host
+                
+                hosts_seen = set()
+                from urllib.parse import urlparse
+                
+                header_entries = ""
+                
+                for url, h_dict in headers_data.items():
+                    try:
+                        parsed = urlparse(url)
+                        hostname = parsed.netloc.split(":")[0]
+                        if hostname in hosts_seen:
+                            continue
+                        hosts_seen.add(hostname)
+                        
+                        # Format headers for display
+                        h_lines = "\n".join([f"{k}: {v}" for k,v in h_dict.items()])
+                        
+                        header_entries += f'''
+                        <div style="margin-bottom: 8px; border: 1px solid var(--border-color); border-radius: 4px; overflow: hidden;">
+                            <details style="background: var(--bg-secondary);">
+                                <summary style="padding: 10px; cursor: pointer; font-weight: 600; font-family: monospace;">
+                                    {html.escape(hostname)} <span style="font-weight:normal; color:var(--text-secondary); float:right; font-size:12px;">{html.escape(url)}</span>
+                                </summary>
+                                <div style="padding: 10px; border-top: 1px solid var(--border-color); background: var(--bg-primary);">
+                                    <pre style="margin:0; font-size:11px; white-space:pre-wrap; word-break:break-all;">{html.escape(h_lines)}</pre>
+                                </div>
+                            </details>
+                        </div>
+                        '''
+                    except:
+                        pass
+                
+                if header_entries:
+                    html_parts.append(f'''
+                    <div class="card">
+                        <div class="card-header">
+                            <span class="card-title">🛡️ Security Headers (Grouped by Host)</span>
+                            <span class="card-badge">{len(hosts_seen)} unique hosts</span>
+                        </div>
+                        <div class="card-content">
+                            <p style="margin-bottom:10px;color:var(--text-secondary);font-size:12px;">Showing one representative set of headers per host.</p>
+                            {header_entries}
+                        </div>
+                    </div>''')
+        except Exception:
+            pass
+            
+    if not html_parts:
+        return '<div class="empty-state"><p>No security-specific data found (XSS, Headers, SSL).</p></div>'
+        
+    return "".join(html_parts)
+
+
 # ------------------------------------------------------------
 def run(context: Dict[str, Any]) -> List[str]:
     target = context.get("target")
@@ -1482,6 +2074,10 @@ def run(context: Dict[str, Any]) -> List[str]:
         "stats_routes": stats["routes_found"],
         "login_warning": login_warning,
         "keys_warning": keys_warning,
+        "stats_buckets": stats.get("cloud_buckets", 0),
+        "stats_cves": stats.get("cve_vulns", 0),
+        "stats_endpoints": stats.get("endpoints_count", 0) + stats.get("routes_found", 0),
+        "stats_xss": stats.get("xss_vulns", 0),
         "subdomains_content": build_subdomains_content(subdomains),
         "ports_content": build_ports_content(target),
         "urls_content": build_urls_content(subdomains),
@@ -1498,6 +2094,10 @@ def run(context: Dict[str, Any]) -> List[str]:
         "stats_forms": len(read_json_file(Path("output") / target / "crawlers" / "katana_forms.json") or read_json_file(Path("output") / target / "domain" / "crawlers" / "katana_forms.json") or []),
         "params_content": build_params_content(target),
         "stats_params": len(read_json_file(Path("output") / target / "crawlers" / "katana_params.json") or read_json_file(Path("output") / target / "domain" / "crawlers" / "katana_params.json") or {}),
+        "cloud_content": build_cloud_content(target),
+        "cloud_content": build_cloud_content(target),
+        "cve_content": build_cve_content(subdomains),
+        "security_content": build_security_content(target),
         "newsincode_content": build_newsincode_content(target),
         "stats_newsincode": len(read_json_file(Path("output") / target / "crawlers" / "katana_new_in_code_validated.json") or read_json_file(Path("output") / target / "domain" / "crawlers" / "katana_new_in_code_validated.json") or read_json_file(Path("output") / target / "crawlers" / "katana_new_in_code.json") or read_json_file(Path("output") / target / "domain" / "crawlers" / "katana_new_in_code.json") or []),
     }

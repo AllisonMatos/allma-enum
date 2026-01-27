@@ -27,6 +27,9 @@ def execute_chain(target: str, chain: list, params: dict):
         "7": "endpoint",
         "8": "wordlist",
         "9": "xss",
+        "10": "cloud",
+        "11": "visual",
+        "12": "cve"
     }
 
     for step in chain:

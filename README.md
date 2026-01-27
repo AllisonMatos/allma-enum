@@ -27,11 +27,10 @@ Allma-Enum é uma suíte completa para pentest e bug bounty, focada em automaç�
 - **Vulnerabilidades**: Verificação básica de misconfigs.
 
 ### 📊 Relatórios Profissionais 
-Gera relatórios HTML visuais, interativos e prontos para apresentar a clientes ou time técnico.
-- **6 Estilos Disponíveis**:
-  - *Modern SaaS*, *Corporate Admin*, *Material Design* (Estilo Website).
-  - *Dark Data-Dense*, *Notion Style*, *Cyber-Professional* (Estilo Técnico).
-- **Dashboard Interativo**: Gráficos, abas e filtros.
+- **Dashboard SPA (Single Page Application)**: Design moderno Dark Mode para fácil navegação.
+- **Clean UI**: Seções organizadas para focar no que importa (URLs, Endpoints, Falhas).
+- **Fallback Inteligente**: Dados de SSL/Certificados robustos via Nmap se o scan profundo falhar.
+- **Filtros de Qualidade**: Remoção automática de lixo (HTML/JS) na lista de endpoints.
 - **Export**: Dados brutos também salvos em JSON/TXT.
 
 ---

@@ -1,13 +1,17 @@
 #!/usr/bin/env python3
+"""
+Plugin ENDPOINT — Async Version
+"""
+
 from pathlib import Path
 import re
 import json
 import time
 from urllib.parse import urljoin
+import asyncio
 
 from menu import C
-
-from ..output import info, warn, success
+from ..output import info, warn, success, error
 from .utils import ensure_outdir
 
 # === PATTERNS PARA EXTRAÇÃO ===
@@ -22,32 +26,10 @@ PATTERNS = [
     r'["\'](https?://[^\s"\']+/api[^\']*)["\']'
 ]
 
+CONCURRENCY_LIMIT = 10
+DELAY = 0.5
 
-# === REQUEST REDUZIDO (httpx ou requests) ===
-def http_get_text(url, timeout=6):
-    try:
-        import httpx
-        try:
-            with httpx.Client(follow_redirects=True, timeout=timeout) as c:
-                r = c.get(url)
-                return (r.status_code, r.text, dict(r.headers))
-        except Exception:
-            pass
-    except Exception:
-        pass
-
-    try:
-        import requests
-        try:
-            r = requests.get(url, timeout=timeout, allow_redirects=True)
-            return (r.status_code, r.text, dict(r.headers))
-        except Exception:
-            return (None, None, None)
-    except Exception:
-        return (None, None, None)
-
-
-# === EXTRAÇÃO DE ENDPOINTS EM TEXTO ===
+# === EXTRAÇÃO DE ENDPOINTS EM TEXTO (CPU Bound) ===
 def extract_from_text(text, base_url=None):
     found = set()
     for p in PATTERNS:
@@ -61,11 +43,57 @@ def extract_from_text(text, base_url=None):
                 found.add(m)
     return found
 
-
 def read_list_file(path):
     if not path.exists():
         return []
     return [l.strip() for l in path.read_text(errors="ignore").splitlines() if l.strip()]
+
+# === ASYNC CRAWLER ===
+async def fetch_and_analyze(client, url, semaphore):
+    async with semaphore:
+        await asyncio.sleep(DELAY)
+        
+        for attempt in range(3):
+            try:
+                resp = await client.get(url)
+                
+                if resp.status_code == 429 or resp.status_code >= 500:
+                    await asyncio.sleep((attempt + 1) * 2)
+                    continue
+
+                if resp.status_code == 200:
+                    return extract_from_text(resp.text, base_url=url)
+                return set()
+            except:
+                await asyncio.sleep(1)
+                
+    return set()
+
+async def run_full_scan_async(target, pages):
+    import httpx
+    candidates = set()
+    sem = asyncio.Semaphore(CONCURRENCY_LIMIT)
+    
+    info(f"{C.BOLD}{C.BLUE}🌐 Analisando {len(pages)} páginas HTML (Async)...{C.END}")
+    
+    async with httpx.AsyncClient(verify=False, follow_redirects=True, timeout=10) as client:
+        tasks = [fetch_and_analyze(client, p, sem) for p in pages]
+        
+        # Executar com barra de progresso simples
+        total = len(tasks)
+        completed = 0
+        
+        for coro in asyncio.as_completed(tasks):
+            res = await coro
+            completed += 1
+            if completed % 10 == 0:
+                print(f"   Processados: {completed}/{total}", end="\r")
+            
+            if res:
+                candidates.update(res)
+                
+    print("") # Newline
+    return candidates
 
 
 # === MAIN ===
@@ -81,7 +109,7 @@ def run(context: dict):
     # ==============================
     info(
         f"\n🟪───────────────────────────────────────────────────────────🟪\n"
-        f"   🛰️  {C.BOLD}{C.CYAN}INICIANDO MÓDULO: ENDPOINT DISCOVERY{C.END}\n"
+        f"   🛰️  {C.BOLD}{C.CYAN}INICIANDO MÓDULO: ENDPOINT DISCOVERY (ASYNC){C.END}\n"
         f"   🎯 Alvo: {C.GREEN}{target}{C.END}\n"
         f"🟪───────────────────────────────────────────────────────────🟪\n"
     )
@@ -97,22 +125,25 @@ def run(context: dict):
     # ==============================
     # 🌐 ETAPA 1 — ANALISAR URLS_200
     # ==============================
-    info(f"{C.BOLD}{C.BLUE}🌐 Analisando páginas HTML (urls_200)...{C.END}")
-
+    
     urls_200 = Path("output") / target / "urls" / "urls_200.txt"
     if urls_200.exists():
         pages = read_list_file(urls_200)
-        for p in pages:
-            info(f"   🔎 lendo: {C.YELLOW}{p}{C.END}")
-            status, text, headers = http_get_text(p)
-            if text:
-                found = extract_from_text(text, base_url=p)
+        if pages:
+            # Check httpx
+            try:
+                import httpx
+                found = asyncio.run(run_full_scan_async(target, pages))
                 candidates.update(found)
+            except ImportError:
+                error("Biblioteca 'httpx' não instalada de endpoints async.")
+            except Exception as e:
+                error(f"Erro no scan async: {e}")
     else:
         warn(f"⚠️ Nenhum arquivo urls_200 encontrado para {target}")
 
     # ==============================
-    # ⚡ ETAPA 2 — ANALISAR JS E LISTAS
+    # ⚡ ETAPA 2 — ANALISAR JS E LISTAS (LOCAL)
     # ==============================
     info(f"\n{C.BOLD}{C.BLUE}⚡ Analisando arquivos JS e listas auxiliares...{C.END}")
 

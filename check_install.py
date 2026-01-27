@@ -12,7 +12,8 @@ REQUIRED_PYTHON = [
     "lxml",
     "reportlab",
     "matplotlib",
-    "weasyprint"
+    "weasyprint",
+    "dns" # dnspython
 ]
 
 # Define required system tools
@@ -23,7 +24,9 @@ REQUIRED_TOOLS = [
     "nmap", 
     "naabu",
     "katana",
-    "httpx" # Project discovery httpx
+    "httpx", # Project discovery httpx
+    "gowitness",
+    "searchsploit"
 ]
 
 GREEN = "\033[92m"
