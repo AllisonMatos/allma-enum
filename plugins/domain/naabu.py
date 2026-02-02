@@ -35,12 +35,16 @@ def run_naabu(subs_file: Path, out_file: Path, mode: str):
 
     cmd = [naabu, "-list", str(subs_file), "-silent", "-Pn"]
 
+    # Portas HTTP comuns que devem sempre ser testadas
+    http_extra_ports = "80,443,8080,8443,8000,8888,3000,5000,9000,9443"
+
     if mode == "all":
         cmd += ["-p", "-"]  # scan total
         info(f"➡️  {C.CYAN}Modo ALL — varrendo todas as portas.{C.END}")
     else:
-        cmd += ["-top-ports", str(mode)]
-        info(f"➡️  {C.CYAN}Top ports: {mode}{C.END}")
+        # Combina top-ports com portas HTTP extras
+        cmd += ["-top-ports", str(mode), "-p", http_extra_ports]
+        info(f"➡️  {C.CYAN}Top ports: {mode} + portas HTTP extras ({http_extra_ports}){C.END}")
 
     # ============================================================
     # 🚀 Execução
