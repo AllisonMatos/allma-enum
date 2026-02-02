@@ -62,6 +62,37 @@ def run(context):
             port = m.group("port")
             ports_by_host[host].append(port)
 
+    # ============================================================
+    # ETAPA 1.5 — GARANTIR PORTAS HTTP (80/443) PARA TODOS OS HOSTS
+    # ============================================================
+    info(f"{C.BOLD}{C.BLUE}🔒 Garantindo portas HTTP (80/443) para todos os hosts...{C.END}")
+    
+    # Ler subdomínios do domain
+    subs_file = Path("output") / target / "domain" / "subdomains.txt"
+    all_hosts = set(ports_by_host.keys())
+    
+    if subs_file.exists():
+        for line in subs_file.read_text(errors="ignore").splitlines():
+            host = line.strip()
+            if host:
+                all_hosts.add(host)
+    
+    # Adicionar 80 e 443 para TODOS os hosts (se ainda não tiver)
+    http_ports_added = 0
+    for host in all_hosts:
+        current_ports = set(ports_by_host[host])
+        
+        if "80" not in current_ports:
+            ports_by_host[host].append("80")
+            http_ports_added += 1
+            
+        if "443" not in current_ports:
+            ports_by_host[host].append("443")
+            http_ports_added += 1
+    
+    info(f"   ✅ {len(all_hosts)} hosts totais")
+    info(f"   ➕ {http_ports_added} portas HTTP (80/443) adicionadas automaticamente")
+
     if not ports_by_host:
         warn("⚠️ Nenhuma porta encontrada. Nada para escanear.")
         return []
@@ -106,13 +137,79 @@ def run(context):
             fout.write("\n\n")
 
     # ============================================================
+    # ETAPA 4 — Extrair URLs HTTP e alimentar pipeline
+    # ============================================================
+    info(f"\n{C.BOLD}{C.BLUE}🔗 Extraindo URLs HTTP dos resultados Nmap...{C.END}")
+    
+    http_urls = set()
+    http_pattern = re.compile(
+        r"(\d+)/tcp\s+open\s+(ssl[/|]https?|https?|http-alt|https-alt|ssl-http)",
+        re.IGNORECASE
+    )
+    
+    # Padrão para capturar host do arquivo (linha "Nmap scan report for")
+    host_pattern = re.compile(r"Nmap scan report for\s+(\S+)")
+    
+    for scan_file in results:
+        content = scan_file.read_text(errors="ignore")
+        
+        # Encontrar o host deste scan
+        host_match = host_pattern.search(content)
+        if not host_match:
+            continue
+        
+        host = host_match.group(1)
+        # Limpar IPs entre parênteses se existir
+        if "(" in host:
+            host = host.split("(")[0].strip()
+        
+        # Encontrar portas HTTP
+        for match in http_pattern.finditer(content):
+            port = match.group(1)
+            service = match.group(2).lower()
+            
+            # Determinar protocolo
+            if "ssl" in service or "https" in service or port in ["443", "8443", "4443"]:
+                protocol = "https"
+            else:
+                protocol = "http"
+            
+            # Gerar URL
+            if port in ["80", "443"]:
+                url = f"{protocol}://{host}"
+            else:
+                url = f"{protocol}://{host}:{port}"
+            
+            http_urls.add(url)
+    
+    # Salvar URLs HTTP descobertas
+    http_urls_file = outdir / "http_urls.txt"
+    if http_urls:
+        http_urls_file.write_text("\n".join(sorted(http_urls)) + "\n")
+        info(f"   💾 {len(http_urls)} URLs HTTP salvas em: {C.GREEN}{http_urls_file}{C.END}")
+        
+        # Alimentar de volta ao pipeline - append em domain/urls_valid.txt
+        domain_urls_file = Path("output") / target / "domain" / "urls_valid.txt"
+        if domain_urls_file.exists():
+            existing = set(domain_urls_file.read_text().splitlines())
+            new_urls = http_urls - existing
+            if new_urls:
+                with domain_urls_file.open("a") as f:
+                    for url in sorted(new_urls):
+                        f.write(f"{url}\n")
+                success(f"   ✨ {len(new_urls)} novas URLs adicionadas ao pipeline!")
+    else:
+        warn("   ⚠️ Nenhum serviço HTTP detectado nos scans.")
+
+    # ============================================================
     # 🎉 FINALIZAÇÃO
     # ============================================================
     success(
         f"\n{C.GREEN}{C.BOLD}✔ SERVICES concluído com sucesso!{C.END}\n"
         f"🛠️ Arquivo consolidado: {C.CYAN}{consolidated}{C.END}\n"
         f"📄 Arquivos individuais: {C.YELLOW}{len(results)} hosts escaneados{C.END}\n"
+        f"🔗 URLs HTTP extraídas: {C.YELLOW}{len(http_urls)}{C.END}\n"
         f"📁 Output salvo em: {C.CYAN}{outdir}{C.END}\n"
     )
 
-    return [str(consolidated)] + [str(r) for r in results]
+    return [str(consolidated), str(http_urls_file)] + [str(r) for r in results]

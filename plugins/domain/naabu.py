@@ -33,7 +33,7 @@ def run_naabu(subs_file: Path, out_file: Path, mode: str):
     # ============================================================
     info(f"{C.BOLD}{C.BLUE}🔧 Preparando comando Naabu...{C.END}")
 
-    cmd = [naabu, "-list", str(subs_file), "-silent", "-Pn", "-verify"]
+    cmd = [naabu, "-list", str(subs_file), "-silent", "-Pn"]
 
     if mode == "all":
         cmd += ["-p", "-"]  # scan total

@@ -31,6 +31,9 @@ def run_katana(urls_file: Path, output_file: Path):
         "-d", "3",          # Depth
         "-c", "5",          # Concurrency (reduzido para headless)
         "-timeout", "30",   # Timeout maior para JS
+        "-retry", "3",      # Retry 3x em caso de falha
+        "-no-incognito",    # Não usar modo incognito (mais estável)
+        "-ignore-query-params",  # Ignora query params para reduzir duplicatas
         "-jsonl",           # Output em JSON Lines
         "-o", str(jsonl_output),
         "-silent"

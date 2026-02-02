@@ -83,26 +83,45 @@ async def analyze_js_file_async(client, url, semaphore):
 # SYNC HELPERS (Legacy/Utils)
 # ============================================================
 def gather_js_urls(target: str) -> list:
-    """Coleta URLs de arquivos ja existentes"""
+    """Coleta URLs de arquivos JS de múltiplas fontes"""
+    import json
+    
     base = Path("output") / target / "files"
+    domain_base = Path("output") / target / "domain"
     urls = []
 
+    # 1. Arquivos de texto tradicionais
     files_to_check = [
         base / "js.txt",
-        Path("output") / target / "domain" / "extracted_js.txt"
+        domain_base / "extracted_js.txt"
     ]
 
     for f in files_to_check:
         if f.exists():
             urls.extend([l.strip() for l in f.read_text(errors="ignore").splitlines() if l.strip()])
     
-    # Check files_by_extension
+    # 2. Check files_by_extension
     f2 = base / "files_by_extension.txt"
     if f2.exists():
         txt = f2.read_text(errors="ignore")
         m = re.search(r"===\s*\.js\s*===(.*?)(?:\n===|\Z)", txt, flags=re.S)
         if m:
             urls.extend([l.strip() for l in m.group(1).splitlines() if l.strip()])
+    
+    # 3. LER extracted_js.json do DOMAIN (fonte principal com 250+ arquivos)
+    extracted_js_json = domain_base / "extracted_js.json"
+    if extracted_js_json.exists():
+        try:
+            data = json.loads(extracted_js_json.read_text(errors="ignore"))
+            if isinstance(data, list):
+                for item in data:
+                    if isinstance(item, dict) and "url" in item:
+                        urls.append(item["url"])
+                    elif isinstance(item, str):
+                        urls.append(item)
+            info(f"   📄 Carregados {len(data)} JS de extracted_js.json")
+        except Exception as e:
+            warn(f"   ⚠️ Erro ao ler extracted_js.json: {e}")
     
     return sorted(set(urls))
 

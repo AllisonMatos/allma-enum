@@ -77,6 +77,7 @@ class XSSFinding:
     value: str = ""
     pattern: str = ""
     context: str = ""
+    context_type: str = "HTML"  # HTML, ATTRIBUTE, SCRIPT, COMMENT
     severity: str = "info"
     
 # ============================================================
@@ -264,7 +265,64 @@ class XSSPatterns:
             re.compile(r'[A-Za-z0-9\-_]{20,}', re.I),
         ]
         
-        self.param_min_len = 1
+        self.param_min_len = 2 # Aumentado para reduzir FP em params muito curtos
+    
+    def detect_context(self, text: str, start: int, end: int) -> Tuple[str, str]:
+        """
+        Detecta o contexto da reflexão e retorna (context_type, severity)
+        
+        Simple heuristics:
+        1. Comment: <!-- ... -->
+        2. Script: <script> ... </script>
+        3. Attribute: <tag attr="...">
+        4. HTML: > ... <
+        """
+        # Pega um chunk anterior para analise
+        chunk_before = text[max(0, start - 1000):start]
+        chunk_after = text[end:min(len(text), end + 1000)]
+        
+        # 1. Check COMMENT
+        # Se encontrar <!-- sem fechar --> antes
+        r_info = chunk_before.rfind('<!--')
+        r_close = chunk_before.rfind('-->')
+        if r_info > r_close:
+            # Confirmar que fecha depois
+            if '-->' in chunk_after:
+                return "COMMENT", "info"
+        
+        # 2. Check SCRIPT
+        # Se encontrar <script> sem fechar </script> antes
+        # Ignorar case
+        lower_before = chunk_before.lower()
+        r_script = lower_before.rfind('<script')
+        r_script_close = lower_before.rfind('</script')
+        
+        if r_script > r_script_close:
+            # Estamos dentro de um bloco script
+            return "SCRIPT", "critical"
+            
+        # 3. Check ATTRIBUTE
+        # Se encontrar <tag sem fechar > antes
+        r_tag_open = chunk_before.rfind('<')
+        r_tag_close = chunk_before.rfind('>')
+        
+        if r_tag_open > r_tag_close:
+            # Estamos dentro de uma tag. Verificar se estamos em aspas
+            tag_content = chunk_before[r_tag_open:]
+            # Contar aspas simples e duplas
+            dq_count = tag_content.count('"')
+            sq_count = tag_content.count("'")
+            
+            if dq_count % 2 != 0:
+                return "ATTRIBUTE (Double Quote)", "medium"
+            if sq_count % 2 != 0:
+                return "ATTRIBUTE (Single Quote)", "medium"
+                
+            # Se não está em aspas, mas dentro da tag (ex: <div class=VALUE>)
+            return "TAG_NAME/VAL", "medium"
+            
+        # Default: HTML Body
+        return "HTML", "low"
     
     def find_reflections(self, text: str, params: List[Tuple[str, str]]) -> List[XSSFinding]:
         """Encontrar reflexões de parâmetros no texto."""
@@ -280,15 +338,19 @@ class XSSPatterns:
                 idx = text.find(value)
                 start = max(0, idx - 50)
                 end = min(len(text), idx + 50)
-                context = text[start:end]
+                context_preview = text[start:end]
+                
+                # Detectar Contexto e Severidade
+                ctx_type, severity = self.detect_context(text, idx, idx + len(value))
                 
                 findings.append(XSSFinding(
                     url="",  # Será preenchido depois
                     param=param,
                     value=value,
                     pattern="PARAM_REFLECTION",
-                    context=context,
-                    severity="medium"
+                    context=context_preview,
+                    context_type=ctx_type,
+                    severity=severity
                 ))
                 
         return findings
@@ -631,6 +693,8 @@ async def save_reports(outdir, crawler, reflections, dom_findings):
     for i, finding in enumerate(all_findings[:10]):
         summary.append(f"{i+1}. [{finding.severity.upper()}] {finding.url}")
         summary.append(f"   Padrão: {finding.pattern[:50]}")
+        if hasattr(finding, 'context_type'):
+            summary.append(f"   Contexto: {finding.context_type}")
         if finding.param:
             summary.append(f"   Parâmetro: {finding.param} = {finding.value[:30]}")
         summary.append("")

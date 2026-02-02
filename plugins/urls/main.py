@@ -17,7 +17,7 @@ from menu import C
 from ..output import info, success, warn, error
 from .utils import ensure_outdir, require_binary
 
-WANT_STATUS = "200,301,302,307,308"
+WANT_STATUS = "200,301,302,307,308,401,403,404,405,500"
 
 
 # ============================================================
@@ -124,15 +124,46 @@ def run(context: dict):
     urls_200 = outdir / "urls_200.txt"
 
     # ============================================================
-    # ETAPA 1 — Validar arquivo de entrada
+    # ETAPA 1 — Coletar URLs de múltiplas fontes
     # ============================================================
+    info(f"{C.BOLD}{C.BLUE}📄 Coletando URLs de múltiplas fontes do pipeline...{C.END}")
+
+    # Fonte 1: URLs validadas do DOMAIN
     domain_200 = Path("output") / target / "domain" / "urls_valid.txt"
+    
+    # Fonte 2: URLs HTTP descobertas pelo SERVICES (Nmap)
+    services_http = Path("output") / target / "services" / "http_urls.txt"
+    
+    # Fonte 3: URLs descobertas pelo Katana (crawling do DOMAIN)
+    katana_valid = Path("output") / target / "domain" / "katana_valid.txt"
+    
+    # Fonte 4: URLs descobertas inline pelo DOMAIN
+    discovered_urls = Path("output") / target / "domain" / "discovered_urls.txt"
 
-    info(f"{C.BOLD}{C.BLUE}📄 Verificando arquivo de entrada do módulo DOMAIN...{C.END}")
+    # Coletar todas as seeds
+    seed_urls = set()
+    sources_found = []
+    
+    for source_name, source_path in [
+        ("domain/urls_valid.txt", domain_200),
+        ("services/http_urls.txt", services_http),
+        ("domain/katana_valid.txt", katana_valid),
+        ("domain/discovered_urls.txt", discovered_urls),
+    ]:
+        if source_path.exists():
+            urls = [l.strip() for l in source_path.read_text(errors="ignore").splitlines() if l.strip()]
+            if urls:
+                seed_urls.update(urls)
+                sources_found.append(f"{source_name} ({len(urls)} URLs)")
+                info(f"   ✅ {C.GREEN}{source_name}{C.END}: {len(urls)} URLs")
+        else:
+            info(f"   ⚠️ {C.YELLOW}{source_name}{C.END}: não encontrado (opcional)")
 
-    if not domain_200.exists():
-        error(f"❌ Arquivo de entrada não encontrado: {domain_200}")
+    if not seed_urls:
+        error(f"❌ Nenhuma URL seed encontrada de nenhuma fonte!")
         return []
+        
+    info(f"   📊 {C.CYAN}Total de seeds coletadas: {len(seed_urls)}{C.END}")
 
     # limpar arquivo anterior
     if url_completas.exists():
@@ -154,23 +185,19 @@ def run(context: dict):
     urls_to_scan = []
     skipped_count = 0
     
-    if domain_200.exists():
-        for line in domain_200.read_text(errors="ignore").splitlines():
-            line = line.strip()
-            if not line: continue
+    for line in seed_urls:
+        # Verificar extensão na URL (ignorando query params)
+        path = line.split("?")[0].lower()
+        if any(path.endswith(ext) for ext in ignored_exts):
+            skipped_count += 1
+            continue
             
-            # Verificar extensão na URL (ignorando query params)
-            path = line.split("?")[0].lower()
-            if any(path.endswith(ext) for ext in ignored_exts):
-                skipped_count += 1
-                continue
-                
-            urls_to_scan.append(line)
+        urls_to_scan.append(line)
             
     urls_filtered_file = outdir / "urls_for_urlfinder.txt"
     urls_filtered_file.write_text("\n".join(urls_to_scan))
     
-    info(f"   URLs originais: {len(domain_200.read_text().splitlines())}")
+    info(f"   URLs totais de seeds: {len(seed_urls)}")
     info(f"   URLs ignoradas: {skipped_count} (arquivos estáticos/js)")
     info(f"   URLs para scan: {len(urls_to_scan)}")
 

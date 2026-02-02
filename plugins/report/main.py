@@ -43,6 +43,22 @@ def read_json_file(path: Path) -> Any:
         return None
 
 
+def find_file(base: Path, *relative_paths) -> Path:
+    """
+    Busca um arquivo em múltiplos locais relativos ao base path.
+    Retorna o primeiro encontrado ou o último path se nenhum existir.
+    
+    Exemplo:
+        find_file(base, "crawlers/file.json", "domain/crawlers/file.json", "domain/file.json")
+    """
+    for rel_path in relative_paths:
+        full_path = base / rel_path
+        if full_path.exists():
+            return full_path
+    # Retorna o primeiro path para manter compatibilidade com mensagens de erro
+    return base / relative_paths[0] if relative_paths else base
+
+
 def ensure_outdir(target: str) -> Path:
     outdir = Path("output") / target / "report"
     outdir.mkdir(parents=True, exist_ok=True)
@@ -149,7 +165,8 @@ def aggregate_by_subdomain(target: str) -> Dict:
             "ports": [],
             "urls": [],
             "technologies": [],
-            "is_login": False
+            "is_login": False,
+            "login_urls": set()
         }
     
     # Load ports
@@ -160,7 +177,7 @@ def aggregate_by_subdomain(target: str) -> Dict:
             if host in subdomains:
                 subdomains[host]["ports"].append(port)
             else:
-                subdomains[host] = {"ports": [port], "urls": [], "technologies": [], "is_login": False}
+                subdomains[host] = {"ports": [port], "urls": [], "technologies": [], "is_login": False, "login_urls": set()}
     
     # Load URLs
     for url in read_file_lines(base / "domain" / "urls_valid.txt"):
@@ -170,7 +187,7 @@ def aggregate_by_subdomain(target: str) -> Dict:
             if host in subdomains:
                 subdomains[host]["urls"].append(url)
             else:
-                subdomains[host] = {"ports": [], "urls": [url], "technologies": [], "is_login": False}
+                subdomains[host] = {"ports": [], "urls": [url], "technologies": [], "is_login": False, "login_urls": set()}
         except:
             pass
     
@@ -226,12 +243,33 @@ def aggregate_by_subdomain(target: str) -> Dict:
                 # 1. Normalize host (dot to dash)
                 host_normalized = host.replace(".", "-")
                 
-                # 2. Check strict containment
-                # Ex: "api-google-com" in "http-api-google-com-80.png"
-                if host_normalized in name:
+                # 2. MATCH LOGIC
+                # Name examples:
+                # http-sub-domain-com-80.png
+                # https-sub-domain-com-443.png
+                
+                # We want to match {protocol}-{host_normalized}-{port}
+                # To avoid "domain.com" matching "sub.domain.com", we ensure we match the full host part.
+                
+                # Check for exact matches with common prefixes
+                prefix_http = f"http-{host_normalized}-"
+                prefix_https = f"https-{host_normalized}-"
+                
+                # Remove extension to check end (port) or direct match
+                base_name = name
+                if base_name.endswith(".png"): base_name = base_name[:-4]
+                elif base_name.endswith(".jpg"): base_name = base_name[:-4]
+                elif base_name.endswith(".jpeg"): base_name = base_name[:-5]
+                
+                # Strict check: 
+                # 1. Exactly "http-host" (duplicate)
+                # 2. Starts with "http-host-" (implies port or other suffix follows immediately)
+                if (base_name == f"http-{host_normalized}" or 
+                    base_name == f"https-{host_normalized}" or 
+                    base_name.startswith(prefix_http) or 
+                    base_name.startswith(prefix_https)):
+                    
                     subdomains[host]["screenshot"] = f"../visual/screenshots/{screenshot.name}"
-                    # Don't break, keep looking for best match or just assign (first match likely ok)
-                    # Ideally we want exact match of host part, but this is better than before
                     break
     
     # Mark login pages (from explicit file OR heuristic)
@@ -244,6 +282,9 @@ def aggregate_by_subdomain(target: str) -> Dict:
             host = urlparse(url).netloc.split(":")[0]
             if host in subdomains:
                 subdomains[host]["is_login"] = True
+                subdomains[host]["login_urls"].add(url)
+                if url not in subdomains[host]["urls"]:
+                    subdomains[host]["urls"].append(url)
         except:
             pass
             
@@ -255,6 +296,7 @@ def aggregate_by_subdomain(target: str) -> Dict:
                 host = urlparse(url).netloc.split(":")[0]
                 if host in subdomains:
                     subdomains[host]["is_login"] = True
+                    subdomains[host]["login_urls"].add(url)
         except:
             pass
     
@@ -887,7 +929,10 @@ def build_subdomains_content(subdomains: Dict) -> str:
         if data["urls"]:
             urls_list_items = []
             for u in data["urls"]:
-                urls_list_items.append(f'<a href="{u}" target="_blank" style="color:var(--accent-green);">{html.escape(u)}</a>')
+                is_log = u in data.get("login_urls", set())
+                style = "color:var(--accent-orange);font-weight:bold;" if is_log else "color:var(--accent-green);"
+                badge = ' <span class="tag tag-medium" style="font-size:10px;">LOGIN</span>' if is_log else ""
+                urls_list_items.append(f'<a href="{u}" target="_blank" style="{style}">{html.escape(u)}</a>{badge}')
             
             urls_list = "<br>".join(urls_list_items)
             content_parts.append(f'<p><strong>Validated URLs ({urls_count}):</strong><br>{urls_list}</p>')
@@ -945,7 +990,7 @@ def build_urls_content(subdomains: Dict) -> str:
     all_urls = []
     for host, data in subdomains.items():
         for url in data["urls"]:
-            all_urls.append({"host": host, "url": url})
+            all_urls.append({"host": host, "url": url, "is_login": url in data.get("login_urls", set())})
     
     if not all_urls:
         return '<div class="empty-state"><p>No valid URLs found</p></div>'
@@ -972,7 +1017,9 @@ def build_urls_content(subdomains: Dict) -> str:
                             <tbody>
             ''')
         
-        html_parts.append(f'<tr><td><a href="{item["url"]}" target="_blank">{html.escape(item["url"])}</a></td></tr>')
+        is_log = item.get("is_login", False)
+        badge = '<span class="tag tag-medium">LOGIN</span>' if is_log else ""
+        html_parts.append(f'<tr><td><a href="{item["url"]}" target="_blank">{html.escape(item["url"])}</a> {badge}</td></tr>')
     
     if current_host is not None:
         html_parts.append('</tbody></table></div></div></div>')
@@ -1200,17 +1247,26 @@ def build_routes_content(target: str) -> str:
     base = Path("output") / target
     routes_data = read_json_file(base / "domain" / "extracted_routes.json") or []
     
-    # Load raw endpoints
+    # Load raw endpoints (formato JSON usado pelo plugin endpoint)
     raw_endpoints = []
-    ep_file = base / "endpoint" / "endpoints.txt"
-    if ep_file.exists():
-        raw_endpoints = [l.strip() for l in ep_file.read_text(errors="ignore").splitlines() if l.strip()]
-        
-    # Load GraphQL
     graphql = []
-    gql_file = base / "endpoint" / "graphql.txt"
-    if gql_file.exists():
-        graphql = [l.strip() for l in gql_file.read_text(errors="ignore").splitlines() if l.strip()]
+    
+    raw_ep_json = base / "endpoint" / "raw_endpoints.json"
+    if raw_ep_json.exists():
+        ep_data = read_json_file(raw_ep_json) or {}
+        raw_endpoints = ep_data.get("endpoints", [])
+        graphql = ep_data.get("graphql", [])
+    
+    # Fallback para formato txt antigo
+    if not raw_endpoints:
+        ep_file = base / "endpoint" / "endpoints.txt"
+        if ep_file.exists():
+            raw_endpoints = [l.strip() for l in ep_file.read_text(errors="ignore").splitlines() if l.strip()]
+    
+    if not graphql:
+        gql_file = base / "endpoint" / "graphql.txt"
+        if gql_file.exists():
+            graphql = [l.strip() for l in gql_file.read_text(errors="ignore").splitlines() if l.strip()]
     
     if not routes_data and not raw_endpoints and not graphql:
         return '<div class="empty-state"><p>No API routes or endpoints found</p></div>'
@@ -1362,8 +1418,11 @@ def build_discovered_urls(target: str) -> str:
             if extra_data.get("found_in"): all_items[url]["found_in"] = extra_data["found_in"]
 
     # Source A: Katana Standard Validated
-    katana_file = base / "crawlers" / "katana_valid.txt"
-    if not katana_file.exists(): katana_file = base / "domain" / "crawlers" / "katana_valid.txt"
+    katana_file = find_file(base,
+        "crawlers/katana_valid.txt",
+        "domain/crawlers/katana_valid.txt",
+        "domain/katana_valid.txt"
+    )
     if katana_file.exists():
         for u in read_file_lines(katana_file):
             add_item(u, "Katana")
@@ -1375,8 +1434,11 @@ def build_discovered_urls(target: str) -> str:
             add_item(u, "URLFinder", {"status": 200})
             
     # Source C: Katana Deep/New in Code (Validated JSON)
-    deep_file = base / "crawlers" / "katana_new_in_code_validated.json"
-    if not deep_file.exists(): deep_file = base / "domain" / "crawlers" / "katana_new_in_code_validated.json"
+    deep_file = find_file(base,
+        "crawlers/katana_new_in_code_validated.json",
+        "domain/crawlers/katana_new_in_code_validated.json",
+        "domain/katana_new_in_code_validated.json"
+    )
     if deep_file.exists():
         start_data = read_json_file(deep_file)
         for item in start_data:
@@ -1517,10 +1579,15 @@ def build_newsincode_content(target: str) -> str:
 def build_forms_content(target: str) -> str:
     """Mostra formulários descobertos pelo Katana"""
     base = Path("output") / target
-    forms_file = base / "crawlers" / "katana_forms.json"
     
-    if not forms_file.exists():
-        forms_file = base / "domain" / "crawlers" / "katana_forms.json"
+    # Buscar em múltiplos locais possíveis
+    forms_file = find_file(base,
+        "crawlers/katana_forms_all.json",
+        "domain/crawlers/katana_forms_all.json",
+        "domain/katana_forms_all.json",
+        "crawlers/katana_forms.json",
+        "domain/crawlers/katana_forms.json"
+    )
     
     if not forms_file.exists():
         return '<div class="empty-state"><p>No forms discovered. Run a scan with Katana to detect forms.</p></div>'
@@ -1576,10 +1643,12 @@ def build_params_content(target: str) -> str:
     """Mostra parâmetros descobertos pelo Katana com suas URLs de origem"""
     base = Path("output") / target
     
-    # Tenta ler o novo formato JSON
-    params_file = base / "crawlers" / "katana_params.json"
-    if not params_file.exists():
-        params_file = base / "domain" / "crawlers" / "katana_params.json"
+    # Buscar em múltiplos locais possíveis
+    params_file = find_file(base,
+        "crawlers/katana_params_all.json",
+        "domain/crawlers/katana_params_all.json",
+        "domain/katana_params_all.json"
+    )
     
     # Fallback para formato antigo txt
     if not params_file.exists():
@@ -2093,7 +2162,7 @@ def run(context: Dict[str, Any]) -> List[str]:
         "forms_content": build_forms_content(target),
         "stats_forms": len(read_json_file(Path("output") / target / "crawlers" / "katana_forms.json") or read_json_file(Path("output") / target / "domain" / "crawlers" / "katana_forms.json") or []),
         "params_content": build_params_content(target),
-        "stats_params": len(read_json_file(Path("output") / target / "crawlers" / "katana_params.json") or read_json_file(Path("output") / target / "domain" / "crawlers" / "katana_params.json") or {}),
+        "stats_params": len(read_json_file(Path("output") / target / "crawlers" / "katana_params_all.json") or read_json_file(Path("output") / target / "domain" / "crawlers" / "katana_params_all.json") or read_json_file(Path("output") / target / "domain" / "katana_params_all.json") or {}),
         "cloud_content": build_cloud_content(target),
         "cloud_content": build_cloud_content(target),
         "cve_content": build_cve_content(subdomains),
