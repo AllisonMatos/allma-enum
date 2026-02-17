@@ -33,7 +33,7 @@ def run_naabu(subs_file: Path, out_file: Path, mode: str):
     # ============================================================
     info(f"{C.BOLD}{C.BLUE}🔧 Preparando comando Naabu...{C.END}")
 
-    cmd = [naabu, "-list", str(subs_file), "-silent", "-Pn"]
+    cmd = [naabu, "-list", str(subs_file), "-silent", "-Pn", "-rate", "3000"]
 
     # Portas HTTP comuns que devem sempre ser testadas
     http_extra_ports = "80,443,8080,8443,8000,8888,3000,5000,9000,9443"

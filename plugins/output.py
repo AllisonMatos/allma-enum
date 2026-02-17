@@ -20,12 +20,3 @@ def warn(msg: str):
 
 def error(msg: str):
     print(f"{Color.RED}[ERRO]{Color.END} {msg}")
-
-
-def run_command(cmd: list, cwd=None, env=None, check: bool = False):
-    """Executa um comando no shell"""
-    import subprocess
-    try:
-        subprocess.run(cmd, cwd=cwd, env=env, check=check)
-    except Exception as e:
-        error(f"Erro ao executar comando [{' '.join(str(x) for x in cmd)}]: {e}")

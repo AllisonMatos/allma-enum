@@ -8,6 +8,8 @@ from menu import C
 from ..output import info, success, warn, error
 from .utils import ensure_outdir
 from .subfinder import run_subfinder
+from .discovery import discover_subdomains
+from .dns_resolver import resolve_and_filter
 from .naabu import run_naabu
 from .ports import organize_ports
 from .urls import build_urls
@@ -136,7 +138,7 @@ async def run_deep_analysis_async(valid_urls):
     results = []
     sem = asyncio.Semaphore(CONCURRENCY_LIMIT)
     
-    info(f"{C.BOLD}{C.BLUE}[6/6] Deep Analysis Async (Keys, JS, Routes, Technologies)...{C.END}")
+    info(f"{C.BOLD}{C.BLUE}[8/8] Deep Analysis Async (Keys, JS, Routes, Technologies)...{C.END}")
     
     async with httpx.AsyncClient(verify=False, follow_redirects=True, timeout=15) as client:
         tasks = [analyze_url_task(client, url, sem) for url in valid_urls]
@@ -183,29 +185,37 @@ def run(context):
     urls_ok = outdir / "urls_valid.txt"
 
     # === ETAPA 1: SUBFINDER ===
-    info(f"{C.BOLD}{C.BLUE}[1/6] Descobrindo subdominios...{C.END}")
+    info(f"{C.BOLD}{C.BLUE}[1/8] Descobrindo subdominios (Subfinder)...{C.END}")
     run_subfinder(target, subs_file)
 
-    # === ETAPA 2: NAABU (PORTAS) ===
-    info(f"{C.BOLD}{C.BLUE}[2/6] Varredura de portas (naabu)...{C.END}")
+    # === ETAPA 2: MULTI-SOURCE DISCOVERY ===
+    info(f"{C.BOLD}{C.BLUE}[2/8] Multi-source Discovery (crt.sh, haktrails, gau, waybackurls)...{C.END}")
+    discover_subdomains(target, subs_file)
+
+    # === ETAPA 3: DNS RESOLUTION + WILDCARD + CDN FILTER ===
+    info(f"{C.BOLD}{C.BLUE}[3/8] DNS Resolution + Wildcard Detection + CDN Filter...{C.END}")
+    resolve_and_filter(target, subs_file, outdir)
+
+    # === ETAPA 4: NAABU (PORTAS) ===
+    info(f"{C.BOLD}{C.BLUE}[4/8] Varredura de portas (naabu)...{C.END}")
     run_naabu(subs_file, ports_raw, ports_mode)
 
-    # === ETAPA 3: ORGANIZAR PORTAS ===
-    info(f"{C.BOLD}{C.BLUE}[3/6] Organizando portas encontradas...{C.END}")
+    # === ETAPA 5: ORGANIZAR PORTAS ===
+    info(f"{C.BOLD}{C.BLUE}[5/8] Organizando portas encontradas...{C.END}")
     organize_ports(ports_raw, ports_final)
 
-    # === ETAPA 4: GERAR URLS ===
-    info(f"{C.BOLD}{C.BLUE}[4/6] Gerando URLs possiveis...{C.END}")
+    # === ETAPA 6: GERAR URLS ===
+    info(f"{C.BOLD}{C.BLUE}[6/8] Gerando URLs possiveis...{C.END}")
     build_urls(ports_raw, urls_file, subs_file=subs_file)
 
-    # === ETAPA 5: VALIDAR URLS ===
-    info(f"{C.BOLD}{C.BLUE}[5/6] Validando URLs ativas...{C.END}")
+    # === ETAPA 7: VALIDAR URLS ===
+    info(f"{C.BOLD}{C.BLUE}[7/8] Validando URLs ativas...{C.END}")
     valid_urls = validate_urls(urls_file, urls_ok)
 
-    # === ETAPA 5.5: ADVANCED CRAWLING (Recursivo) ===
+    # === ETAPA 7.5: ADVANCED CRAWLING (Recursivo) ===
     try:
         from ..crawlers import run_crawlers
-        info(f"{C.BOLD}{C.BLUE}[5.5/6] Advanced Crawling (Katana/Gospider)...{C.END}")
+        info(f"{C.BOLD}{C.BLUE}[7.5/8] Advanced Crawling (Katana/GoSpider)...{C.END}")
         run_crawlers(urls_ok, outdir)
     except ImportError as e:
         warn(f"Modulo de crawlers nao encontrado: {e}")

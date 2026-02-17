@@ -204,21 +204,43 @@ def run(context: dict):
     # ============================================================
     # ETAPA 2 — Executar urlfinder
     # ============================================================
-    info(f"{C.BOLD}{C.BLUE}🌐 Coletando URLs com urlfinder...{C.END}")
+    info(f"{C.BOLD}{C.BLUE}🌐 Coletando URLs com urlfinder ({len(urls_to_scan)} seeds)...{C.END}")
 
     urlfinder = require_binary("urlfinder")
     # Usa o arquivo filtrado em vez do original
-    cmd = [urlfinder, "-list", str(urls_filtered_file), "-silent"]
+    # -timeout 10: reduz timeout por URL de 30s (default) para 10s
+    cmd = [urlfinder, "-list", str(urls_filtered_file), "-silent", "-timeout", "10"]
 
+    import time as _time
     try:
+        proc = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        
+        url_count = 0
+        start_time = _time.time()
+        total_seeds = len(urls_to_scan)
+        
         with url_completas.open("w", encoding="utf-8", errors="ignore") as fout:
-            proc = subprocess.Popen(
-                cmd,
-                stdout=fout,
-                stderr=subprocess.PIPE,
-                text=True,
-            )
-            proc.wait()
+            for line in proc.stdout:
+                fout.write(line)
+                url_count += 1
+                elapsed = _time.time() - start_time
+                
+                if url_count % 50 == 0:
+                    mins = int(elapsed // 60)
+                    secs = int(elapsed % 60)
+                    rate = url_count / elapsed if elapsed > 0 else 0
+                    print(f"   ⏳ urlfinder: {url_count} URLs encontradas | {mins}m{secs:02d}s | {rate:.1f} URLs/s      ", end="\r")
+        
+        proc.wait()
+        elapsed = _time.time() - start_time
+        mins = int(elapsed // 60)
+        secs = int(elapsed % 60)
+        info(f"   ✅ urlfinder concluído: {url_count} URLs em {mins}m{secs:02d}s")
 
     except Exception as e:
         error(f"❌ Falha ao executar urlfinder: {e}")

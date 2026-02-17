@@ -262,7 +262,7 @@ class XSSPatterns:
             re.compile(r'\bfetch\s*\(', re.I),
             re.compile(r'\baxios\.', re.I),
             re.compile(r'\bXMLHttpRequest\b', re.I),
-            re.compile(r'[A-Za-z0-9\-_]{20,}', re.I),
+            re.compile(r'(?=[A-Za-z0-9\-_]*[A-Z])(?=[A-Za-z0-9\-_]*[a-z])(?=[A-Za-z0-9\-_]*[0-9])[A-Za-z0-9\-_]{32,}'),  # Mix of upper+lower+digits, 32+ chars (likely tokens)
         ]
         
         self.param_min_len = 2 # Aumentado para reduzir FP em params muito curtos

@@ -2,7 +2,6 @@
 import sys
 import shutil
 import importlib
-from pkg_resources import working_set
 
 # Define required python packages
 REQUIRED_PYTHON = [
@@ -13,7 +12,9 @@ REQUIRED_PYTHON = [
     "reportlab",
     "matplotlib",
     "weasyprint",
-    "dns" # dnspython
+    "dns", # dnspython
+    "aiohttp",
+    "aiofiles",
 ]
 
 # Define required system tools
@@ -23,15 +24,26 @@ REQUIRED_TOOLS = [
     "wget",
     "nmap", 
     "naabu",
+    "subfinder",
     "katana",
+    "gospider",
     "httpx", # Project discovery httpx
     "gowitness",
-    "searchsploit"
+    "searchsploit",
+]
+
+# Ferramentas opcionais (melhoram cobertura mas não são obrigatórias)
+OPTIONAL_TOOLS = [
+    "gau",
+    "waybackurls",
+    "haktrails",
+    "masscan",
 ]
 
 GREEN = "\033[92m"
 RED = "\033[91m"
 YELLOW = "\033[93m"
+CYAN = "\033[96m"
 RESET = "\033[0m"
 
 def check_python_modules():
@@ -47,17 +59,24 @@ def check_python_modules():
     return all_ok
 
 def check_system_tools():
-    print(f"\n{YELLOW}[*] Checking System Tools...{RESET}")
+    print(f"\n{YELLOW}[*] Checking Required System Tools...{RESET}")
     all_ok = True
     for tool in REQUIRED_TOOLS:
         if shutil.which(tool):
             print(f"{GREEN}[OK]{RESET} {tool}")
         else:
             print(f"{RED}[MISSING]{RESET} {tool}")
-            # Non-critical tools warning instead of error can be handled here
-            if tool in ["naabu", "katana"]: 
+            if tool in ["naabu", "katana", "subfinder", "gospider"]: 
                print(f"    {YELLOW}-> Required for full crawling/scanning capabilities{RESET}")
             all_ok = False
+
+    print(f"\n{YELLOW}[*] Checking Optional Tools (improve coverage)...{RESET}")
+    for tool in OPTIONAL_TOOLS:
+        if shutil.which(tool):
+            print(f"{GREEN}[OK]{RESET} {tool}")
+        else:
+            print(f"{CYAN}[OPTIONAL]{RESET} {tool} — not installed (will be skipped)")
+
     return all_ok
 
 def main():

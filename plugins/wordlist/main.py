@@ -112,21 +112,29 @@ def run(context: dict):
     if js_list.exists():
         info(f"\n{C.BOLD}{C.BLUE}🌐 Extraindo tokens dos arquivos .js remotos...{C.END}")
 
-        for u in read_lines(js_list):
+        js_urls = read_lines(js_list)
+
+        def fetch_js(url):
             try:
                 import httpx
                 with httpx.Client(timeout=6, follow_redirects=True) as c:
-                    r = c.get(u)
+                    r = c.get(url)
                     if r.status_code == 200 and r.text:
-                        js_terms.update(extract_tokens_from_js(r.text))
+                        return extract_tokens_from_js(r.text)
             except:
+                pass
+            return set()
+
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        with ThreadPoolExecutor(max_workers=10) as executor:
+            futures = {executor.submit(fetch_js, u): u for u in js_urls}
+            for future in as_completed(futures):
                 try:
-                    import requests
-                    r = requests.get(u, timeout=6)
-                    if r.status_code == 200 and r.text:
-                        js_terms.update(extract_tokens_from_js(r.text))
+                    tokens = future.result()
+                    if tokens:
+                        js_terms.update(tokens)
                 except:
-                    continue
+                    pass
 
     # ============================================================
     # ETAPA 3 — Ordenar & salvar wordlists

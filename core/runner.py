@@ -48,7 +48,9 @@ def execute_chain(target: str, chain: list, params: dict):
         "9": "xss",
         "10": "cloud",
         "11": "visual",
-        "12": "cve"
+        "12": "cve",
+        "13": "admin",
+        "14": "depconfusion"
     }
 
     # ==========================================

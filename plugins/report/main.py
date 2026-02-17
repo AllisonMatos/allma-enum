@@ -691,6 +691,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         <div class="nav-content">
             <button class="nav-btn active" data-section="dashboard">Dashboard</button>
             <button class="nav-btn" data-section="subdomains">Subdomains<span class="count">{stats_subdomains}</span></button>
+            <button class="nav-btn" data-section="dns">DNS / IPs<span class="count">{stats_ips}</span></button>
             <button class="nav-btn" data-section="security">Security<span class="count">{stats_xss}</span></button>
             <button class="nav-btn" data-section="cve">CVEs Techs<span class="count">{stats_cves}</span></button>
             <button class="nav-btn" data-section="services">Services<span class="count">{stats_ports}</span></button>
@@ -700,7 +701,9 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             <button class="nav-btn" data-section="js">JS Files<span class="count">{stats_js}</span></button>
             <button class="nav-btn" data-section="params">Params<span class="count">{stats_params}</span></button>
             <button class="nav-btn" data-section="cloud">Cloud<span class="count">{stats_buckets}</span></button>
-            
+            <button class="nav-btn" data-section="admin">Admin Panels<span class="count">{stats_admin}</span></button>
+            <button class="nav-btn" data-section="depconfusion">Dep Confusion<span class="count">{stats_depconfusion}</span></button>
+
             <button class="nav-btn" data-section="files">Files</button>
         </div>
     </nav>
@@ -832,6 +835,21 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         
 
         
+        <!-- Admin Panels -->
+        <section class="section" id="admin">
+            {admin_content}
+        </section>
+        
+        <!-- Dependency Confusion -->
+        <section class="section" id="depconfusion">
+            {depconfusion_content}
+        </section>
+        
+        <!-- DNS / IPs -->
+        <section class="section" id="dns">
+            {dns_content}
+        </section>
+        
         <!-- Files -->
         <section class="section" id="files">
             {files_content}
@@ -893,10 +911,40 @@ def build_subdomains_content(subdomains: Dict) -> str:
         
         badge = ""
         if data["is_login"]:
-            badge = '<span class="card-badge login">LOGIN</span>'
+            badge = '<span class="card-badge login">🔑 LOGIN</span>'
         
         content_parts = []
         
+        # === LOGIN PAGES (destaque no topo) ===
+        if data["is_login"] and data.get("login_urls"):
+            login_html = ""
+            for login_url in sorted(data["login_urls"]):
+                login_html += f'''
+                <div style="display:flex; align-items:flex-start; gap:12px; margin-bottom:12px; padding:10px; background:#2d1f1f; border:1px solid #f8514930; border-radius:8px;">
+                    <div style="flex:1;">
+                        <p style="margin:0;">
+                            <span class="tag tag-medium" style="font-size:10px;">🔑 LOGIN</span>
+                            <a href="{html.escape(login_url)}" target="_blank" style="color:var(--accent-orange); font-weight:bold; margin-left:8px;">{html.escape(login_url)}</a>
+                        </p>
+                    </div>
+                </div>'''
+            
+            content_parts.append(f'''
+            <div style="margin-bottom:16px; border-left:3px solid var(--accent-orange); padding-left:12px;">
+                <p style="color:var(--accent-orange); font-weight:bold; margin-bottom:8px;">🔑 Login Pages Detected ({len(data["login_urls"])})</p>
+                {login_html}
+            </div>''')
+        
+        # === SCREENSHOT (logo após login) ===
+        if "screenshot" in data:
+            content_parts.append(f'''
+            <div style="margin-bottom:16px;">
+                <p><strong>Screenshot:</strong></p>
+                <a href="{data["screenshot"]}" target="_blank">
+                    <img src="{data["screenshot"]}" style="max-width:600px; width:100%; border:1px solid #444; border-radius:6px; margin-top:4px;">
+                </a>
+            </div>''')
+
         if data["ports"]:
             content_parts.append(f'<p><strong>Ports:</strong> {ports_str}</p>')
             
@@ -931,20 +979,11 @@ def build_subdomains_content(subdomains: Dict) -> str:
             for u in data["urls"]:
                 is_log = u in data.get("login_urls", set())
                 style = "color:var(--accent-orange);font-weight:bold;" if is_log else "color:var(--accent-green);"
-                badge = ' <span class="tag tag-medium" style="font-size:10px;">LOGIN</span>' if is_log else ""
-                urls_list_items.append(f'<a href="{u}" target="_blank" style="{style}">{html.escape(u)}</a>{badge}')
+                url_badge = ' <span class="tag tag-medium" style="font-size:10px;">LOGIN</span>' if is_log else ""
+                urls_list_items.append(f'<a href="{u}" target="_blank" style="{style}">{html.escape(u)}</a>{url_badge}')
             
             urls_list = "<br>".join(urls_list_items)
             content_parts.append(f'<p><strong>Validated URLs ({urls_count}):</strong><br>{urls_list}</p>')
-            
-        if "screenshot" in data:
-            content_parts.append(f'''
-            <div style="margin-top:12px;">
-                <p><strong>Screenshot:</strong></p>
-                <a href="{data["screenshot"]}" target="_blank">
-                    <img src="{data["screenshot"]}" style="max-width:300px; border:1px solid #444; border-radius:4px; margin-top:4px;">
-                </a>
-            </div>''')
         
         content = "".join(content_parts) if content_parts else "<p>No additional data</p>"
         
@@ -1086,6 +1125,16 @@ def build_keys_content(target: str) -> str:
         risk = key.get("info", {}).get("risk", "UNKNOWN")
         risk_class = "tag-high" if risk == "CRITICAL" else "tag-medium" if risk == "HIGH" else "tag-low"
         
+        # Validation badge
+        validated = key.get("validated")
+        val_info = key.get("validation_info", "")
+        if validated is True:
+            validated_badge = f'<span class="tag tag-high" style="margin-left:8px;" title="{html.escape(val_info)}">✓ VALIDATED</span>'
+        elif validated is False:
+            validated_badge = f'<span class="tag tag-low" style="margin-left:8px;" title="{html.escape(val_info)}">✗ INVALID</span>'
+        else:
+            validated_badge = f'<span class="tag" style="margin-left:8px;background:#30363d;" title="{html.escape(val_info)}">⊘ NOT TESTED</span>'
+        
         # Dados principais
         key_type = key.get("type", "Unknown")
         match_val = key.get("match", "")
@@ -1180,6 +1229,7 @@ def build_keys_content(target: str) -> str:
                 <span class="card-title" style="color:var(--accent-blue); font-size:16px;">{html.escape(key_type)}</span>
                 <span class="tag {risk_class}">{risk}</span>
                 <span class="tag tag-low" style="margin-left:8px;">{html.escape(service)}</span>
+                {validated_badge}
             </div>
             <div class="card-content" style="display:block; padding-top:8px;">
                 <p style="margin-bottom:8px;"><strong>Match:</strong> <code style="color:var(--accent-orange); background:#2d2d2d; padding:2px 6px; border-radius:4px;">{html.escape(match_val[:80])}</code></p>
@@ -1571,9 +1621,6 @@ def build_discovered_urls(target: str) -> str:
     return "".join(html_parts)
 
 
-def build_newsincode_content(target: str) -> str:
-    # Deprecated / Merged into discovered_urls
-    return ""
 
 
 def build_forms_content(target: str) -> str:
@@ -1744,7 +1791,6 @@ def build_params_content(target: str) -> str:
         ''')
     
     return "".join(html_parts)
-    return "".join(html_parts)
     
 def build_cloud_content(target: str) -> str:
     base = Path("output") / target
@@ -1759,14 +1805,24 @@ def build_cloud_content(target: str) -> str:
         
     rows = ""
     for line in lines:
-        # Format: Provider \t Name \t Status \t URL
+        # Format: Provider \t Name \t Status \t URL \t Permissions
         if not line.strip(): continue
         parts = line.split("\t")
         if len(parts) < 4: continue
         
-        provider, name, status, url = parts
+        provider, name, status, url = parts[:4]
+        perms = parts[4] if len(parts) > 4 else ""
         
         status_class = "tag-green" if status == "OPEN" else "tag-orange" if status == "PROTECTED" else "tag-low"
+        
+        perms_html = ""
+        if perms:
+            for p in perms.split(","):
+                p = p.strip()
+                p_class = "tag-high" if p == "WRITE" else "tag-medium" if p == "LIST" else "tag-low"
+                perms_html += f'<span class="tag {p_class}" style="margin-right:4px;">{p}</span>'
+        else:
+            perms_html = '<span class="tag tag-low">N/A</span>'
         
         rows += f'''
         <tr>
@@ -1774,6 +1830,7 @@ def build_cloud_content(target: str) -> str:
             <td>{html.escape(name)}</td>
             <td><span class="tag {status_class}">{status}</span></td>
             <td><a href="{url}" target="_blank">{html.escape(url)}</a></td>
+            <td>{perms_html}</td>
         </tr>'''
         
     return f'''
@@ -1785,7 +1842,7 @@ def build_cloud_content(target: str) -> str:
         <div class="card-content">
             <div class="table-wrapper">
                 <table>
-                    <thead><tr><th>Provider</th><th>Bucket Name</th><th>Status</th><th>URL</th></tr></thead>
+                    <thead><tr><th>Provider</th><th>Bucket Name</th><th>Status</th><th>URL</th><th>Permissions</th></tr></thead>
                     <tbody>{rows}</tbody>
                 </table>
             </div>
@@ -2099,6 +2156,168 @@ def build_security_content(target: str) -> str:
     return "".join(html_parts)
 
 
+def build_admin_content(target: str) -> str:
+    base = Path("output") / target
+    admin_data = read_json_file(base / "admin" / "admin_panels.json")
+    
+    if not admin_data:
+        return '<div class="empty-state"><p>No admin panels discovered</p></div>'
+    
+    rows = ""
+    for panel in admin_data:
+        status = panel.get("status", 0)
+        status_class = "tag-high" if status == 200 else "tag-medium" if status in (401, 403) else "tag-low"
+        title = panel.get("title", "")[:60]
+        cms = panel.get("cms", "")
+        login_icon = "🔑" if panel.get("has_login_form") else ""
+        url = panel.get("url", "")
+        
+        cms_html = f'<span class="tag tag-low" style="margin-left:4px;">{html.escape(cms)}</span>' if cms else ""
+        
+        rows += f'''
+        <tr>
+            <td><a href="{html.escape(url)}" target="_blank">{html.escape(url[:80])}</a></td>
+            <td><span class="tag {status_class}">{status}</span></td>
+            <td>{html.escape(title)}</td>
+            <td>{login_icon}{cms_html}</td>
+        </tr>'''
+    
+    return f'''
+    <div class="card open">
+        <div class="card-header">
+            <span class="card-title">Admin Panels Discovered</span>
+            <span class="card-badge">{len(admin_data)} found</span>
+        </div>
+        <div class="card-content">
+            <div class="table-wrapper">
+                <table>
+                    <thead><tr><th>URL</th><th>Status</th><th>Title</th><th>CMS / Login</th></tr></thead>
+                    <tbody>{rows}</tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    '''
+
+
+def build_depconfusion_content(target: str) -> str:
+    base = Path("output") / target
+    dep_data = read_json_file(base / "depconfusion" / "depconfusion.json")
+    
+    if not dep_data:
+        return '<div class="empty-state"><p>No dependency confusion risks found</p></div>'
+    
+    high_risk = [d for d in dep_data if d.get("risk") == "HIGH"]
+    
+    rows = ""
+    for dep in dep_data:
+        risk = dep.get("risk", "UNKNOWN")
+        risk_class = "tag-high" if risk == "HIGH" else "tag-medium" if risk == "UNKNOWN" else "tag-low"
+        npm_exists = dep.get("npm_exists")
+        npm_badge = '✓ Exists' if npm_exists is True else '✗ NOT FOUND' if npm_exists is False else '? Unknown'
+        npm_class = "tag-low" if npm_exists else "tag-high"
+        
+        rows += f'''
+        <tr>
+            <td><code style="color:var(--accent-orange);">{html.escape(dep.get("package", ""))}</code></td>
+            <td><span class="tag {npm_class}">{npm_badge}</span></td>
+            <td><span class="tag {risk_class}">{risk}</span></td>
+            <td style="font-size:12px;">{html.escape(str(dep.get("found_in", ""))[:60])}</td>
+            <td style="font-size:12px;">{html.escape(dep.get("note", "")[:80])}</td>
+        </tr>'''
+    
+    alert_html = ""
+    if high_risk:
+        alert_html = f'<p style="color:var(--accent-red); margin-bottom:12px;"><strong>⚠️ {len(high_risk)} packages NOT FOUND on npm — potential dependency confusion targets!</strong></p>'
+    
+    return f'''
+    <div class="card open">
+        <div class="card-header">
+            <span class="card-title">Dependency Confusion Analysis</span>
+            <span class="card-badge">{len(dep_data)} packages</span>
+        </div>
+        <div class="card-content">
+            {alert_html}
+            <div class="table-wrapper">
+                <table>
+                    <thead><tr><th>Package</th><th>npm Status</th><th>Risk</th><th>Found In</th><th>Note</th></tr></thead>
+                    <tbody>{rows}</tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    '''
+
+
+def build_dns_content(target: str) -> str:
+    base = Path("output") / target / "domain"
+    dns_data = read_json_file(base / "dns_resolved.json")
+    
+    if not dns_data:
+        return '<div class="empty-state"><p>No DNS resolution data available</p></div>'
+    
+    # Check wildcard
+    wildcard_file = base / "wildcard.txt"
+    wildcard_html = ""
+    if wildcard_file.exists():
+        wildcard_html = '<p style="color:var(--accent-orange); margin-bottom:12px;"><strong>⚠️ WILDCARD DNS detected — some subdomains may be false positives</strong></p>'
+    
+    # CDN filtered
+    cdn_file = base / "cdn_filtered.txt"
+    cdn_subs = read_file_lines(cdn_file) if cdn_file.exists() else []
+    cdn_set = set(s.strip() for s in cdn_subs if s.strip())
+    
+    # IPs
+    ips_file = base / "ips.txt"
+    ips = read_file_lines(ips_file) if ips_file.exists() else []
+    ips = [ip.strip() for ip in ips if ip.strip()]
+    
+    rows = ""
+    for sub, sub_ips in sorted(dns_data.items()):
+        is_cdn = sub in cdn_set
+        cdn_badge = '<span class="tag tag-medium" style="margin-left:4px;">CDN</span>' if is_cdn else ""
+        ips_str = ", ".join(sub_ips)
+        
+        rows += f'''
+        <tr>
+            <td>{html.escape(sub)}{cdn_badge}</td>
+            <td><code style="font-size:12px;">{html.escape(ips_str)}</code></td>
+        </tr>'''
+    
+    ips_html = ""
+    if ips:
+        ips_list = ", ".join(f"<code>{html.escape(ip)}</code>" for ip in ips[:50])
+        ips_html = f'''
+        <div class="card open" style="margin-top:16px;">
+            <div class="card-header">
+                <span class="card-title">Real IPs (sem CDN)</span>
+                <span class="card-badge">{len(ips)} IPs</span>
+            </div>
+            <div class="card-content">
+                <p style="word-break:break-all;">{ips_list}</p>
+            </div>
+        </div>'''
+    
+    return f'''
+    {wildcard_html}
+    <div class="card open">
+        <div class="card-header">
+            <span class="card-title">DNS Resolution</span>
+            <span class="card-badge">{len(dns_data)} resolved</span>
+        </div>
+        <div class="card-content">
+            <div class="table-wrapper">
+                <table>
+                    <thead><tr><th>Subdomain</th><th>IP Addresses</th></tr></thead>
+                    <tbody>{rows}</tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    {ips_html}
+    '''
+
+
 # ------------------------------------------------------------
 def run(context: Dict[str, Any]) -> List[str]:
     target = context.get("target")
@@ -2164,11 +2383,16 @@ def run(context: Dict[str, Any]) -> List[str]:
         "params_content": build_params_content(target),
         "stats_params": len(read_json_file(Path("output") / target / "crawlers" / "katana_params_all.json") or read_json_file(Path("output") / target / "domain" / "crawlers" / "katana_params_all.json") or read_json_file(Path("output") / target / "domain" / "katana_params_all.json") or {}),
         "cloud_content": build_cloud_content(target),
-        "cloud_content": build_cloud_content(target),
         "cve_content": build_cve_content(subdomains),
         "security_content": build_security_content(target),
-        "newsincode_content": build_newsincode_content(target),
+        "newsincode_content": "",
         "stats_newsincode": len(read_json_file(Path("output") / target / "crawlers" / "katana_new_in_code_validated.json") or read_json_file(Path("output") / target / "domain" / "crawlers" / "katana_new_in_code_validated.json") or read_json_file(Path("output") / target / "crawlers" / "katana_new_in_code.json") or read_json_file(Path("output") / target / "domain" / "crawlers" / "katana_new_in_code.json") or []),
+        "admin_content": build_admin_content(target),
+        "stats_admin": len(read_json_file(Path("output") / target / "admin" / "admin_panels.json") or []),
+        "depconfusion_content": build_depconfusion_content(target),
+        "stats_depconfusion": len([d for d in (read_json_file(Path("output") / target / "depconfusion" / "depconfusion.json") or []) if d.get("risk") == "HIGH"]),
+        "dns_content": build_dns_content(target),
+        "stats_ips": len(read_file_lines(Path("output") / target / "domain" / "ips.txt")),
     }
     
     # Generate HTML

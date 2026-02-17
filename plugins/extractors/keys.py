@@ -216,6 +216,8 @@ def extract_keys(content: str, source_url: str = None, source_file: str = None) 
     Returns: 
         list of dicts com informacoes completas de cada key encontrada
     """
+    from .token_validator import validate_token
+    
     found = []
     
     for key_type, pattern in REGEX_PATTERNS.items():
@@ -241,6 +243,9 @@ def extract_keys(content: str, source_url: str = None, source_file: str = None) 
                 "docs": "N/A"
             })
             
+            # Validar token contra API
+            validation = validate_token(key_type, match_str)
+            
             found.append({
                 "type": key_type,
                 "match": match_str[:100] + "..." if len(match_str) > 100 else match_str,
@@ -257,7 +262,10 @@ def extract_keys(content: str, source_url: str = None, source_file: str = None) 
                     "end_line": context["end_line"]
                 },
                 "usage": usage,
-                "info": key_info
+                "info": key_info,
+                "validated": validation.get("validated"),
+                "validation_info": validation.get("validation_info", ""),
+                "validation_type": validation.get("validation_type", "not_supported"),
             })
     
     return found

@@ -127,8 +127,9 @@ def run_crawlers(urls_file: Path, outdir: Path):
         if round_num == 1:
             gospider_dir = crawlers_dir / "gospider"
             gospider_dir.mkdir(exist_ok=True)
-            run_gospider(round_input, gospider_dir)
-            # Gospider output parsing would go here or be aggregated later
+            gospider_urls = run_gospider(round_input, gospider_dir)
+            if gospider_urls:
+                round_discovered.update(gospider_urls)
             
         all_discovered.update(round_discovered)
         

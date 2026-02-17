@@ -6,3 +6,5 @@ reportlab
 matplotlib
 weasyprint
 dnspython
+aiohttp
+aiofiles
