@@ -1276,6 +1276,10 @@ def build_services_content(target: str) -> str:
         content = read_file_raw(service_file)
         if not content.strip():
             continue
+        
+        # Pular scans que falharam (DNS não resolveu ou 0 hosts)
+        if "Failed to resolve" in content or "0 hosts scanned" in content:
+            continue
             
         name = service_file.stem.replace("scan_", "").replace("scanFinal_", "").replace("_", ".")
         

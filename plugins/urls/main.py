@@ -207,40 +207,70 @@ def run(context: dict):
     info(f"{C.BOLD}{C.BLUE}🌐 Coletando URLs com urlfinder ({len(urls_to_scan)} seeds)...{C.END}")
 
     urlfinder = require_binary("urlfinder")
-    # Usa o arquivo filtrado em vez do original
-    # -timeout 10: reduz timeout por URL de 30s (default) para 10s
-    cmd = [urlfinder, "-list", str(urls_filtered_file), "-silent", "-timeout", "10"]
-
+    
     import time as _time
+    import tempfile as _tempfile
+    
+    # Dividir seeds em lotes para mostrar progresso real
+    BATCH_SIZE = 100
+    total_seeds = len(urls_to_scan)
+    url_count = 0
+    seeds_done = 0
+    start_time = _time.time()
+    
     try:
-        proc = subprocess.Popen(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-        )
-        
-        url_count = 0
-        start_time = _time.time()
-        total_seeds = len(urls_to_scan)
-        
         with url_completas.open("w", encoding="utf-8", errors="ignore") as fout:
-            for line in proc.stdout:
-                fout.write(line)
-                url_count += 1
-                elapsed = _time.time() - start_time
+            for i in range(0, total_seeds, BATCH_SIZE):
+                batch = urls_to_scan[i:i + BATCH_SIZE]
+                batch_num = (i // BATCH_SIZE) + 1
                 
-                if url_count % 50 == 0:
-                    mins = int(elapsed // 60)
-                    secs = int(elapsed % 60)
-                    rate = url_count / elapsed if elapsed > 0 else 0
-                    print(f"   ⏳ urlfinder: {url_count} URLs encontradas | {mins}m{secs:02d}s | {rate:.1f} URLs/s      ", end="\r")
+                # Criar arquivo temporário para o lote
+                tmp = _tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False)
+                tmp.write("\n".join(batch) + "\n")
+                tmp.close()
+                
+                cmd = [urlfinder, "-list", tmp.name, "-silent", "-timeout", "10"]
+                
+                proc = subprocess.Popen(
+                    cmd,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                )
+                
+                for line in proc.stdout:
+                    fout.write(line)
+                    url_count += 1
+                
+                proc.wait()
+                
+                # Limpar arquivo temporário
+                try:
+                    import os; os.unlink(tmp.name)
+                except:
+                    pass
+                
+                seeds_done = min(i + BATCH_SIZE, total_seeds)
+                elapsed = _time.time() - start_time
+                mins = int(elapsed // 60)
+                secs = int(elapsed % 60)
+                pct = int(seeds_done / total_seeds * 100)
+                
+                # Estimar tempo restante
+                if seeds_done > 0:
+                    eta_secs = (elapsed / seeds_done) * (total_seeds - seeds_done)
+                    eta_mins = int(eta_secs // 60)
+                    eta_s = int(eta_secs % 60)
+                    eta_str = f" | ETA ~{eta_mins}m{eta_s:02d}s"
+                else:
+                    eta_str = ""
+                
+                info(f"   ⏳ urlfinder: {seeds_done}/{total_seeds} seeds ({pct}%) | {url_count} URLs | {mins}m{secs:02d}s{eta_str}")
         
-        proc.wait()
         elapsed = _time.time() - start_time
         mins = int(elapsed // 60)
         secs = int(elapsed % 60)
-        info(f"   ✅ urlfinder concluído: {url_count} URLs em {mins}m{secs:02d}s")
+        info(f"   ✅ urlfinder concluído: {url_count} URLs de {total_seeds} seeds em {mins}m{secs:02d}s")
 
     except Exception as e:
         error(f"❌ Falha ao executar urlfinder: {e}")

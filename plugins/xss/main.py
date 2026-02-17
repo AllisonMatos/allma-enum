@@ -684,9 +684,24 @@ async def save_reports(outdir, crawler, reflections, dom_findings):
         f"Reflexões de parâmetros: {len(reflections)}",
         f"Suspeitas DOM/JS: {len(dom_findings)}",
         "",
-        "=== TOP 10 FINDINGS ===",
-        ""
     ]
+    
+    # Listar todas as reflexões encontradas
+    if reflections:
+        summary.append("=== REFLEXÕES DE PARÂMETROS ===")
+        summary.append("")
+        for i, ref in enumerate(reflections, 1):
+            summary.append(f"{i}. {ref.url}")
+            summary.append(f"   Parâmetro: {ref.param} = {ref.value[:80]}")
+            if hasattr(ref, 'context_type') and ref.context_type:
+                summary.append(f"   Contexto: {ref.context_type}")
+            if ref.context:
+                ctx_preview = ref.context.strip()[:120]
+                summary.append(f"   Trecho: {ctx_preview}")
+            summary.append("")
+    
+    summary.append("=== TOP 10 FINDINGS ===")
+    summary.append("")
     
     # Adicionar top findings
     all_findings = sorted(crawler.findings, key=lambda x: x.severity, reverse=True)

@@ -248,6 +248,7 @@ def run(context: dict):
 
     # Executar testes em paralelo
     found_panels = []
+    seen_urls = set()  # Deduplicar em tempo real
     total_tasks = 0
 
     with ThreadPoolExecutor(max_workers=20) as executor:
@@ -267,6 +268,12 @@ def run(context: dict):
             try:
                 result = future.result()
                 if result:
+                    # Deduplicar pela URL final (muitas bases redirecionam pro mesmo lugar)
+                    norm_url = result["url"].rstrip("/").lower()
+                    if norm_url in seen_urls:
+                        continue
+                    seen_urls.add(norm_url)
+                    
                     found_panels.append(result)
                     status_color = C.RED if result["status"] == 200 else C.YELLOW
                     login_icon = "🔑" if result["has_login_form"] else "📄"
@@ -277,13 +284,8 @@ def run(context: dict):
 
     print("")  # Newline
 
-    # Deduplicar por URL final
-    seen = set()
-    unique_panels = []
-    for p in found_panels:
-        if p["url"] not in seen:
-            seen.add(p["url"])
-            unique_panels.append(p)
+    # Já está deduplicado (seen_urls durante execução)
+    unique_panels = found_panels
 
     # Salvar resultados
     if unique_panels:
