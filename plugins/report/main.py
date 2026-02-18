@@ -396,19 +396,24 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }}
         
         .brand {{
-            width: 40px;
-            height: 40px;
-            background: var(--accent-blue);
-            color: #fff;
-            border-radius: 8px;
+            width: 50px;
+            height: 50px;
+            margin: 0 auto 20px;
+            flex-shrink: 0;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-weight: 800;
-            font-size: 20px;
-            margin: 0 auto 20px;
-            flex-shrink: 0;
-            box-shadow: 0 4px 12px rgba(88, 166, 255, 0.3);
+        }}
+
+        .brand svg {{
+            width: 100%;
+            height: 100%;
+            transition: transform 0.3s ease;
+            filter: drop-shadow(0 0 2px rgba(0,0,0,0.5));
+        }}
+
+        .brand:hover svg {{
+            transform: scale(1.1) rotate(5deg);
         }}
         
         .nav-btn {{
@@ -745,7 +750,44 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 </head>
 <body>
     <nav class="sidebar">
-        <div class="brand">E</div>
+        <div class="brand">
+            <!-- One Piece Inspired Straw Hat Skull - Monochrome -->
+            <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+                <g fill="#e6edf3" stroke="#e6edf3" stroke-width="0">
+                     <!-- Crossbones -->
+                    <path d="M20,20 L80,80 L75,85 L15,25 Z" />
+                    <path d="M80,20 L20,80 L25,85 L85,25 Z" />
+                    <!-- Bone ends -->
+                    <circle cx="18" cy="20" r="5" />
+                    <circle cx="22" cy="16" r="5" />
+                    <circle cx="82" cy="80" r="5" />
+                    <circle cx="78" cy="84" r="5" />
+                    
+                    <circle cx="82" cy="20" r="5" />
+                    <circle cx="78" cy="16" r="5" />
+                    <circle cx="18" cy="80" r="5" />
+                    <circle cx="22" cy="84" r="5" />
+                </g>
+                
+                <!-- Skull Base -->
+                <path d="M30 45 Q50 15 70 45 L70 65 Q70 75 50 75 Q30 75 30 65 Z" fill="#e6edf3"/>
+                
+                <!-- Hat -->
+                <ellipse cx="50" cy="42" rx="35" ry="8" fill="#e6edf3" />
+                <path d="M35 42 Q50 25 65 42" fill="#e6edf3" stroke="#161b22" stroke-width="2"/>
+                
+                <!-- Face Features (in background color to look like holes) -->
+                <circle cx="42" cy="55" r="5" fill="#161b22"/>
+                <circle cx="58" cy="55" r="5" fill="#161b22"/>
+                <circle cx="50" cy="62" r="1.5" fill="#161b22"/>
+                
+                <!-- Teeth -->
+                <path d="M40 70 L60 70 L60 75 L40 75 Z" fill="#161b22"/>
+                <line x1="45" y1="70" x2="45" y2="75" stroke="#e6edf3" stroke-width="1"/>
+                <line x1="50" y1="70" x2="50" y2="75" stroke="#e6edf3" stroke-width="1"/>
+                <line x1="55" y1="70" x2="55" y2="75" stroke="#e6edf3" stroke-width="1"/>
+            </svg>
+        </div>
         
         <button class="nav-btn active" data-section="dashboard">
             <div class="nav-icon">📊</div>
