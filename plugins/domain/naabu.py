@@ -66,16 +66,43 @@ def run_naabu(subs_file: Path, out_file: Path, mode: str):
     # ============================================================
     # 📊 Resultado
     # ============================================================
+    
+    # Mostrar avisos do naabu (stderr)
+    if result.stderr:
+        for line in result.stderr.strip().splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            if "[WRN]" in line or "non root" in line.lower():
+                warn(f"   ⚠️ {line}")
+            elif "[ERR]" in line:
+                error(f"   ❌ {line}")
+    
+    # Contar portas encontradas
+    port_count = 0
+    if out_file.exists():
+        port_count = sum(1 for l in out_file.read_text().splitlines() if l.strip())
+    
     if result.returncode != 0:
         error(
             f"{C.RED}{C.BOLD}❌ Naabu finalizou com código inesperado "
             f"({result.returncode}).{C.END}"
         )
     else:
-        success(
-            f"\n{C.GREEN}{C.BOLD}✔ NAABU concluído com sucesso!{C.END}\n"
-            f"📂 Arquivo salvo em:\n"
-            f"   {C.CYAN}{out_file}{C.END}\n"
-        )
+        if port_count == 0:
+            warn(
+                f"\n{C.YELLOW}{C.BOLD}⚠️ Naabu concluído mas NENHUMA porta encontrada!{C.END}\n"
+                f"   Possíveis causas:\n"
+                f"   - Rodando sem root (CONNECT scan menos confiável)\n"  
+                f"   - Subdomínios não resolvem DNS\n"
+                f"   - Rate limiting ou firewall bloqueando\n"
+                f"   💡 Tente rodar com sudo para SYN scan\n"
+            )
+        else:
+            success(
+                f"\n{C.GREEN}{C.BOLD}✔ NAABU concluído! {port_count} portas encontradas.{C.END}\n"
+                f"📂 Arquivo salvo em:\n"
+                f"   {C.CYAN}{out_file}{C.END}\n"
+            )
 
     return True

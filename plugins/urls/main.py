@@ -204,16 +204,30 @@ def run(context: dict):
     # ============================================================
     # ETAPA 2 — Executar urlfinder
     # ============================================================
-    info(f"{C.BOLD}{C.BLUE}🌐 Coletando URLs com urlfinder ({len(urls_to_scan)} seeds)...{C.END}")
+    
+    # Deduplica por base URL (scheme+host) — urlfinder crawla a partir do domínio,
+    # então enviar 5000 paths do mesmo host é redundante
+    from urllib.parse import urlparse as _urlparse
+    base_seeds = set()
+    for u in urls_to_scan:
+        try:
+            p = _urlparse(u)
+            base = f"{p.scheme}://{p.netloc}"
+            base_seeds.add(base)
+        except:
+            pass
+    
+    urlfinder_seeds = sorted(base_seeds)
+    info(f"{C.BOLD}{C.BLUE}🌐 Coletando URLs com urlfinder ({len(urlfinder_seeds)} hosts únicos, de {len(urls_to_scan)} seeds)...{C.END}")
 
     urlfinder = require_binary("urlfinder")
     
     import time as _time
     import tempfile as _tempfile
     
-    # Dividir seeds em lotes para mostrar progresso real
-    BATCH_SIZE = 100
-    total_seeds = len(urls_to_scan)
+    # Com base URLs únicas, batches menores bastam
+    BATCH_SIZE = 50
+    total_seeds = len(urlfinder_seeds)
     url_count = 0
     seeds_done = 0
     start_time = _time.time()
@@ -221,7 +235,7 @@ def run(context: dict):
     try:
         with url_completas.open("w", encoding="utf-8", errors="ignore") as fout:
             for i in range(0, total_seeds, BATCH_SIZE):
-                batch = urls_to_scan[i:i + BATCH_SIZE]
+                batch = urlfinder_seeds[i:i + BATCH_SIZE]
                 batch_num = (i // BATCH_SIZE) + 1
                 
                 # Criar arquivo temporário para o lote
@@ -229,7 +243,7 @@ def run(context: dict):
                 tmp.write("\n".join(batch) + "\n")
                 tmp.close()
                 
-                cmd = [urlfinder, "-list", tmp.name, "-silent", "-timeout", "10"]
+                cmd = [urlfinder, "-list", tmp.name, "-silent", "-timeout", "5"]
                 
                 proc = subprocess.Popen(
                     cmd,

@@ -6,8 +6,10 @@ Versao moderna com navegacao por abas e tema escuro profissional
 
 import html
 import json
+import uuid
+import base64
 from pathlib import Path
-import datetime
+from datetime import datetime
 from typing import List, Dict, Any
 from ..output import info, success, warn, error
 
@@ -83,8 +85,12 @@ def calculate_stats(target: str) -> Dict:
         "cloud_buckets": 0,
         "cve_vulns": 0,
         "endpoints_count": 0,
+        "endpoints_count": 0,
         "xss_vulns": 0,
-        "headers_count": 0
+        "headers_count": 0,
+        "takeover_count": 0,
+        "waf_count": 0,
+        "emails_count": 0
     }
     
     # Count ports
@@ -140,11 +146,33 @@ def calculate_stats(target: str) -> Dict:
             stats["xss_vulns"] = content.count("[POC]") or 1
             
     # Headers
+    # Headers
     headers_file = base / "fingerprint" / "headers.txt"
     if headers_file.exists():
         try:
              h_data = json.loads(headers_file.read_text(errors="ignore"))
              stats["headers_count"] = len(h_data)
+        except: pass
+
+    # Takeover
+    takeover_file = base / "takeover" / "takeover_results.json"
+    if takeover_file.exists():
+        try:
+            stats["takeover_count"] = len(json.loads(takeover_file.read_text()))
+        except: pass
+
+    # WAF
+    waf_file = base / "waf" / "waf_results.json"
+    if waf_file.exists():
+        try:
+            stats["waf_count"] = len(json.loads(waf_file.read_text()))
+        except: pass
+
+    # Emails
+    emails_file = base / "emails" / "emails.json"
+    if emails_file.exists():
+        try:
+            stats["emails_count"] = json.loads(emails_file.read_text()).get("total", 0)
         except: pass
 
     return stats
@@ -326,6 +354,8 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             --accent-red: #f85149;
             --accent-orange: #d29922;
             --accent-purple: #a371f7;
+            --sidebar-width: 64px;
+            --sidebar-width-expanded: 240px;
         }}
         
         * {{
@@ -335,113 +365,187 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }}
         
         body {{
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', Helvetica, Arial, sans-serif;
             background: var(--bg-primary);
             color: var(--text-primary);
             line-height: 1.5;
-            min-height: 100vh;
-        }}
-        
-        /* Header */
-        .header {{
-            background: var(--bg-secondary);
-            border-bottom: 1px solid var(--border-color);
-            padding: 20px 24px;
-            position: sticky;
-            top: 0;
-            z-index: 100;
-        }}
-        
-        .header-content {{
-            max-width: 1400px;
-            margin: 0 auto;
+            height: 100vh;
             display: flex;
-            justify-content: space-between;
+            overflow: hidden;
+        }}
+        
+        /* SIDEBAR */
+        .sidebar {{
+            width: var(--sidebar-width);
+            background: var(--bg-secondary);
+            border-right: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
             align-items: center;
+            padding: 12px 0;
+            z-index: 1000;
+            transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            overflow-x: hidden;
+            overflow-y: auto;
+            flex-shrink: 0;
         }}
         
-        .header h1 {{
-            font-size: 20px;
-            font-weight: 600;
-            color: var(--text-primary);
+        .sidebar:hover {{
+            width: var(--sidebar-width-expanded);
+            align-items: stretch;
         }}
         
-        .header h1 span {{
-            color: var(--accent-blue);
-        }}
-        
-        .header-meta {{
-            font-size: 12px;
-            color: var(--text-secondary);
-        }}
-        
-        /* Navigation */
-        .nav {{
-            background: var(--bg-secondary);
-            border-bottom: 1px solid var(--border-color);
-            padding: 0 24px;
-            position: sticky;
-            top: 60px;
-            z-index: 99;
-        }}
-        
-        .nav-content {{
-            max-width: 1400px;
-            margin: 0 auto;
+        .brand {{
+            width: 40px;
+            height: 40px;
+            background: var(--accent-blue);
+            color: #fff;
+            border-radius: 8px;
             display: flex;
-            gap: 4px;
-            overflow-x: auto;
+            align-items: center;
+            justify-content: center;
+            font-weight: 800;
+            font-size: 20px;
+            margin: 0 auto 20px;
+            flex-shrink: 0;
+            box-shadow: 0 4px 12px rgba(88, 166, 255, 0.3);
         }}
         
         .nav-btn {{
-            padding: 12px 16px;
-            background: none;
+            width: 100%;
+            height: 48px;
+            display: flex;
+            align-items: center;
+            background: transparent;
             border: none;
             color: var(--text-secondary);
-            font-size: 14px;
             cursor: pointer;
-            border-bottom: 2px solid transparent;
-            white-space: nowrap;
+            padding: 0;
             transition: all 0.2s;
+            position: relative;
+            text-decoration: none;
+            white-space: nowrap;
         }}
         
-        .nav-btn:hover {{
-            color: var(--text-primary);
+        .nav-btn:hover, .nav-btn.active {{
             background: var(--bg-tertiary);
-        }}
-        
-        .nav-btn.active {{
             color: var(--text-primary);
-            border-bottom-color: var(--accent-orange);
         }}
         
-        .nav-btn .count {{
-            background: var(--bg-tertiary);
+        .nav-btn.active:before {{
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 0;
+            bottom: 0;
+            width: 3px;
+            background: var(--accent-blue);
+        }}
+        
+        .nav-icon {{
+            width: var(--sidebar-width);
+            height: 48px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            flex-shrink: 0;
+        }}
+        
+        .nav-label {{
+            padding-left: 10px;
+            font-size: 14px;
+            font-weight: 500;
+            opacity: 0;
+            transition: opacity 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex: 1;
+            padding-right: 16px;
+        }}
+        
+        .sidebar:hover .nav-label {{
+            opacity: 1;
+        }}
+        
+        .count {{
+            background: var(--bg-primary);
             padding: 2px 8px;
-            border-radius: 10px;
+            border-radius: 12px;
+            font-size: 11px;
+            color: var(--text-muted);
+            border: 1px solid var(--border-color);
+        }}
+        
+        /* CONTENT AREA */
+        .content-wrapper {{
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            position: relative;
+        }}
+        
+        .top-bar {{
+            height: 60px;
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 24px;
+            flex-shrink: 0;
+        }}
+        
+        .page-title h1 {{
+            font-size: 18px;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin: 0;
+        }}
+        
+        .page-title span {{
+            color: var(--accent-blue);
+        }}
+        
+        .meta-info {{
             font-size: 12px;
-            margin-left: 6px;
+            color: var(--text-secondary);
+            background: var(--bg-tertiary);
+            padding: 4px 12px;
+            border-radius: 20px;
+            border: 1px solid var(--border-color);
         }}
         
-        /* Main Content */
-        .main {{
-            max-width: 1400px;
-            margin: 0 auto;
+        .main-content {{
+            flex: 1;
+            overflow-y: auto;
             padding: 24px;
+            scroll-behavior: smooth;
         }}
         
+        /* SECTIONS & CARDS */
         .section {{
             display: none;
+            max-width: 1200px;
+            margin: 0 auto;
         }}
         
         .section.active {{
             display: block;
+            animation: fadeIn 0.3s ease;
+        }}
+        
+        @keyframes fadeIn {{
+            from {{ opacity: 0; transform: translateY(10px); }}
+            to {{ opacity: 1; transform: translateY(0); }}
         }}
         
         /* Stats Grid */
         .stats-grid {{
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
             gap: 16px;
             margin-bottom: 24px;
         }}
@@ -451,35 +555,32 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             border: 1px solid var(--border-color);
             border-radius: 6px;
             padding: 16px;
+            transition: transform 0.2s;
+        }}
+        
+        .stat-card:hover {{
+            transform: translateY(-2px);
+            border-color: var(--text-muted);
         }}
         
         .stat-card .value {{
-            font-size: 32px;
-            font-weight: 600;
+            font-size: 28px;
+            font-weight: 700;
             color: var(--text-primary);
+            margin-bottom: 4px;
         }}
         
         .stat-card .label {{
             font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
             color: var(--text-secondary);
-            margin-top: 4px;
         }}
         
-        .stat-card.highlight {{
-            border-left: 3px solid var(--accent-blue);
-        }}
-        
-        .stat-card.warning {{
-            border-left: 3px solid var(--accent-orange);
-        }}
-        
-        .stat-card.danger {{
-            border-left: 3px solid var(--accent-red);
-        }}
-        
-        .stat-card.success {{
-            border-left: 3px solid var(--accent-green);
-        }}
+        .stat-card.highlight {{ border-left: 3px solid var(--accent-blue); }}
+        .stat-card.success {{ border-left: 3px solid var(--accent-green); }}
+        .stat-card.warning {{ border-left: 3px solid var(--accent-orange); }}
+        .stat-card.danger {{ border-left: 3px solid var(--accent-red); }}
         
         /* Cards */
         .card {{
@@ -496,6 +597,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             justify-content: space-between;
             align-items: center;
             cursor: pointer;
+            background: rgba(255,255,255,0.01);
         }}
         
         .card-header:hover {{
@@ -508,17 +610,21 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             color: var(--text-primary);
         }}
         
+        .section-title {{
+            font-size: 16px;
+            font-weight: 700;
+            color: var(--text-primary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }}
+        
         .card-badge {{
-            font-size: 12px;
+            font-size: 11px;
             padding: 2px 8px;
             border-radius: 10px;
             background: var(--bg-tertiary);
             color: var(--text-secondary);
-        }}
-        
-        .card-badge.login {{
-            background: var(--accent-orange);
-            color: #000;
+            border: 1px solid var(--border-color);
         }}
         
         .card-content {{
@@ -526,9 +632,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             display: none;
         }}
         
-        .card.open .card-content {{
-            display: block;
-        }}
+        .card.open .card-content {{ display: block; }}
         
         .card-content pre {{
             background: var(--bg-primary);
@@ -537,346 +641,417 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             overflow-x: auto;
             font-size: 13px;
             font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+            border: 1px solid var(--border-color);
         }}
         
         /* Tables */
-        .table-wrapper {{
-            overflow-x: auto;
-        }}
-        
-        table {{
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 13px;
-        }}
-        
+        .table-wrapper {{ overflow-x: auto; }}
+        table {{ width: 100%; border-collapse: collapse; font-size: 13px; }}
         th {{
-            text-align: left;
-            padding: 12px;
+            text-align: left; padding: 12px;
             background: var(--bg-tertiary);
             color: var(--text-secondary);
-            font-weight: 500;
+            font-weight: 600;
             border-bottom: 1px solid var(--border-color);
+            white-space: nowrap;
         }}
-        
-        td {{
-            padding: 10px 12px;
-            border-bottom: 1px solid var(--border-color);
-        }}
-        
-        tr:hover {{
-            background: var(--bg-tertiary);
-        }}
-        
-        a {{
-            color: var(--accent-blue);
-            text-decoration: none;
-        }}
-        
-        a:hover {{
-            text-decoration: underline;
-        }}
+        td {{ padding: 10px 12px; border-bottom: 1px solid var(--border-color); }}
+        tr:hover {{ background: rgba(255,255,255,0.03); }}
+        a {{ color: var(--accent-blue); text-decoration: none; }}
+        a:hover {{ text-decoration: underline; }}
         
         /* Tags */
-        .tag {{
-            display: inline-block;
-            padding: 2px 8px;
-            border-radius: 4px;
-            font-size: 12px;
-            margin-right: 4px;
-            margin-bottom: 4px;
-        }}
-        
-        .tag-tech {{
-            background: var(--accent-purple);
-            color: #fff;
-        }}
-        
-        .tag-port {{
-            background: var(--accent-blue);
-            color: #fff;
-        }}
-        
-        .tag-high {{
-            background: var(--accent-red);
-            color: #fff;
-        }}
-        
-        .tag-medium {{
-            background: var(--accent-orange);
-            color: #000;
-        }}
-        
-        .tag-low {{
-            background: var(--accent-green);
-            color: #000;
-        }}
-        
-        /* Key Details */
-        .key-detail {{
-            background: var(--bg-primary);
-            border: 1px solid var(--border-color);
-            border-radius: 6px;
-            padding: 16px;
-            margin-bottom: 12px;
-        }}
-        
-        .key-detail-header {{
-            display: flex;
-            justify-content: space-between;
-            margin-bottom: 12px;
-        }}
-        
-        .key-type {{
-            font-weight: 600;
-            color: var(--accent-blue);
-        }}
-        
-        .key-context {{
-            background: var(--bg-secondary);
-            padding: 8px;
-            border-radius: 4px;
-            font-family: monospace;
-            font-size: 12px;
-            overflow-x: auto;
-            white-space: pre-wrap;
-        }}
-        
-        /* Empty State */
-        .empty-state {{
-            text-align: center;
-            padding: 48px 24px;
-            color: var(--text-secondary);
-        }}
-        
-        /* Footer */
-        .footer {{
-            text-align: center;
-            padding: 24px;
-            color: var(--text-muted);
-            font-size: 12px;
-            border-top: 1px solid var(--border-color);
-            margin-top: 48px;
-        }}
+        .tag {{ display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; margin-right: 4px; }}
+        .tag-high {{ background: rgba(248, 81, 73, 0.15); color: #ff7b72; border: 1px solid rgba(248, 81, 73, 0.4); }}
+        .tag-medium {{ background: rgba(210, 153, 34, 0.15); color: #d29922; border: 1px solid rgba(210, 153, 34, 0.4); }}
+        .tag-low {{ background: rgba(63, 185, 80, 0.15); color: #3fb950; border: 1px solid rgba(63, 185, 80, 0.4); }}
         
         /* Scrollbar */
-        ::-webkit-scrollbar {{
-            width: 8px;
-            height: 8px;
+        ::-webkit-scrollbar {{ width: 6px; height: 6px; }}
+        ::-webkit-scrollbar-track {{ background: transparent; }}
+        ::-webkit-scrollbar-thumb {{ background: var(--border-color); border-radius: 3px; }}
+        ::-webkit-scrollbar-thumb:hover {{ background: var(--text-muted); }}
+        
+        .empty-state {{ text-align: center; padding: 40px; color: var(--text-muted); font-style: italic; }}
+        /* Burp Modal */
+        .burp-modal-overlay {{
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.7); z-index: 9999;
+            display: none; align-items: center; justify-content: center;
+            backdrop-filter: blur(2px);
+        }}
+        .burp-modal {{
+            width: 90%; height: 85%; background: #1e1e1e;
+            border: 1px solid #444; border-radius: 6px;
+            display: flex; flex-direction: column;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.8);
+            animation: slideIn 0.2s ease-out;
+        }}
+        @keyframes slideIn {{ from {{ transform: scale(0.95); opacity: 0; }} to {{ transform: scale(1); opacity: 1; }} }}
+        
+        .burp-header {{
+            padding: 12px 15px; background: #323233; border-bottom: 1px solid #444;
+            display: flex; justify-content: space-between; align-items: center;
+        }}
+        .burp-title {{
+            color: #fff; font-weight: 600; font-family: system-ui, -apple-system, sans-serif;
+            font-size: 14px; letter-spacing: 0.5px;
+        }}
+        .burp-title span {{ color: #858585; font-weight: normal; margin-left:10px; font-family: monospace;}}
+
+        .burp-actions {{ display: flex; gap: 10px; }}
+        .burp-btn {{
+            background: #2d2d2d; border: 1px solid #444; color: #ccc;
+            padding: 4px 10px; border-radius: 3px; cursor: pointer; font-size: 11px;
+        }}
+        .burp-btn:hover {{ background: #3e3e3e; color: #fff; }}
+        .burp-close {{
+            cursor: pointer; color: #aaa; font-size: 20px; line-height: 1; margin-left: 10px;
+        }}
+        .burp-close:hover {{ color: #fff; }}
+        
+        .burp-body {{
+            flex: 1; display: flex; overflow: hidden;
+        }}
+        .burp-pane {{
+            flex: 1; display: flex; flex-direction: column;
+            border-right: 1px solid #444;
+            min-width: 0;
+        }}
+        .burp-pane:last-child {{ border-right: none; }}
+        .burp-pane-header {{
+            background: #252526; padding: 6px 10px;
+            color: #ccc; font-size: 11px; font-weight: 600; font-family: system-ui, sans-serif;
+            border-bottom: 1px solid #444; text-transform: uppercase; letter-spacing: 0.5px;
+            display: flex; justify-content: space-between;
         }}
         
-        ::-webkit-scrollbar-track {{
-            background: var(--bg-primary);
+        .burp-content {{
+            flex: 1; padding: 15px; overflow: auto;
+            background: #1e1e1e; color: #d4d4d4;
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace; font-size: 12px;
+            white-space: pre-wrap; word-break: break-all; line-height: 1.4;
         }}
+        /* Syntax highlighting simulation */
+        .http-method {{ color: #ebb626; font-weight: bold; }}
+        .http-path {{ color: #a5d6ff; }}
+        .http-version {{ color: #858585; }}
+        .header-key {{ color: #9cdcfe; font-weight: bold; }}
+        .header-val {{ color: #ce9178; }}
+        .status-code {{ color: #b5cea8; font-weight: bold; }}
         
-        ::-webkit-scrollbar-thumb {{
-            background: var(--border-color);
-            border-radius: 4px;
-        }}
-        
-        ::-webkit-scrollbar-thumb:hover {{
-            background: var(--text-muted);
-        }}
     </style>
+    <script>const BURP_DATA = {{}};</script>
 </head>
 <body>
-    <header class="header">
-        <div class="header-content">
-            <h1>Enum-Allma Report: <span>{target}</span></h1>
-            <div class="header-meta">{date} - {time}</div>
-        </div>
-    </header>
-    
-    <nav class="nav">
-        <div class="nav-content">
-            <button class="nav-btn active" data-section="dashboard">Dashboard</button>
-            <button class="nav-btn" data-section="subdomains">Subdomains<span class="count">{stats_subdomains}</span></button>
-            <button class="nav-btn" data-section="dns">DNS / IPs<span class="count">{stats_ips}</span></button>
-            <button class="nav-btn" data-section="security">Security<span class="count">{stats_xss}</span></button>
-            <button class="nav-btn" data-section="cve">CVEs Techs<span class="count">{stats_cves}</span></button>
-            <button class="nav-btn" data-section="services">Services<span class="count">{stats_ports}</span></button>
-            <button class="nav-btn" data-section="urls">URLs & Discovered<span class="count">{stats_urls_combined}</span></button>
-            <button class="nav-btn" data-section="keys">Keys<span class="count">{stats_keys}</span></button>
-            <button class="nav-btn" data-section="routes">Endpoints<span class="count">{stats_endpoints}</span></button>
-            <button class="nav-btn" data-section="js">JS Files<span class="count">{stats_js}</span></button>
-            <button class="nav-btn" data-section="params">Params<span class="count">{stats_params}</span></button>
-            <button class="nav-btn" data-section="cloud">Cloud<span class="count">{stats_buckets}</span></button>
-            <button class="nav-btn" data-section="admin">Admin Panels<span class="count">{stats_admin}</span></button>
-            <button class="nav-btn" data-section="depconfusion">Dep Confusion<span class="count">{stats_depconfusion}</span></button>
-
-            <button class="nav-btn" data-section="files">Files</button>
-        </div>
+    <nav class="sidebar">
+        <div class="brand">E</div>
+        
+        <button class="nav-btn active" data-section="dashboard">
+            <div class="nav-icon">📊</div>
+            <div class="nav-label">Dashboard</div>
+        </button>
+        
+        <button class="nav-btn" data-section="security">
+            <div class="nav-icon">🛡️</div>
+            <div class="nav-label">Security <span class="count">{stats_xss}</span></div>
+        </button>
+        
+        <button class="nav-btn" data-section="subdomains">
+            <div class="nav-icon">🌐</div>
+            <div class="nav-label">Subdomains <span class="count">{stats_subdomains}</span></div>
+        </button>
+        
+        <button class="nav-btn" data-section="dns">
+            <div class="nav-icon">📡</div>
+            <div class="nav-label">DNS / IPs <span class="count">{stats_ips}</span></div>
+        </button>
+        
+        <button class="nav-btn" data-section="takeover">
+            <div class="nav-icon">🏴‍☠️</div>
+            <div class="nav-label">Takeover <span class="count">{stats_takeover}</span></div>
+        </button>
+        
+        <button class="nav-btn" data-section="urls">
+            <div class="nav-icon">🔗</div>
+            <div class="nav-label">URLs <span class="count">{stats_urls_combined}</span></div>
+        </button>
+        
+        <button class="nav-btn" data-section="routes">
+            <div class="nav-icon">🛣️</div>
+            <div class="nav-label">Endpoints <span class="count">{stats_endpoints}</span></div>
+        </button>
+        
+        <button class="nav-btn" data-section="services">
+            <div class="nav-icon">🔌</div>
+            <div class="nav-label">Services <span class="count">{stats_ports}</span></div>
+        </button>
+        
+        <button class="nav-btn" data-section="keys">
+            <div class="nav-icon">🔑</div>
+            <div class="nav-label">Keys <span class="count">{stats_keys}</span></div>
+        </button>
+        
+        <button class="nav-btn" data-section="emails">
+            <div class="nav-icon">📧</div>
+            <div class="nav-label">Emails <span class="count">{stats_emails}</span></div>
+        </button>
+        
+        <button class="nav-btn" data-section="waf">
+            <div class="nav-icon">🧱</div>
+            <div class="nav-label">WAF <span class="count">{stats_waf}</span></div>
+        </button>
+        
+         <button class="nav-btn" data-section="files">
+            <div class="nav-icon">📁</div>
+            <div class="nav-label">Files</div>
+        </button>
+        
+        <button class="nav-btn" data-section="js">
+            <div class="nav-icon">📜</div>
+            <div class="nav-label">JS Files <span class="count">{stats_js}</span></div>
+        </button>
+        
+        <button class="nav-btn" data-section="params">
+            <div class="nav-icon">🧩</div>
+            <div class="nav-label">Params <span class="count">{stats_params}</span></div>
+        </button>
+        
+        <button class="nav-btn" data-section="cve">
+            <div class="nav-icon">💣</div>
+            <div class="nav-label">CVEs <span class="count">{stats_cves}</span></div>
+        </button>
+        
+        <button class="nav-btn" data-section="cloud">
+            <div class="nav-icon">☁️</div>
+            <div class="nav-label">Cloud <span class="count">{stats_buckets}</span></div>
+        </button>
+        
+        <button class="nav-btn" data-section="admin">
+            <div class="nav-icon">👑</div>
+            <div class="nav-label">Admin <span class="count">{stats_admin}</span></div>
+        </button>
+        
+        <button class="nav-btn" data-section="depconfusion">
+            <div class="nav-icon">📦</div>
+            <div class="nav-label">Dep. Conf. <span class="count">{stats_depconfusion}</span></div>
+        </button>
     </nav>
     
-    <main class="main">
-        <!-- Dashboard -->
-        <section class="section active" id="dashboard">
-            <div class="stats-grid">
-                <div class="stat-card highlight">
-                    <div class="value">{stats_subdomains}</div>
-                    <div class="label">Subdomains Found</div>
-                </div>
-                <div class="stat-card success">
-                    <div class="value">{stats_urls}</div>
-                    <div class="label">Valid URLs</div>
-                </div>
-                <div class="stat-card">
-                    <div class="value">{stats_ports}</div>
-                    <div class="label">Open Ports</div>
-                </div>
-                <div class="stat-card warning">
-                    <div class="value">{stats_login}</div>
-                    <div class="label">Login Pages</div>
-                </div>
-                <div class="stat-card danger">
-                    <div class="value">{stats_keys}</div>
-                    <div class="label">Keys Found</div>
-                </div>
-                <div class="stat-card">
-                    <div class="value">{stats_technologies}</div>
-                    <div class="label">Technologies</div>
-                </div>
-                <div class="stat-card">
-                    <div class="value">{stats_js}</div>
-                    <div class="label">JS Files</div>
-                </div>
-                <div class="stat-card">
-                    <div class="value">{stats_routes}</div>
-                    <div class="label">API Routes</div>
-                </div>
-                <div class="stat-card">
-                    <div class="value">{stats_endpoints}</div>
-                    <div class="label">Endpoints</div>
-                </div>
-                <div class="stat-card">
-                    <div class="value">{stats_buckets}</div>
-                    <div class="label">Cloud Buckets</div>
-                </div>
-                <div class="stat-card danger">
-                    <div class="value">{stats_xss}</div>
-                    <div class="label">XSS Alerts</div>
-                </div>
-                <div class="stat-card danger">
-                    <div class="value">{stats_cves}</div>
-                    <div class="label">Potential CVEs</div>
-                </div>
+    <div class="content-wrapper">
+        <header class="top-bar">
+            <div class="page-title">
+                <h1>Enum-Allma: <span>{target}</span></h1>
             </div>
+            <div class="meta-info">
+                📅 {date} &nbsp; ⏰ {time}
+            </div>
+        </header>
+        
+        <main class="main-content">
+            <!-- Dashboard -->
+            <section class="section active" id="dashboard">
+                <div class="stats-grid">
+                    <div class="stat-card highlight">
+                        <div class="value">{stats_subdomains}</div>
+                        <div class="label">Subdomains</div>
+                    </div>
+                    <div class="stat-card success">
+                        <div class="value">{stats_urls}</div>
+                        <div class="label">Valid URLs</div>
+                    </div>
+                    <div class="stat-card danger">
+                        <div class="value">{stats_xss}</div>
+                        <div class="label">XSS Alerts</div>
+                    </div>
+                    <div class="stat-card warning">
+                        <div class="value">{stats_login}</div>
+                        <div class="label">Login Pages</div>
+                    </div>
+                    <div class="stat-card danger">
+                        <div class="value">{stats_takeover}</div>
+                        <div class="label">Takeover Risks</div>
+                    </div>
+                     <div class="stat-card danger">
+                        <div class="value">{stats_keys}</div>
+                        <div class="label">Keys Exposed</div>
+                    </div>
+                    <div class="stat-card warning">
+                         <div class="value">{stats_waf}</div>
+                        <div class="label">WAFs Detected</div>
+                    </div>
+                    <div class="stat-card">
+                         <div class="value">{stats_emails}</div>
+                        <div class="label">Emails</div>
+                    </div>
+                </div>
+                
+                 <div class="card">
+                    <div class="card-header">
+                        <span class="card-title section-title">Quick Summary</span>
+                    </div>
+                    <div class="card-content" style="display:block;">
+                        <p>Scan completed for <strong>{target}</strong>. Found {stats_subdomains} subdomains with {stats_urls} valid URLs across {stats_ports} open ports.</p>
+                        {login_warning}
+                        {keys_warning}
+                    </div>
+                </div>
+            </section>
             
-            <div class="card">
-                <div class="card-header">
-                    <span class="card-title">Quick Summary</span>
+            <section class="section" id="subdomains">{subdomains_content}</section>
+            <section class="section" id="security">{security_content}</section>
+            <section class="section" id="dns">{dns_content}</section>
+            <section class="section" id="services">{services_content}</section>
+            <section class="section" id="urls">
+                <div style="margin-bottom:24px;">
+                     <div class="card open">
+                        <div class="card-header"><span class="card-title section-title">Validated URLs</span></div>
+                        <div class="card-content" style="display:block;">{urls_content}</div>
+                    </div>
                 </div>
-                <div class="card-content" style="display:block;">
-                    <p>Scan completed for <strong>{target}</strong>. Found {stats_subdomains} subdomains with {stats_urls} valid URLs across {stats_ports} open ports.</p>
-                    {login_warning}
-                    {keys_warning}
+                <div class="card open">
+                    <div class="card-header"><span class="card-title section-title">Discovered URLs (Crawling)</span></div>
+                    <div class="card-content" style="display:block;">{discovered_content}</div>
                 </div>
-            </div>
-        </section>
-        
-        <!-- Subdomains -->
-        <section class="section" id="subdomains">
-            {subdomains_content}
-        </section>
-
-        <!-- Security (XSS + Fingerprint) -->
-        <section class="section" id="security">
-            {security_content}
-        </section>
-        
-        <!-- CVEs -->
-        <section class="section" id="cve">
-            {cve_content}
-        </section>
-        
-        <!-- Services -->
-        <section class="section" id="services">
-            {services_content}
-        </section>
-        
-        <!-- URLs & Discovered -->
-        <section class="section" id="urls">
-            <div style="margin-bottom: 24px;">
-                <h3 style="margin-bottom: 16px; color: var(--accent-blue); border-bottom: 1px solid var(--border-color); padding-bottom: 8px;">Validated URLs</h3>
-                {urls_content}
-            </div>
+            </section>
+            <section class="section" id="keys">{keys_content}</section>
+            <section class="section" id="routes">{routes_content}</section>
+            <section class="section" id="js">{js_content}</section>
+            <section class="section" id="params">{params_content}</section>
+            <section class="section" id="cloud">{cloud_content}</section>
+            <section class="section" id="cve">{cve_content}</section>
+            <section class="section" id="admin">{admin_content}</section>
+            <section class="section" id="depconfusion">{depconfusion_content}</section>
+            <section class="section" id="files">{files_content}</section>
+            <section class="section" id="takeover">{takeover_content}</section>
+            <section class="section" id="waf">{waf_content}</section>
+            <section class="section" id="emails">{emails_content}</section>
             
-            <div style="margin-top: 32px;">
-                <h3 style="margin-bottom: 16px; color: var(--accent-purple); border-bottom: 1px solid var(--border-color); padding-bottom: 8px;">Discovered URLs (Crawling)</h3>
-                {discovered_content}
-            </div>
-        </section>
-        
-        <!-- Keys -->
-        <section class="section" id="keys">
-            {keys_content}
-        </section>
-        
-        <!-- API Routes -->
-        <section class="section" id="routes">
-            {routes_content}
-        </section>
-        
-        <!-- JS Files -->
-        <section class="section" id="js">
-            {js_content}
-        </section>
-        
-        <!-- Parameters (with source URLs) -->
-        <section class="section" id="params">
-            {params_content}
-        </section>
-        
-        <!-- Cloud -->
-        <section class="section" id="cloud">
-            {cloud_content}
-        </section>
-        
-        
+             <footer style="text-align:center; color:var(--text-muted); font-size:12px; margin-top:40px; padding-bottom:20px;">
+                Generated by Enum-Allma | {date} {time}
+            </footer>
+        </main>
+    </div>
 
-        
-        <!-- Admin Panels -->
-        <section class="section" id="admin">
-            {admin_content}
-        </section>
-        
-        <!-- Dependency Confusion -->
-        <section class="section" id="depconfusion">
-            {depconfusion_content}
-        </section>
-        
-        <!-- DNS / IPs -->
-        <section class="section" id="dns">
-            {dns_content}
-        </section>
-        
-        <!-- Files -->
-        <section class="section" id="files">
-            {files_content}
-        </section>
-    </main>
-    
-    <footer class="footer">
-        Generated by Enum-Allma | {date} {time}
-    </footer>
-    
     <script>
-        // Navigation
+        // Navigation Switcher
         document.querySelectorAll('.nav-btn').forEach(btn => {{
             btn.addEventListener('click', () => {{
+                // Active state for buttons
                 document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
-                document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
-                
                 btn.classList.add('active');
-                document.getElementById(btn.dataset.section).classList.add('active');
+                
+                // Show section
+                const targetId = btn.dataset.section;
+                document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+                const targetSection = document.getElementById(targetId);
+                if (targetSection) targetSection.classList.add('active');
             }});
         }});
         
-        // Expandable cards
+        // Card Expand/Collapse
         document.querySelectorAll('.card-header').forEach(header => {{
             header.addEventListener('click', () => {{
                 header.parentElement.classList.toggle('open');
             }});
+        }});
+    </script>
+    <!-- Burp Modal -->
+    <div class="burp-modal-overlay" id="burpModal" onclick="if(event.target===this) closeBurp()">
+        <div class="burp-modal">
+            <div class="burp-header">
+                <div class="burp-title">HTTP Request/Response <span id="burpUrl"></span></div>
+                <div class="burp-actions">
+                    <button class="burp-btn" onclick="copyReq()">Copy Request</button>
+                    <button class="burp-btn" onclick="copyRes()">Copy Response</button>
+                    <div class="burp-close" onclick="closeBurp()">×</div>
+                </div>
+            </div>
+            <div class="burp-body">
+                <div class="burp-pane">
+                    <div class="burp-pane-header">Request</div>
+                    <div class="burp-content" id="burpRequest"></div>
+                </div>
+                <div class="burp-pane">
+                    <div class="burp-pane-header">Response</div>
+                    <div class="burp-content" id="burpResponse"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Data Storage -->
+
+    <script>
+
+        
+        function openBurp(id) {{
+            const data = BURP_DATA[id];
+            if (!data) return;
+            
+            document.getElementById('burpUrl').innerText = data.url;
+            document.getElementById('burpRequest').innerHTML = highlightHttp(atob(data.req));
+            document.getElementById('burpResponse').innerHTML = highlightHttp(atob(data.res));
+            document.getElementById('burpModal').style.display = 'flex';
+        }}
+        
+        function closeBurp() {{
+            document.getElementById('burpModal').style.display = 'none';
+        }}
+
+        function highlightHttp(text) {{
+            if (!text) return '<span style="color:#666">[No raw data captured]</span>';
+            const parts = text.split('\\n\\n');
+            let headers = parts[0];
+            let body = parts.slice(1).join('\\n\\n');
+            
+            const lines = headers.split('\\n');
+            let firstLine = lines.shift(); 
+            
+            if (firstLine.startsWith('HTTP/')) {{
+                 firstLine = firstLine.replace(/^(HTTP\/[\d\.]+)\s+(\d+)\s+(.*)$/, 
+                    '<span class="http-version">$1</span> <span class="status-code">$2</span> <span class="http-version">$3</span>');
+            }} else {{
+                 firstLine = firstLine.replace(/^([A-Z]+)\s+(.*)\s+(HTTP\/[\d\.]+)$/,
+                    '<span class="http-method">$1</span> <span class="http-path">$2</span> <span class="http-version">$3</span>');
+            }}
+
+            let coloredHeaders = lines.map(line => {{
+                const idx = line.indexOf(':');
+                if (idx > -1) {{
+                    const key = line.substring(0, idx);
+                    const val = line.substring(idx+1);
+                    return `<span class="header-key">${{escapeHtml(key)}}</span>:<span class="header-val">${{escapeHtml(val)}}</span>`;
+                }}
+                return escapeHtml(line);
+            }}).join('\\n');
+            
+            return `<div>${{firstLine}}\\n${{coloredHeaders}}</div>\\n\\n${{escapeHtml(body)}}`;
+        }}
+        
+        function escapeHtml(text) {{
+           if (!text) return '';
+           return text
+               .replace(/&/g, "&amp;")
+               .replace(/</g, "&lt;")
+               .replace(/>/g, "&gt;")
+               .replace(/"/g, "&quot;")
+               .replace(/'/g, "&#039;");
+        }}
+        
+        function copyReq() {{
+             const text = document.getElementById('burpRequest').innerText;
+             navigator.clipboard.writeText(text);
+        }}
+         function copyRes() {{
+             const text = document.getElementById('burpResponse').innerText;
+             navigator.clipboard.writeText(text);
+        }}
+
+        document.addEventListener('keydown', function(event) {{
+            if (event.key === "Escape") {{
+                closeBurp();
+            }}
         }});
     </script>
 </body>
@@ -1016,7 +1191,7 @@ def build_ports_content(target: str) -> str:
     return f'''
     <div class="card open">
         <div class="card-header">
-            <span class="card-title">Open Ports by Host</span>
+            <span class="card-title section-title">Open Ports by Host</span>
         </div>
         <div class="card-content">
             <pre>{html.escape(content)}</pre>
@@ -1964,7 +2139,7 @@ def build_cve_content(subdomains: Dict) -> str:
 
 
 def build_security_content(target: str) -> str:
-    """Consolida XSS, Headers e Certificados."""
+    """Consolida XSS, CORS, Headers e outros security checks."""
     base = Path("output") / target
     html_parts = []
     
@@ -1974,190 +2149,356 @@ def build_security_content(target: str) -> str:
     xss_dir = base / "xss"
     if xss_dir.exists():
         xss_final = xss_dir / "final_report.txt"
-        xss_reflections = xss_dir / "reflections.txt"
         
-        # Priority: Final Report
         if xss_final.exists():
             content = xss_final.read_text(errors="ignore")
             if content.strip():
-                 html_parts.append(f'''
-                <div class="card open" style="border-left: 4px solid var(--accent-red);">
-                    <div class="card-header">
-                        <span class="card-title">🚨 XSS Scanning Report (Dalfox/Reflections)</span>
-                    </div>
-                    <div class="card-content">
-                        <pre>{html.escape(content)}</pre>
-                    </div>
-                </div>''')
-        
-        # Reflections fallback
-        elif xss_reflections.exists():
-             content = xss_reflections.read_text(errors="ignore")
-             if content.strip():
-                 html_parts.append(f'''
-                <div class="card" style="border-left: 4px solid var(--accent-orange);">
-                    <div class="card-header">
-                        <span class="card-title">⚠️ Reflected Parameters</span>
-                    </div>
-                    <div class="card-content">
-                        <pre>{html.escape(content)}</pre>
-                    </div>
-                </div>''')
-
-    # -------------------------------------------------------------------------
-    # 2. SSL/TLS Certificates
-    # -------------------------------------------------------------------------
-    cert_file = base / "fingerprint" / "cert_info.txt"
-    rows = ""
-    has_content = False
-    
-    if cert_file.exists():
-        try:
-            certs = json.loads(cert_file.read_text(errors="ignore"))
-            if certs:
-                rows = ""
-                has_content = False
-                for host, info_data in certs.items():
-                    # Handle if info_data is dict or string error
-                    if isinstance(info_data, dict) and "error" not in info_data:
-                        # Skip empty dicts (capture failed/empty)
-                        if not info_data:
-                            continue
-                            
-                        has_content = True
-                        # Extract common fields safely (assuming peercert structure)
-                        subject = str(info_data.get("subject", ""))
-                        issuer = str(info_data.get("issuer", ""))
-                        # Flatten for display
-                        rows += f'<tr><td>{html.escape(host)}</td><td><div style="font-size:11px">{html.escape(subject[:100])}</div></td><td><div style="font-size:11px">{html.escape(issuer[:100])}</div></td></tr>'
-                    elif isinstance(info_data, dict) and "error" in info_data:
-                         has_content = True
-                         rows += f'<tr><td>{html.escape(host)}</td><td colspan="2" style="color:var(--accent-red)">Error: {html.escape(str(info_data["error"]))}</td></tr>'
-                    else:
-                         # String or other format
-                         has_content = True
-                         rows += f'<tr><td>{html.escape(host)}</td><td colspan="2" style="color:var(--accent-red)">{html.escape(str(info_data))}</td></tr>'
-                
-                if has_content:
-                    html_parts.append(f'''
-                    <div class="card">
-                        <div class="card-header"><span class="card-title">🔒 SSL/TLS Certificates</span></div>
-                        <div class="card-content">
-                            <div class="table-wrapper">
-                                <table><thead><tr><th>Host</th><th>Subject</th><th>Issuer</th></tr></thead><tbody>{rows}</tbody></table>
-                            </div>
-                        </div>
-                    </div>''')
-        except: pass
-
-    # 2b. Fallback: Parse Nmap Services if no rich cert data
-    if not has_content:
-        try:
-            service_dir = base / "services"
-            scan_files = list(service_dir.glob("scanFinal_*.txt"))
-            
-            fallback_rows = []
-            for sf in scan_files:
-                content = sf.read_text(errors="ignore")
-                current_host = "Unknown"
-                
-                # Simple parsing of Nmap -oN output
-                for line in content.splitlines():
-                    if "Nmap scan report for" in line:
-                        parts = line.split()
-                        if len(parts) >= 5:
-                            current_host = parts[4] # host
-                    
-                    if "/tcp" in line and "open" in line and ("ssl" in line or "443" in line or "8443" in line):
-                        # 443/tcp open  ssl/https     cloudflare
-                        parts = line.split(maxsplit=3)
-                        port = parts[0]
-                        service = parts[2] if len(parts) > 2 else "ssl"
-                        details = parts[3] if len(parts) > 3 else "detected"
-                        
-                        fallback_rows.append((current_host, port, service, details))
-            
-            if fallback_rows:
-                has_content = True
-                unique_rows = sorted(list(set(fallback_rows)))
-                for host, port, service, details in unique_rows:
-                     rows += f'<tr><td>{html.escape(host)}</td><td><span class="tag tag-blue">{html.escape(port)}</span></td><td><div style="font-size:11px">{html.escape(service)} {html.escape(details)}</div></td></tr>'
+                formatted_content = html.escape(content)
+                formatted_content = formatted_content.replace("Vulnerable:", f'<span style="color:#f85149; font-weight:bold;">Vulnerable:</span>')
+                formatted_content = formatted_content.replace("[POC]", f'<span style="background:#238636; color:#fff; padding:2px 6px; border-radius:4px; font-size:11px;">POC</span>')
                 
                 html_parts.append(f'''
-                <div class="card">
-                    <div class="card-header"><span class="card-title">🔒 SSL/TLS Certificates (Service Discovery)</span></div>
-                    <div class="card-content">
-                        <div class="table-wrapper">
-                            <table><thead><tr><th>Host</th><th>Port</th><th>Service Details</th></tr></thead><tbody>{rows}</tbody></table>
-                        </div>
-                        <p style="margin-top:10px;font-size:11px;color:var(--text-secondary);">* Detailed certificate info not available. Showing open SSL ports.</p>
+                <div class="card" style="border-left: 3px solid var(--accent-red);">
+                    <div class="card-header">
+                        <span class="card-title">🔥 XSS Vulnerabilities (Passive Scan)</span>
+                    </div>
+                    <div class="card-content" style="display:block;">
+                        <pre>{formatted_content}</pre>
                     </div>
                 </div>''')
 
-        except: pass
+    # -------------------------------------------------------------------------
+    # 2. CORS Misconfigurations
+    # -------------------------------------------------------------------------
+    html_parts.append(build_cors_content(target))
 
     # -------------------------------------------------------------------------
-    # 3. Security Headers (Compact / Grouped)
+    # 3. Security Headers
     # -------------------------------------------------------------------------
-    headers_file = base / "fingerprint" / "headers.txt"
-    if headers_file.exists():
-        try:
-            headers_data = json.loads(headers_file.read_text(errors="ignore"))
-            if headers_data:
-                # Group by headers logic
-                # Actually, user wants "Valid Domain" and not huge list
-                # Strategy: Group by Hostname, show 1 representative URL per host
-                
-                hosts_seen = set()
-                from urllib.parse import urlparse
-                
-                header_entries = ""
-                
-                for url, h_dict in headers_data.items():
-                    try:
-                        parsed = urlparse(url)
-                        hostname = parsed.netloc.split(":")[0]
-                        if hostname in hosts_seen:
-                            continue
-                        hosts_seen.add(hostname)
-                        
-                        # Format headers for display
-                        h_lines = "\n".join([f"{k}: {v}" for k,v in h_dict.items()])
-                        
-                        header_entries += f'''
-                        <div style="margin-bottom: 8px; border: 1px solid var(--border-color); border-radius: 4px; overflow: hidden;">
-                            <details style="background: var(--bg-secondary);">
-                                <summary style="padding: 10px; cursor: pointer; font-weight: 600; font-family: monospace;">
-                                    {html.escape(hostname)} <span style="font-weight:normal; color:var(--text-secondary); float:right; font-size:12px;">{html.escape(url)}</span>
-                                </summary>
-                                <div style="padding: 10px; border-top: 1px solid var(--border-color); background: var(--bg-primary);">
-                                    <pre style="margin:0; font-size:11px; white-space:pre-wrap; word-break:break-all;">{html.escape(h_lines)}</pre>
-                                </div>
-                            </details>
-                        </div>
-                        '''
-                    except:
-                        pass
-                
-                if header_entries:
-                    html_parts.append(f'''
-                    <div class="card">
-                        <div class="card-header">
-                            <span class="card-title">🛡️ Security Headers (Grouped by Host)</span>
-                            <span class="card-badge">{len(hosts_seen)} unique hosts</span>
-                        </div>
-                        <div class="card-content">
-                            <p style="margin-bottom:10px;color:var(--text-secondary);font-size:12px;">Showing one representative set of headers per host.</p>
-                            {header_entries}
-                        </div>
-                    </div>''')
-        except Exception:
-            pass
-            
+    html_parts.append(build_headers_content(target))
+
+    # Clean up empty strings
+    html_parts = [p for p in html_parts if p]
+
     if not html_parts:
-        return '<div class="empty-state"><p>No security-specific data found (XSS, Headers, SSL).</p></div>'
+        return '<div class="empty-state"><p>No security issues found (XSS, CORS, Headers).</p></div>'
         
     return "".join(html_parts)
+
+
+# ------------------------------------------------------------
+# New Builders (CORS, Takeover, Headers, WAF, Emails)
+# ------------------------------------------------------------
+def build_cors_content(target: str) -> str:
+    path = Path("output") / target / "cors" / "cors_results.json"
+    data = read_json_file(path)
+    if not data:
+        return ""
+
+    rows = ""
+    for item in data:
+        sev = item.get("severity", "info").lower()
+        sev_class = "tag-high" if sev in ("critical", "high") else "tag-medium" if sev == "medium" else "tag-low"
+        
+        creds = '<span class="tag tag-high">Credentials</span>' if item.get("credentials") else ""
+        
+        # Prepare Burp Data
+        req_b64 = base64.b64encode((item.get("request_raw") or "").encode("utf-8")).decode("utf-8")
+        res_b64 = base64.b64encode((item.get("response_raw") or "").encode("utf-8")).decode("utf-8")
+        row_id = f"cors_{uuid.uuid4().hex[:8]}"
+        
+        burp_script_data = f'<script>BURP_DATA["{row_id}"] = {{ "url": "{html.escape(item.get("url", ""))}", "req": "{req_b64}", "res": "{res_b64}" }};</script>'
+
+        rows += f'''
+        <tr>
+            <td><span class="tag {sev_class}">{sev.upper()}</span></td>
+            <td><a href="{html.escape(item.get("url", ""))}" target="_blank">{html.escape(item.get("url", ""))}</a></td>
+            <td>
+                {html.escape(item.get("issue", ""))}
+                {creds}
+            </td>
+            <td style="text-align:right;">
+                <button class="burp-btn" onclick="openBurp('{row_id}')">View HTTP</button>
+                {burp_script_data}
+            </td>
+        </tr>
+        '''
+
+    return f'''
+    <div class="card" style="border-left: 3px solid var(--accent-orange);">
+        <div class="card-header">
+            <span class="card-title">⚠️ CORS Misconfigurations</span>
+            <span class="card-badge warning">{len(data)} issues</span>
+        </div>
+        <div class="card-content" style="display:block;">
+            <div class="table-wrapper">
+                <table>
+                    <thead>
+                        <tr>
+                            <th width="80">Severity</th>
+                            <th>URL</th>
+                            <th>Issue</th>
+                            <th width="100" style="text-align:right;">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {rows}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    '''
+
+
+def build_headers_content(target: str) -> str:
+    path = Path("output") / target / "headers" / "headers_results.json"
+    data = read_json_file(path)
+    if not data:
+        return ""
+
+    rows = ""
+    # Sort by grade (C, D, E, F first)
+    data.sort(key=lambda x: x.get("score", 100))
+
+    for item in data:
+        grade = item.get("grade", "?")
+        score = item.get("score", 0)
+        grade_color = "#3fb950" if grade.startswith("A") else "#d29922" if grade in ("B", "C") else "#f85149"
+        
+        missing = item.get("missing", [])
+        missing_badges = ""
+        for m in missing[:5]: # Show top 5
+             missing_badges += f'<span class="tag tag-high" title="{html.escape(m.get("desc", ""))}" style="margin-bottom:2px;">{m["header"]}</span> '
+        if len(missing) > 5:
+             missing_badges += f'<span class="tag tag-low">+{len(missing)-5} more</span>'
+
+        warnings = item.get("warnings", [])
+        warnings_html = ""
+        if warnings:
+            warnings_html = "<br>".join([f'<span style="color:#f85149; font-size:11px;">⚠️ {w}</span>' for w in warnings])
+            if warnings_html:
+                 warnings_html = f'<div style="margin-top:4px;">{warnings_html}</div>'
+
+        present_count = item.get("present_count", 0)
+        
+        # Prepare Burp Data
+        req_b64 = base64.b64encode((item.get("request_raw") or "").encode("utf-8")).decode("utf-8")
+        res_b64 = base64.b64encode((item.get("response_raw") or "").encode("utf-8")).decode("utf-8")
+        row_id = f"headers_{uuid.uuid4().hex[:8]}"
+        
+        burp_script_data = f'<script>BURP_DATA["{row_id}"] = {{ "url": "{html.escape(item.get("url", ""))}", "req": "{req_b64}", "res": "{res_b64}" }};</script>'
+
+        rows += f'''
+        <tr>
+            <td style="text-align:center; vertical-align:top;">
+                <div style="background:{grade_color}; color:#fff; border-radius:4px; padding:4px 8px; font-weight:700; font-size:14px; width:40px; margin:0 auto;">{grade}</div>
+                <div style="font-size:10px; margin-top:4px; font-weight:600;">{score}%</div>
+            </td>
+            <td style="vertical-align:top;">
+                <a href="{html.escape(item.get("url", ""))}" target="_blank" style="font-weight:600; font-size:13px; color:var(--text-primary);">{html.escape(item.get("url", ""))}</a>
+                <div style="font-size:11px; color:var(--text-secondary); margin-top:2px;">Status: {item.get("status")}</div>
+                {warnings_html}
+            </td>
+            <td style="vertical-align:top;">
+                <div style="margin-bottom:6px;">
+                    <span style="font-size:11px; font-weight:600; color:var(--text-secondary);">MISSING HEADERS:</span><br>
+                    {missing_badges}
+                </div>
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <div style="font-size:11px; color:#3fb950;">
+                        ✓ {present_count} security headers present
+                    </div>
+                    <div>
+                        <button class="burp-btn" onclick="openBurp('{row_id}')">View HTTP</button>
+                        {burp_script_data}
+                    </div>
+                </div>
+            </td>
+        </tr>
+        '''
+    
+    avg_score = sum(d.get("score", 0) for d in data) / len(data)
+
+    return f'''
+    <div class="card">
+        <div class="card-header">
+            <span class="card-title">🛡️ Security Headers Analysis</span>
+            <span class="card-badge">Avg Score: {int(avg_score)}%</span>
+        </div>
+        <div class="card-content">
+            <div class="table-wrapper">
+                <table>
+                    <thead>
+                        <tr>
+                            <th width="60" style="text-align:center;">Grade</th>
+                            <th>URL & Warnings</th>
+                            <th>Security Headers Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {rows}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    '''
+
+
+def build_takeover_content(target: str) -> str:
+    path = Path("output") / target / "takeover" / "takeover_results.json"
+    data = read_json_file(path)
+    if not data:
+        return '<div class="empty-state"><p>No subdomain takeovers detected.</p></div>'
+
+    rows = ""
+    for item in data:
+        status = item.get("status", "POTENTIAL")
+        style = "tag-high" if status == "VULNERABLE" else "tag-medium"
+        
+        rows += f'''
+        <tr>
+            <td><span class="tag {style}">{status}</span></td>
+            <td><strong>{html.escape(item.get("subdomain", ""))}</strong></td>
+            <td><code>{html.escape(item.get("cname", ""))}</code></td>
+            <td>{html.escape(item.get("service", ""))}</td>
+            <td>{item.get("severity", "").upper()}</td>
+        </tr>
+        '''
+
+    return f'''
+    <div class="card" style="border-left: 3px solid var(--accent-red);">
+        <div class="card-header">
+            <span class="card-title">🏴‍☠️ Subdomain Takeover Candidates</span>
+            <span class="card-badge warning">{len(data)} found</span>
+        </div>
+        <div class="card-content" style="display:block;">
+            <p style="margin-bottom:16px; color:var(--text-secondary);">
+                Subdomains pointing to external services (CNAME) that may be unclaimed or expired.
+                <strong>Verify manually before reporting.</strong>
+            </p>
+            <div class="table-wrapper">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Status</th>
+                            <th>Subdomain</th>
+                            <th>CNAME / Target</th>
+                            <th>Service</th>
+                            <th>Severity</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {rows}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    '''
+
+
+def build_waf_content(target: str) -> str:
+    path = Path("output") / target / "waf" / "waf_results.json"
+    data = read_json_file(path)
+    if not data:
+        return '<div class="empty-state"><p>No WAF detected.</p></div>'
+
+    # Statistics
+    waf_counts = {}
+    for item in data:
+        name = item.get("primary_waf", "Unknown")
+        waf_counts[name] = waf_counts.get(name, 0) + 1
+
+    stats_html = '<div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px;">'
+    for name, count in sorted(waf_counts.items(), key=lambda x: x[1], reverse=True):
+        stats_html += f'<div style="background:var(--bg-tertiary); padding:6px 12px; border-radius:20px; font-size:13px; border:1px solid var(--border-color);"><strong>{name}</strong>: {count}</div>'
+    stats_html += '</div>'
+
+    rows = ""
+    for item in data:
+        matches = item.get("waf_detected", [{}])[0].get("matches", [])
+        match_str = ", ".join(matches[:3])
+        if len(matches) > 3: range_str = f" +{len(matches)-3} more"
+        else: range_str = ""
+
+        rows += f'''
+        <tr>
+            <td><span class="tag tag-port">{html.escape(item.get("primary_waf", ""))}</span></td>
+            <td><a href="{html.escape(item.get("url", ""))}" target="_blank">{html.escape(item.get("url", ""))}</a></td>
+            <td>{item.get("status")}</td>
+            <td style="font-size:11px; color:var(--text-secondary);">{html.escape(match_str)}{range_str}</td>
+        </tr>
+        '''
+
+    return f'''
+    {stats_html}
+    <div class="card">
+        <div class="card-header">
+            <span class="card-title">🛡️ Detected WAFs via Fingerprinting</span>
+            <span class="card-badge">{len(data)} detected</span>
+        </div>
+        <div class="card-content" style="display:block;">
+            <div class="table-wrapper">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>WAF Name</th>
+                            <th>URL</th>
+                            <th>Status</th>
+                            <th>Evidence</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {rows}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    '''
+
+
+def build_emails_content(target: str) -> str:
+    path = Path("output") / target / "emails" / "emails.json"
+    data = read_json_file(path)
+    if not data:
+        return '<div class="empty-state"><p>No emails found.</p></div>'
+    
+    internal = data.get("internal", [])
+    external = data.get("external", [])
+    
+    def render_table(email_list, title):
+        if not email_list: return ""
+        r_rows = ""
+        for e in email_list:
+            sources = ", ".join([str(s).split("/")[-1] for s in e.get("sources", [])[:2]])
+            r_rows += f'<tr><td>{html.escape(e.get("email"))}</td><td>{html.escape(e.get("domain"))}</td><td style="color:var(--text-secondary);font-size:11px;">{html.escape(sources)}</td></tr>'
+        
+        return f'''
+        <div class="card">
+            <div class="card-header">
+                <span class="card-title">{title}</span>
+                <span class="card-badge">{len(email_list)}</span>
+            </div>
+            <div class="card-content" style="display:block;">
+                <div class="table-wrapper">
+                    <table>
+                        <thead><tr><th>Email</th><th>Domain</th><th>Source Files</th></tr></thead>
+                        <tbody>{r_rows}</tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        '''
+
+    return f'''
+    <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+        <div>{render_table(internal, "🏢 Internal / Target Emails")}</div>
+        <div>{render_table(external, "🌐 External / Third-party Emails")}</div>
+    </div>
+    '''
 
 
 def build_admin_content(target: str) -> str:
@@ -2166,6 +2507,9 @@ def build_admin_content(target: str) -> str:
     
     if not admin_data:
         return '<div class="empty-state"><p>No admin panels discovered</p></div>'
+    
+    # Ordenar: 200 primeiro, depois outros status
+    admin_data.sort(key=lambda p: (0 if p.get("status") == 200 else 1, p.get("status", 999)))
     
     rows = ""
     for panel in admin_data:
@@ -2349,7 +2693,7 @@ def run(context: Dict[str, Any]) -> List[str]:
         keys_warning = f'<p style="color:var(--accent-red);"><strong>Alert:</strong> Found {stats["keys_found"]} exposed keys/secrets. Review immediately!</p>'
     
     # Get datetime
-    now = datetime.datetime.now()
+    now = datetime.now()
     
     # Build template variables
     template_vars = {
@@ -2397,7 +2741,15 @@ def run(context: Dict[str, Any]) -> List[str]:
         "stats_depconfusion": len([d for d in (read_json_file(Path("output") / target / "depconfusion" / "depconfusion.json") or []) if d.get("risk") == "HIGH"]),
         "dns_content": build_dns_content(target),
         "stats_ips": len(read_file_lines(Path("output") / target / "domain" / "ips.txt")),
+        "takeover_content": build_takeover_content(target),
+        "stats_takeover": stats.get("takeover_count", 0),
+        "waf_content": build_waf_content(target),
+        "stats_waf": stats.get("waf_count", 0),
+        "emails_content": build_emails_content(target),
+        "stats_emails": stats.get("emails_count", 0),
     }
+    
+
     
     # Generate HTML
     try:

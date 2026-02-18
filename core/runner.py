@@ -50,8 +50,42 @@ def execute_chain(target: str, chain: list, params: dict):
         "11": "visual",
         "12": "cve",
         "13": "admin",
-        "14": "depconfusion"
+        "14": "depconfusion",
+        "15": "cors",
+        "16": "takeover",
+        "17": "headers",
+        "18": "waf",
+        "19": "emails",
     }
+
+    # ==========================================
+    #  CHECKPOINT: Resume / Skip
+    # ==========================================
+    checkpoint_file = Path("output") / target / ".checkpoint"
+    completed_steps = set()
+    
+    if checkpoint_file.exists():
+        try:
+            completed_steps = set(checkpoint_file.read_text().strip().splitlines())
+        except Exception:
+            pass
+    
+    if completed_steps:
+        completed_names = [PLUGIN_MAP.get(s, s) for s in completed_steps if s in PLUGIN_MAP]
+        if completed_names:
+            info(f"\n📋 Scan anterior detectado! Módulos já completos: {', '.join(completed_names)}")
+            resume = input(
+                f"\n  [S] Pular módulos já completos (resume)\n"
+                f"  [R] Recomeçar tudo do zero\n"
+                f"  Escolha [S/r]: "
+            ).strip().lower()
+            
+            if resume in ("r", "recomeçar", "reset"):
+                completed_steps = set()
+                checkpoint_file.unlink(missing_ok=True)
+                info("🔄 Recomeçando do zero...")
+            else:
+                info(f"⏩ Resumindo — pulando {len(completed_steps)} módulos já completos\n")
 
     # ==========================================
     #  TIMING: Inicialização
@@ -65,6 +99,12 @@ def execute_chain(target: str, chain: list, params: dict):
         name = PLUGIN_MAP.get(step)
         if not name:
             error(f"Plugin desconhecido: {step}")
+            continue
+
+        # Skip se já completou (resume)
+        if step in completed_steps:
+            info(f"[⏩] Pulando módulo já completo: {name}")
+            plugin_timings.append((name, 0.0, "SKIP"))
             continue
 
         info(f"[+] Executando módulo: {name}")
@@ -92,6 +132,11 @@ def execute_chain(target: str, chain: list, params: dict):
             
             plugin_timings.append((name, duration, "OK"))
             success(f"⏱️  [{name.upper()}] Tempo de execução: {format_duration(duration)}")
+            
+            # Salvar checkpoint
+            checkpoint_file.parent.mkdir(parents=True, exist_ok=True)
+            with checkpoint_file.open("a") as f:
+                f.write(f"{step}\n")
             
         except Exception as e:
             plugin_end = time.time()
