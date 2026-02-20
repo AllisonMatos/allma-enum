@@ -3,7 +3,7 @@ from pathlib import Path
 
 from menu import C
 from .utils import require_binary
-from ..output import info, success, error
+from ..output import info, success, error, warn
 
 
 def run_naabu(subs_file: Path, out_file: Path, mode: str):

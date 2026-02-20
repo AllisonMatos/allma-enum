@@ -134,7 +134,7 @@ def check_admin_path(base_url: str, path: str) -> dict:
 
     url = base_url.rstrip("/") + path
     try:
-        with httpx.Client(timeout=8, verify=False, follow_redirects=True) as client:
+        with httpx.Client(timeout=4, verify=False, follow_redirects=True) as client:
             resp = client.get(url, headers={
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
             })
@@ -251,7 +251,7 @@ def run(context: dict):
     seen_urls = set()  # Deduplicar em tempo real
     total_tasks = 0
 
-    with ThreadPoolExecutor(max_workers=20) as executor:
+    with ThreadPoolExecutor(max_workers=35) as executor:
         futures = {}
         for base in extended_bases:
             for path in ADMIN_PATHS:

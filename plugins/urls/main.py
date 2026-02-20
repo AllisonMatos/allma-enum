@@ -32,6 +32,7 @@ def httpx_validate(in_file: Path, out_file: Path, want_status: str = WANT_STATUS
         httpx,
         "-l", str(in_file),
         "-mc", want_status,
+        "-threads", "100",
         "-retries", "2",
         "-timeout", "15",
         "-random-agent",
@@ -205,8 +206,7 @@ def run(context: dict):
     # ETAPA 2 — Executar urlfinder
     # ============================================================
     
-    # Deduplica por base URL (scheme+host) — urlfinder crawla a partir do domínio,
-    # então enviar 5000 paths do mesmo host é redundante
+    # Deduplica por base URL (scheme+host) — urlfinder crawla a partir do domínio
     from urllib.parse import urlparse as _urlparse
     base_seeds = set()
     for u in urls_to_scan:
@@ -224,67 +224,102 @@ def run(context: dict):
     
     import time as _time
     import tempfile as _tempfile
-    
-    # Com base URLs únicas, batches menores bastam
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    import os
+
+    # Parallelize urlfinder execution
+    # Run 5 concurrent urlfinder instances, each handling a batch
+    CONCURRENT_WORKERS = 5
     BATCH_SIZE = 50
     total_seeds = len(urlfinder_seeds)
     url_count = 0
-    seeds_done = 0
     start_time = _time.time()
     
+    def process_batch(batch_seeds):
+        """Runs urlfinder for a batch of seeds and returns unique URLs found."""
+        if not batch_seeds:
+            return []
+            
+        found_lines = []
+        try:
+            # Input file for this batch
+            fd_in, temp_in = _tempfile.mkstemp(suffix=".txt", text=True)
+            with os.fdopen(fd_in, 'w') as f:
+                f.write("\n".join(batch_seeds) + "\n")
+            
+            # Run urlfinder
+            cmd = [urlfinder, "-list", temp_in, "-silent", "-timeout", "10"]
+            proc = subprocess.run(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                text=True,
+                timeout=300
+            )
+            
+            if proc.stdout:
+                found_lines = [l for l in proc.stdout.splitlines() if l.strip()]
+                
+        except Exception as e:
+            # Silently fail for batch? or log?
+            pass
+        finally:
+            if os.path.exists(temp_in):
+                os.unlink(temp_in)
+                
+        return found_lines
+
     try:
+        # Generate batches
+        batches = []
+        for i in range(0, total_seeds, BATCH_SIZE):
+            batches.append(urlfinder_seeds[i:i + BATCH_SIZE])
+            
+        info(f"   🚀 Iniciando {len(batches)} lotes com {CONCURRENT_WORKERS} workers paralelos...")
+
         with url_completas.open("w", encoding="utf-8", errors="ignore") as fout:
-            for i in range(0, total_seeds, BATCH_SIZE):
-                batch = urlfinder_seeds[i:i + BATCH_SIZE]
-                batch_num = (i // BATCH_SIZE) + 1
+            with ThreadPoolExecutor(max_workers=CONCURRENT_WORKERS) as executor:
+                futures = {executor.submit(process_batch, batch): idx for idx, batch in enumerate(batches)}
                 
-                # Criar arquivo temporário para o lote
-                tmp = _tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False)
-                tmp.write("\n".join(batch) + "\n")
-                tmp.close()
-                
-                cmd = [urlfinder, "-list", tmp.name, "-silent", "-timeout", "5"]
-                
-                proc = subprocess.Popen(
-                    cmd,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    text=True,
-                )
-                
-                for line in proc.stdout:
-                    fout.write(line)
-                    url_count += 1
-                
-                proc.wait()
-                
-                # Limpar arquivo temporário
-                try:
-                    import os; os.unlink(tmp.name)
-                except:
-                    pass
-                
-                seeds_done = min(i + BATCH_SIZE, total_seeds)
-                elapsed = _time.time() - start_time
-                mins = int(elapsed // 60)
-                secs = int(elapsed % 60)
-                pct = int(seeds_done / total_seeds * 100)
-                
-                # Estimar tempo restante
-                if seeds_done > 0:
-                    eta_secs = (elapsed / seeds_done) * (total_seeds - seeds_done)
-                    eta_mins = int(eta_secs // 60)
-                    eta_s = int(eta_secs % 60)
-                    eta_str = f" | ETA ~{eta_mins}m{eta_s:02d}s"
-                else:
-                    eta_str = ""
-                
-                info(f"   ⏳ urlfinder: {seeds_done}/{total_seeds} seeds ({pct}%) | {url_count} URLs | {mins}m{secs:02d}s{eta_str}")
+                completed = 0
+                for future in as_completed(futures):
+                    completed += 1
+                    batch_idx = futures[future]
+                    try:
+                        results = future.result()
+                        # Write immediately to file
+                        for line in results:
+                            fout.write(line + "\n")
+                        
+                        url_count += len(results)
+                        
+                        # Progress log
+                        elapsed = _time.time() - start_time
+                        pct = int(completed / len(batches) * 100)
+                        
+                         # Estimar tempo
+                        if completed > 0:
+                            avg_time_per_batch = elapsed / completed
+                            remaining_batches = len(batches) - completed
+                            eta_secs = avg_time_per_batch * remaining_batches
+                            eta_mins = int(eta_secs // 60)
+                            eta_s = int(eta_secs % 60)
+                            eta_str = f" | ETA ~{eta_mins}m{eta_s:02d}s"
+                        else:
+                            eta_str = ""
+
+                        # Log only every few batches to avoid clutter if fast, or always if slow
+                        print(f"   ⏳ urlfinder: {completed}/{len(batches)} batches ({pct}%) | +{len(results)} URLs | Total: {url_count}{eta_str}", end="\r")
+                        
+                    except Exception as e:
+                        error(f"Erro no batch {batch_idx}: {e}")
+
+        print("") # Newline
         
         elapsed = _time.time() - start_time
         mins = int(elapsed // 60)
         secs = int(elapsed % 60)
-        info(f"   ✅ urlfinder concluído: {url_count} URLs de {total_seeds} seeds em {mins}m{secs:02d}s")
+        info(f"   ✅ urlfinder concluído: {url_count} URLs em {mins}m{secs:02d}s")
 
     except Exception as e:
         error(f"❌ Falha ao executar urlfinder: {e}")
