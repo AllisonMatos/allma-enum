@@ -175,7 +175,23 @@ def calculate_stats(target: str) -> Dict:
             stats["emails_count"] = json.loads(emails_file.read_text()).get("total", 0)
         except: pass
 
+
+    # ParamFuzz
+    paramfuzz_file = base / "paramfuzz" / "findings.json"
+    if paramfuzz_file.exists():
+        try:
+            stats["paramfuzz_count"] = len(json.loads(paramfuzz_file.read_text()))
+        except: pass
+
+    # SourceMaps
+    sourcemaps_file = base / "sourcemaps" / "secrets.json"
+    if sourcemaps_file.exists():
+        try:
+            stats["sourcemaps_count"] = len(json.loads(sourcemaps_file.read_text()))
+        except: pass
+
     return stats
+
 
 
 # ------------------------------------------------------------
@@ -859,6 +875,16 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             <div class="nav-label">Params <span class="count">{stats_params}</span></div>
         </button>
         
+        <button class="nav-btn" data-section="paramfuzz">
+            <div class="nav-icon">🎯</div>
+            <div class="nav-label">Fuzzed Params <span class="count">{stats_paramfuzz}</span></div>
+        </button>
+
+        <button class="nav-btn" data-section="sourcemaps">
+            <div class="nav-icon">🗺️</div>
+            <div class="nav-label">Source Maps <span class="count">{stats_sourcemaps}</span></div>
+        </button>
+        
         <button class="nav-btn" data-section="cve">
             <div class="nav-icon">💣</div>
             <div class="nav-label">CVEs <span class="count">{stats_cves}</span></div>
@@ -960,6 +986,8 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             <section class="section" id="routes">{routes_content}</section>
             <section class="section" id="js">{js_content}</section>
             <section class="section" id="params">{params_content}</section>
+            <section class="section" id="paramfuzz">{paramfuzz_content}</section>
+            <section class="section" id="sourcemaps">{sourcemaps_content}</section>
             <section class="section" id="cloud">{cloud_content}</section>
             <section class="section" id="cve">{cve_content}</section>
             <section class="section" id="admin">{admin_content}</section>
@@ -2709,6 +2737,79 @@ def build_dns_content(target: str) -> str:
 
 
 # ------------------------------------------------------------
+def build_paramfuzz_content(target: str) -> str:
+    import html
+    from pathlib import Path
+    path = Path("output") / target / "paramfuzz" / "findings.json"
+    data = read_json_file(path)
+    if not data:
+        return '<div class="empty-state"><p>No hidden parameters discovered.</p></div>'
+
+    rows = ""
+    for item in data:
+        rows += f'''
+        <tr>
+            <td><code style="color:var(--accent-orange);">{html.escape(item.get("parameter", ""))}</code></td>
+            <td><a href="{html.escape(item.get("url", ""))}" target="_blank">{html.escape(item.get("url", ""))}</a></td>
+            <td><span class="tag tag-medium">{item.get("status")}</span> (Baseline: {item.get("baseline_status")})</td>
+            <td>{item.get("length")} (Baseline: {item.get("baseline_length")})</td>
+            <td style="font-size:12px;">{html.escape(item.get("reason", ""))}</td>
+        </tr>
+        '''
+    return f'''
+    <div class="card open" style="border-left: 4px solid var(--accent-orange);">
+        <div class="card-header">
+            <span class="card-title">🎯 Hidden Parameters Fuzzed</span>
+            <span class="card-badge">{len(data)} parameters</span>
+        </div>
+        <div class="card-content">
+            <div class="table-wrapper">
+                <table>
+                    <thead><tr><th>Parameter</th><th>URL</th><th>Status</th><th>Length</th><th>Reason</th></tr></thead>
+                    <tbody>{rows}</tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    '''
+
+def build_sourcemaps_content(target: str) -> str:
+    import html
+    from pathlib import Path
+    path = Path("output") / target / "sourcemaps" / "secrets.json"
+    data = read_json_file(path)
+    if not data:
+        return '<div class="empty-state"><p>No secrets found in source maps.</p></div>'
+
+    rows = ""
+    for item in data:
+        rows += f'''
+        <tr>
+            <td><span class="tag tag-high">{html.escape(item.get("type", ""))}</span></td>
+            <td style="font-size:12px;">{html.escape(item.get("source_file", ""))} (line {item.get("line_num", "?")})<br><a href="{html.escape(item.get("map_url", ""))}" target="_blank" style="color:var(--text-muted);font-size:10px;">{html.escape(item.get("map_url", ""))}</a></td>
+            <td><code style="color:var(--accent-orange);background:#2d2d2d;padding:2px 6px;border-radius:4px;">{html.escape(item.get("match", "")[:80])}</code></td>
+            <td style="font-size:11px;color:var(--text-secondary);max-width:300px;word-wrap:break-word;">{html.escape(item.get("context", "")[:150])}</td>
+        </tr>
+        '''
+    return f'''
+    <div class="card open" style="border-left: 4px solid var(--accent-red);">
+        <div class="card-header">
+            <span class="card-title">🗺️ Source Maps Secrets</span>
+            <span class="card-badge">{len(data)} secrets</span>
+        </div>
+        <div class="card-content">
+            <div class="table-wrapper">
+                <table>
+                    <thead><tr><th>Type</th><th>Source File & Map</th><th>Match</th><th>Context</th></tr></thead>
+                    <tbody>{rows}</tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    '''
+
+def run(context: Dict[str, Any]) -> List[str]:
+
 def run(context: Dict[str, Any]) -> List[str]:
     target = context.get("target")
     if not target:
@@ -2772,6 +2873,10 @@ def run(context: Dict[str, Any]) -> List[str]:
         "stats_forms": len(read_json_file(Path("output") / target / "crawlers" / "katana_forms.json") or read_json_file(Path("output") / target / "domain" / "crawlers" / "katana_forms.json") or []),
         "params_content": build_params_content(target),
         "stats_params": len(read_json_file(Path("output") / target / "crawlers" / "katana_params_all.json") or read_json_file(Path("output") / target / "domain" / "crawlers" / "katana_params_all.json") or read_json_file(Path("output") / target / "domain" / "katana_params_all.json") or {}),
+        "stats_sourcemaps": stats.get("sourcemaps_count", 0),
+        "sourcemaps_content": build_sourcemaps_content(target),
+        "stats_paramfuzz": stats.get("paramfuzz_count", 0),
+        "paramfuzz_content": build_paramfuzz_content(target),
         "cloud_content": build_cloud_content(target),
         "cve_content": build_cve_content(subdomains),
         "security_content": build_security_content(target),

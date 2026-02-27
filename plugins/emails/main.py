@@ -11,8 +11,9 @@ from menu import C
 from ..output import info, success, warn, error
 
 # Regex robusto para emails
+# Regex robusto e seguro contra catastrophic backtracking
 EMAIL_REGEX = re.compile(
-    r'[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}',
+    r'[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9\-]+(?:\.[a-zA-Z0-9\-]+)*\.[a-zA-Z]{2,}',
     re.I
 )
 
@@ -63,12 +64,40 @@ def is_valid_email(email: str) -> bool:
 
 
 def extract_emails_from_text(text: str) -> set:
-    """Extrai emails de um texto."""
+    """Extrai emails de um texto de forma O(N)."""
     found = set()
-    for match in EMAIL_REGEX.finditer(text):
-        email = match.group(0).lower().strip(".")
-        if is_valid_email(email):
-            found.add(email)
+    pos = 0
+    length = len(text)
+    
+    # Pre-compute valid characters for fast lookups
+    allowed_chars = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._%+-")
+    
+    while True:
+        pos = text.find('@', pos)
+        if pos == -1:
+            break
+            
+        # Encontra o inicio da string que parece email
+        start = pos - 1
+        while start >= 0 and text[start] in allowed_chars:
+            start -= 1
+        start += 1
+        
+        # Encontra o final
+        end = pos + 1
+        while end < length and text[end] in allowed_chars:
+            end += 1
+            
+        candidate = text[start:end]
+        match = EMAIL_REGEX.fullmatch(candidate)
+        if match:
+            email = match.group(0).lower().strip(".")
+            if is_valid_email(email):
+                found.add(email)
+                
+        # Continuar a busca apos o fim deste candidato
+        pos = end
+        
     return found
 
 

@@ -28,7 +28,6 @@ REQUIRED_TOOLS = [
     "katana",
     "gospider",
     "httpx", # Project discovery httpx
-    "gowitness",
     "searchsploit",
 ]
 

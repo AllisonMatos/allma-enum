@@ -37,7 +37,6 @@ MODULES = {
     "8": "wordlist",
     "9": "xss",
     "10": "all",
-    "11": "visual",
     "12": "cve",
     "13": "admin",
     "14": "depconfusion",
@@ -46,6 +45,8 @@ MODULES = {
     "17": "headers",
     "18": "waf",
     "19": "emails",
+    "20": "sourcemaps",
+    "21": "paramfuzz",
 }
 
 # --------- DEPENDÊNCIAS ---------
@@ -59,7 +60,9 @@ DEPENDENCIES = {
     "7": ["1", "2", "3", "4", "5", "6", "7"],
     "8": ["1", "2", "3", "4", "5", "6", "7", "8"],
     "9": ["1", "2", "3", "4", "5", "6", "7", "8", "9"],
-    "10": ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19"],
+    "10": ["1", "2", "3", "4", "5", "6", "7", "8", "9", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21"],
+    "20": ["1", "2", "5", "20"],
+    "21": ["1", "3", "21"],
 }
 
 
@@ -96,6 +99,8 @@ def print_menu():
         "7": ("endpoint", "Enumeração de endpoints API", "🎯"),
         "8": ("wordlist", "Força bruta em diretórios", "🗂️"),
         "9": ("xss", "Detecção de vulnerabilidades XSS", "🎭"),
+        "20": ("sourcemaps", "Extração e Análise de Source Maps", "🗺️"),
+        "21": ("paramfuzz", "Fuzzing de Parâmetros Ocultos", "🔍"),
         "10": ("all", "Execução completa", "🚀")
     }
 

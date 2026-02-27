@@ -125,6 +125,27 @@ def ensure_outdir(target: str) -> Path:
     return outdir
 
 
+def clean_html_for_fingerprint(html: str) -> str:
+    """Remove dynamic data to create a stable hash for deduplication."""
+    import re
+    # Remover CSRF tokens e nonces
+    html = re.sub(r'name=["\']csrf.*?["\'][^>]*value=["\'].*?["\']', '', html, flags=re.I)
+    html = re.sub(r'name=["\']csrf.*?["\'][^>]*content=["\'].*?["\']', '', html, flags=re.I)
+    html = re.sub(r'name=["\']_token["\'][^>]*value=["\'].*?["\']', '', html, flags=re.I)
+    
+    # Remover timestamps e tokens grandes baseados em sessoes
+    html = re.sub(r'\b\d{10}\b', '', html)  # Unix timestamps
+    html = re.sub(r'\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}', '', html)
+    html = re.sub(r'[a-f0-9]{32,64}', '', html)
+    
+    # Remover paths refletidos no HTML
+    html = re.sub(r'/[a-zA-Z0-9_/%?=-]+', '', html)
+    
+    # Remover espacos e normalizar
+    html = re.sub(r'\s+', ' ', html).strip()
+    return html
+
+
 def check_admin_path(base_url: str, path: str) -> dict:
     """
     Testa um path de admin em uma URL base.
@@ -179,6 +200,10 @@ def check_admin_path(base_url: str, path: str) -> dict:
             )
 
             if is_interesting:
+                import hashlib
+                cleaned_content = clean_html_for_fingerprint(content)
+                content_hash = hashlib.sha256(cleaned_content.encode('utf-8')).hexdigest()
+                
                 return {
                     "url": final_url,
                     "path": path,
@@ -188,6 +213,7 @@ def check_admin_path(base_url: str, path: str) -> dict:
                     "has_login_form": has_login,
                     "response_size": len(content),
                     "content_type": resp.headers.get("content-type", ""),
+                    "content_hash": content_hash
                 }
 
     except Exception:
@@ -248,7 +274,7 @@ def run(context: dict):
 
     # Executar testes em paralelo
     found_panels = []
-    seen_urls = set()  # Deduplicar em tempo real
+    seen_hashes = set()  # Deduplicar por conteudo real (evita falsos redirects)
     total_tasks = 0
 
     with ThreadPoolExecutor(max_workers=35) as executor:
@@ -268,11 +294,18 @@ def run(context: dict):
             try:
                 result = future.result()
                 if result:
-                    # Deduplicar pela URL final (muitas bases redirecionam pro mesmo lugar)
+                    # Deduplicar pelo Hash do HTML final (stripado) + host base
+                    # Isso garante que a mesma pagina de redirect generico seja salva 1 unica vez
                     norm_url = result["url"].rstrip("/").lower()
-                    if norm_url in seen_urls:
+                    host_domain = urlparse(norm_url).netloc
+                    
+                    content_hash = result.get("content_hash", "")
+                    dedup_key = f"{host_domain}_{content_hash}"
+                    
+                    if dedup_key in seen_hashes:
                         continue
-                    seen_urls.add(norm_url)
+                        
+                    seen_hashes.add(dedup_key)
                     
                     found_panels.append(result)
                     status_color = C.RED if result["status"] == 200 else C.YELLOW

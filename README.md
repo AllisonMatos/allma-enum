@@ -27,8 +27,10 @@ Allma-Enum é uma suíte completa para pentest e bug bounty, focada em automaç�
 - **Secret Finder**: Busca por chaves de API, tokens e credenciais vazadas em JS/HTML.
 - **🆕 Token Validation**: Validação automática de tokens via API (GitHub, AWS, Google, Slack, Stripe, Twilio, SendGrid, JWT).
 - **JS Analysis**: Extração de endpoints e rotas de arquivos JavaScript.
-- **XSS Scanner**: Detecção de vulnerabilidades XSS.
-- **CVE Detection**: Correlação de tecnologias detectadas com CVEs conhecidos.
+- **CVE Detection**: Correlação de tecnologias detectadas com CVEs conhecidos via Searchsploit.
+- **🗺️ Source Maps**: Extração de código-fonte original e segredos de arquivos `.map` (Soucemap unpacker).
+- **🎯 Param Fuzz**: Fuzzing avançado e assíncrono para descoberta de parâmetros HTTP ocultos com detecção de reflexão.
+- **🎭 XSS Scanner**: Busca passiva por vulnerabilidades Cross-Site Scripting em parâmetros e formulários.
 
 ### 🔑 Admin Panel Discovery
 - **80+ paths comuns** testados (wp-admin, phpmyadmin, /admin, etc.).
@@ -45,15 +47,11 @@ Allma-Enum é uma suíte completa para pentest e bug bounty, focada em automaç�
 - **Registry Check**: Verifica existência no npm público.
 - **Risk Classification**: Pacotes não encontrados = HIGH risk (potencial supply chain attack).
 
-### 📸 Visual Recon
-- **Screenshots**: Captura automática de todas as URLs válidas com `gowitness`.
-- **Gallery**: Galeria HTML para navegação visual.
-- **Report Integration**: Screenshots inline no relatório por subdomínio.
 
 ### 📊 Relatórios Profissionais
 - **Dashboard SPA**: Design moderno Dark Mode com navegação por abas.
-- **15 seções**: Dashboard, Subdomains, DNS/IPs, Security, CVEs, Services, URLs, Keys, Endpoints, JS, Params, Cloud, Admin Panels, Dep Confusion, Files.
-- **Login Flags**: Badge 🔑 LOGIN em subdomínios com páginas de login detectadas + screenshots.
+- **17 seções**: Dashboard, Subdomains, DNS/IPs, Security, CVEs, Services, URLs, Keys, Endpoints, JS, Params, Param Fuzz, Source Maps, Cloud, Admin Panels, Dep Confusion, Files.
+- **Login Flags**: Badge 🔑 LOGIN em subdomínios com páginas de login detectadas.
 - **Validation Badges**: ✓ VALIDATED / ✗ INVALID / ⊘ NOT TESTED para secrets encontrados.
 - **Cloud Permissions**: Coluna de permissões nos buckets descobertos.
 - **Export**: Dados brutos salvos em JSON/TXT.
@@ -89,7 +87,6 @@ go install github.com/projectdiscovery/naabu/v2/cmd/naabu@latest
 go install github.com/projectdiscovery/katana/cmd/katana@latest
 go install github.com/projectdiscovery/httpx/cmd/httpx@latest
 go install github.com/jaeles-project/gospider@latest
-go install github.com/sensepost/gowitness@latest
 ```
 
 **Opcionais (melhoram cobertura):**
@@ -119,9 +116,11 @@ python3 menu.py
 | 7 | **endpoint** | Mapeamento de API |
 | 8 | **wordlist** | Geração de wordlists customizadas |
 | 9 | **xss** | Scan de XSS |
+| 20 | **sourcemaps** | Extração e Análise de Source Maps |
+| 21 | **paramfuzz** | Fuzzing de Parâmetros Ocultos |
 | 10 | **ALL** | **Executa o fluxo completo (Recomendado)** |
 
-> Módulo "ALL" inclui automaticamente: visual (screenshots), CVE detection, admin panel discovery e dependency confusion.
+> Módulo "ALL" inclui automaticamente: CVE detection, admin panel discovery, dependency confusion, sourcemaps e paramfuzz.
 
 ---
 
@@ -135,7 +134,8 @@ output/example.com/
 ├── crawlers/         # Katana, Gospider
 ├── keys/             # Secrets e tokens encontrados
 ├── jsscanner/        # Análise de arquivos JS
-├── visual/           # Screenshots (gowitness)
+├── sourcemaps/       # Segredos extraídos de source maps
+├── paramfuzz/        # Parâmetros ocultos encontrados
 ├── admin/            # Admin panels descobertos
 ├── depconfusion/     # Dependency confusion results
 └── cloud/            # Cloud buckets e permissões

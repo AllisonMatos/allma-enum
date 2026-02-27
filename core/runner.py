@@ -47,7 +47,6 @@ def execute_chain(target: str, chain: list, params: dict):
         "8": "wordlist",
         "9": "xss",
         "10": "cloud",
-        "11": "visual",
         "12": "cve",
         "13": "admin",
         "14": "depconfusion",
@@ -56,6 +55,8 @@ def execute_chain(target: str, chain: list, params: dict):
         "17": "headers",
         "18": "waf",
         "19": "emails",
+        "20": "sourcemaps",
+        "21": "paramfuzz",
     }
 
     # ==========================================
