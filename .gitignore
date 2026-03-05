@@ -36,3 +36,4 @@ venv/
 *.swp
 *.swo
 gowitness.sqlite3
+resume.cfg

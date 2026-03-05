@@ -21,6 +21,10 @@ from plugins.extractors import (
     extract_inline_scripts,
     analyze_page
 )
+from plugins.extractors.swagger_parser import scan_for_swagger
+from plugins.extractors.git_hunter import scan_exposed_git_cicd
+from plugins.scanners.param_miner import mine_parameters
+from plugins.scanners.logic_fuzzer import fuzz_logic_flaws
 
 CONCURRENCY_LIMIT = 10
 DELAY_BETWEEN_REQUESTS = 0.5
@@ -118,13 +122,32 @@ async def analyze_url_task(client, url, semaphore):
             routes = extract_routes(content, final_url)
             tech_result = analyze_page(final_url, content, headers)
             
+            # --- NEW BUG BOUNTY 2026 PLUGINS ---
+            # These perform their own network requests but handles timeout internally.
+            
+            # 1. Swagger Parser Fuzzing
+            swagger_docs = scan_for_swagger(final_url)
+            
+            # 2. Git Time Machine / CI-CD Check
+            git_exposed = scan_exposed_git_cicd(final_url)
+            
+            # 3. Param Fuzzing
+            hidden_params = mine_parameters(final_url)
+            
+            # 4. Logic Flaws (CORS / Cache)
+            logic_flaws = fuzz_logic_flaws(final_url)
+            
             return {
                 "url": final_url,
                 "is_login": is_login,
                 "keys": keys,
                 "js_files": js_files,
                 "routes": routes,
-                "technologies": tech_result["technologies"]
+                "technologies": tech_result["technologies"],
+                "swagger_docs": swagger_docs,
+                "git_exposed": git_exposed,
+                "hidden_params": hidden_params,
+                "logic_flaws": logic_flaws
             }
             
         except Exception as e:
@@ -230,6 +253,12 @@ def run(context):
     extracted_routes_file = outdir / "extracted_routes.json"
     technologies_file = outdir / "technologies.json"
     login_pages_file = outdir / "login_pages.txt"
+    
+    # Bug Bounty 2026 output files
+    swagger_file = outdir / "swagger_docs.json"
+    git_file = outdir / "git_exposed.json"
+    hidden_params_file = outdir / "hidden_params.json" # Domain local copy
+    logic_flaws_file = outdir / "logic_flaws.json" # Domain local copy
 
     if not valid_urls:
          success(f"\n{C.GREEN}Sem URLs para analisar.{C.END}")
@@ -247,6 +276,11 @@ def run(context):
         all_routes = []
         all_technologies = {}
         login_pages = []
+        
+        all_swagger = []
+        all_git = []
+        all_hidden_params = []
+        all_logic_flaws = []
         
         for res in results:
             url = res["url"]
@@ -280,6 +314,12 @@ def run(context):
                 if tech["name"] not in existing_names:
                     all_technologies[subdomain]["technologies"].append(tech)
                     existing_names.add(tech["name"])
+                    
+            # Bug Bounty 2026 data
+            all_swagger.extend(res.get("swagger_docs", []))
+            all_git.extend(res.get("git_exposed", []))
+            all_hidden_params.extend(res.get("hidden_params", []))
+            all_logic_flaws.extend(res.get("logic_flaws", []))
 
         # === SALVAR RESULTADOS ===
         
@@ -327,6 +367,35 @@ def run(context):
             with open(login_pages_file, "w") as f:
                 f.write("\n".join(sorted(set(login_pages))) + "\n")
             info(f"   + {len(set(login_pages))} paginas de login encontradas!")
+            
+        # SWAGGER DOCS
+        if all_swagger:
+            with open(swagger_file, "w") as f:
+                json.dump(all_swagger, f, indent=2, ensure_ascii=False)
+            info(f"   + {len(all_swagger)} docs Swagger identificados.")
+            
+        # GIT TIME MACHINE
+        if all_git:
+            with open(git_file, "w") as f:
+                json.dump(all_git, f, indent=2, ensure_ascii=False)
+            info(f"   + {len(all_git)} diretorios de repositório CI/CD expostos encontrados!")
+            
+        # HIDDEN PARAMS e LOGIC
+        if all_hidden_params:
+            # Note: The paramfuzz module could also output this. We store it locally in domain first.
+            # E garantimos diretório se ele salvar alhures.
+            h_dir = Path("output") / target / "paramfuzz"
+            h_dir.mkdir(parents=True, exist_ok=True)
+            with open(h_dir / "hidden_params.json", "w") as f:
+                json.dump(all_hidden_params, f, indent=2, ensure_ascii=False)
+            info(f"   + {len(all_hidden_params)} parâmteros escondidos injetados com sucesso.")
+            
+        if all_logic_flaws:
+            l_dir = Path("output") / target / "scanners"
+            l_dir.mkdir(parents=True, exist_ok=True)
+            with open(l_dir / "logic_flaws.json", "w") as f:
+                json.dump(all_logic_flaws, f, indent=2, ensure_ascii=False)
+            info(f"   + {len(all_logic_flaws)} falhas logicas achadas (CORS/Cache)!")
 
     except ImportError:
         error("Biblioteca 'httpx' não instalada. Instale com: pip install httpx")

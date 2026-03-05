@@ -57,6 +57,7 @@ def execute_chain(target: str, chain: list, params: dict):
         "19": "emails",
         "20": "sourcemaps",
         "21": "paramfuzz",
+        "22": "intelligence",
     }
 
     # ==========================================
@@ -147,9 +148,36 @@ def execute_chain(target: str, chain: list, params: dict):
             sys.exit(1)
 
     # ==========================================
-    #  REPORT — SEMPRE RODA POR ÚLTIMO
+    #  INTELLIGENCE & REPORT — RODA POR ÚLTIMO
     # ==========================================
-    info("[i] Gerando relatório final (report)...")
+    info("[i] Executando Intelligence Engine...")
+    
+    intel_step_id = "22"
+    if intel_step_id not in completed_steps:
+        intel_module = load_module("intelligence")
+        if intel_module:
+            try:
+                intel_start = time.time()
+                intel_module.run({"target": target})
+                intel_end = time.time()
+                intel_duration = intel_end - intel_start
+                plugin_timings.append(("intelligence", intel_duration, "OK"))
+                
+                # Checkpoint
+                with checkpoint_file.open("a") as f:
+                    f.write(f"{intel_step_id}\n")
+            except Exception as e:
+                intel_end = time.time()
+                intel_duration = intel_end - intel_start
+                plugin_timings.append(("intelligence", intel_duration, "ERRO"))
+                error(f"Falha ao rodar intelligence: {e}")
+        else:
+            plugin_timings.append(("intelligence", 0.0, "NOT_FOUND"))
+    else:
+        info("[⏩] Pulando módulo já completo: intelligence")
+        plugin_timings.append(("intelligence", 0.0, "SKIP"))
+
+    info("\n[i] Gerando relatório final (report)...")
 
     report_module = load_module("report")
     if report_module:

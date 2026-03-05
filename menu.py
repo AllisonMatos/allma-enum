@@ -101,6 +101,7 @@ def print_menu():
         "9": ("xss", "Detecção de vulnerabilidades XSS", "🎭"),
         "20": ("sourcemaps", "Extração e Análise de Source Maps", "🗺️"),
         "21": ("paramfuzz", "Fuzzing de Parâmetros Ocultos", "🔍"),
+        "15": ("cors", "Omissões de CORS", "🟧"),
         "10": ("all", "Execução completa", "🚀")
     }
 

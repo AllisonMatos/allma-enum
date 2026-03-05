@@ -16,6 +16,7 @@ from menu import C
 from ..output import info, warn, error, success
 from .utils import ensure_outdir
 from core.utils import find_tool
+from plugins.extractors.js_analyzer import extract_js_logic
 
 # ============================================================
 # REGEX CONFIG
@@ -70,11 +71,16 @@ async def analyze_js_file_async(client, url, semaphore):
             found_urls = RE_URL.findall(text)
             found_keys = [m[1] for m in RE_KEY.findall(text)]
             
+            # Bug Bounty 2026: Deep JS Analysis (Routes & Parameters)
+            logic_data = extract_js_logic(text, url)
+            
             return {
                 "url": url,
                 "text": text[:50000], # Limit size for raw log
                 "urls": found_urls[:100],
-                "keys": found_keys
+                "keys": found_keys,
+                "routes": logic_data.get("routes", []),
+                "parameters": logic_data.get("parameters", [])
             }
         except Exception:
             return None
@@ -196,7 +202,7 @@ async def run_async_scan(target, report_file, raw_file):
             f_raw.write(item['text'] + "\n\n")
             
             # Report
-            if item['urls'] or item['keys']:
+            if item['urls'] or item['keys'] or item['routes'] or item['parameters']:
                 f_rep.write(f"FILE: {item['url']}\n")
                 if item['urls']:
                     f_rep.write("  URLs found:\n")
@@ -206,7 +212,32 @@ async def run_async_scan(target, report_file, raw_file):
                     f_rep.write("  KEYS found:\n")
                     for k in item['keys']:
                         f_rep.write(f"    - {k}\n")
+                if item['routes']:
+                    f_rep.write("  API ROUTES found:\n")
+                    for r in item['routes']:
+                        f_rep.write(f"    - {r}\n")
+                if item['parameters']:
+                    f_rep.write("  PARAMETERS found:\n")
+                    for p in item['parameters']:
+                        f_rep.write(f"    - {p}\n")
                 f_rep.write("\n")
+                
+    # Bug Bounty 2026: Export JSON structure for the UI Report
+    js_routes_file = outdir / "js_routes.json"
+    structured_data = []
+    for item in results_data:
+        if item['routes'] or item['parameters']:
+            structured_data.append({
+                "source": item['url'],
+                "routes": item['routes'],
+                "parameters": item['parameters']
+            })
+            
+    if structured_data:
+        import json
+        with js_routes_file.open("w") as f_json:
+            json.dump(structured_data, f_json, indent=2, ensure_ascii=False)
+        success(f"   + {len(structured_data)} arquivos JS com rotas/parâmetros extraídos em js_routes.json")
 
     success(f"✔ Scan concluído! Relatório salvo em: {report_file}")
 

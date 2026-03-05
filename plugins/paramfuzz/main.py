@@ -11,6 +11,8 @@ import asyncio
 import aiohttp
 import traceback
 from typing import List, Dict, Any, Tuple
+import httpx
+from plugins.http_utils import format_http_request, format_http_response
 from urllib.parse import urlparse, urlencode, parse_qsl, urlunparse
 
 from menu import C
@@ -59,16 +61,27 @@ class ParamFuzzer:
         self.outdir.mkdir(parents=True, exist_ok=True)
         self.findings = []
         
-    async def fetch(self, session: aiohttp.ClientSession, url: str) -> Tuple[int, int, str]:
-        """Fetch content from URL and return status, length, and text."""
+    def fetch_sync(self, url: str) -> Tuple[int, int, str, str, str]:
+        """Fetch content from URL and return status, length, text, req_raw, res_raw."""
         try:
-            async with session.get(url, allow_redirects=True, timeout=CONFIG['timeout']) as response:
-                text = await response.text(errors='ignore')
-                return response.status, len(text), text
+            with httpx.Client(verify=False, follow_redirects=True, timeout=CONFIG['timeout']) as client:
+                resp = client.get(url)
+                return resp.status_code, len(resp.text), resp.text, format_http_request(resp.request), format_http_response(resp)
         except Exception:
-            return 0, 0, ""
+            return 0, 0, "", "", ""
 
-    async def get_baseline(self, session: aiohttp.ClientSession, base_url: str) -> Tuple[int, int, str]:
+    async def fetch(self, session: aiohttp.ClientSession, url: str) -> Tuple[int, int, str, str, str]:
+        """Async fetch - we'll use a wrapper for httpx sync for now to keep format_http_utils easy, 
+        or stick to aiohttp if we can capture its raw req/res easily. 
+        Actually, let's use httpx.AsyncClient for consistency."""
+        try:
+            async with httpx.AsyncClient(verify=False, follow_redirects=True, timeout=CONFIG['timeout']) as client:
+                resp = await client.get(url)
+                return resp.status_code, len(resp.text), resp.text, format_http_request(resp.request), format_http_response(resp)
+        except Exception:
+            return 0, 0, "", "", ""
+
+    async def get_baseline(self, session: aiohttp.ClientSession, base_url: str) -> Tuple[int, int, str, str, str]:
          """Get baseline response for the URL."""
          # Append random non-existent parameter to avoid caching and establish dynamic baseline
          import random
@@ -171,6 +184,7 @@ class ParamFuzzer:
                   reason.append(f"Reflection found")
                   
              if is_different:
+                  status, length, text, req_raw, res_raw = res
                   self.findings.append({
                        "url": base_url,
                        "parameter": param,
@@ -178,7 +192,9 @@ class ParamFuzzer:
                        "baseline_status": baseline_status,
                        "length": length,
                        "baseline_length": baseline_len,
-                       "reason": ", ".join(reason)
+                       "reason": ", ".join(reason),
+                       "request_raw": req_raw,
+                       "response_raw": res_raw
                   })
 
 
@@ -215,7 +231,7 @@ async def run_async(context: dict):
     # Save findings
     outdir = fuzzer.outdir
     findings_file = outdir / "findings.txt"
-    json_file = outdir / "findings.json"
+    json_file = outdir / "hidden_params.json"
     
     if fuzzer.findings:
          with json_file.open('w') as f:

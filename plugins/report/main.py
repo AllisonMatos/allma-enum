@@ -90,7 +90,13 @@ def calculate_stats(target: str) -> Dict:
         "headers_count": 0,
         "takeover_count": 0,
         "waf_count": 0,
-        "emails_count": 0
+        "emails_count": 0,
+        "js_routes_count": 0,
+        "swagger_count": 0,
+        "hidden_params_count": 0,
+        "logic_flaws_count": 0,
+        "git_exposed_count": 0,
+        "cors_count": 0
     }
     
     # Count ports
@@ -175,6 +181,13 @@ def calculate_stats(target: str) -> Dict:
             stats["emails_count"] = json.loads(emails_file.read_text()).get("total", 0)
         except: pass
 
+    # CORS
+    cors_file = base / "cors" / "cors_results.json"
+    if cors_file.exists():
+        try:
+            stats["cors_count"] = len(json.loads(cors_file.read_text()))
+        except: pass
+
 
     # ParamFuzz
     paramfuzz_file = base / "paramfuzz" / "findings.json"
@@ -188,6 +201,41 @@ def calculate_stats(target: str) -> Dict:
     if sourcemaps_file.exists():
         try:
             stats["sourcemaps_count"] = len(json.loads(sourcemaps_file.read_text()))
+        except: pass
+
+    # JS Routes
+    js_routes_file = base / "domain" / "extracted_js_routes.json"
+    if js_routes_file.exists():
+        try:
+            stats["js_routes_count"] = len(json.loads(js_routes_file.read_text()))
+        except: pass
+
+    # Swagger
+    swagger_file = base / "domain" / "swagger_docs.json"
+    if swagger_file.exists():
+        try:
+            stats["swagger_count"] = len(json.loads(swagger_file.read_text()))
+        except: pass
+
+    # Hidden Params
+    hidden_params_file = base / "paramfuzz" / "hidden_params.json"
+    if hidden_params_file.exists():
+        try:
+            stats["hidden_params_count"] = len(json.loads(hidden_params_file.read_text()))
+        except: pass
+
+    # Logic Flaws
+    logic_flaws_file = base / "scanners" / "logic_flaws.json"
+    if logic_flaws_file.exists():
+        try:
+            stats["logic_flaws_count"] = len(json.loads(logic_flaws_file.read_text()))
+        except: pass
+
+    # Git Time Machine
+    git_file = base / "domain" / "git_exposed.json"
+    if git_file.exists():
+        try:
+            stats["git_exposed_count"] = len(json.loads(git_file.read_text()))
         except: pass
 
     return stats
@@ -276,45 +324,6 @@ def aggregate_by_subdomain(target: str) -> Dict:
 
                 tech["cve_count"] = len(tech["cve_exploits"])
 
-    # Load Screenshots
-    screenshots_dir = base / "visual" / "screenshots"
-    if screenshots_dir.exists():
-        for screenshot in screenshots_dir.glob("*"):
-            # Filename format: https---sub-domain-com-443-.jpeg or http-sub-domain-com-80.png
-            name = screenshot.name
-            
-            for host in subdomains:
-                # 1. Normalize host (dot to dash)
-                host_normalized = host.replace(".", "-")
-                
-                # 2. MATCH LOGIC
-                # Name examples:
-                # http-sub-domain-com-80.png
-                # https-sub-domain-com-443.png
-                
-                # We want to match {protocol}-{host_normalized}-{port}
-                # To avoid "domain.com" matching "sub.domain.com", we ensure we match the full host part.
-                
-                # Check for exact matches with common prefixes
-                prefix_http = f"http-{host_normalized}-"
-                prefix_https = f"https-{host_normalized}-"
-                
-                # Remove extension to check end (port) or direct match
-                base_name = name
-                if base_name.endswith(".png"): base_name = base_name[:-4]
-                elif base_name.endswith(".jpg"): base_name = base_name[:-4]
-                elif base_name.endswith(".jpeg"): base_name = base_name[:-5]
-                
-                # Strict check: 
-                # 1. Exactly "http-host" (duplicate)
-                # 2. Starts with "http-host-" (implies port or other suffix follows immediately)
-                if (base_name == f"http-{host_normalized}" or 
-                    base_name == f"https-{host_normalized}" or 
-                    base_name.startswith(prefix_http) or 
-                    base_name.startswith(prefix_https)):
-                    
-                    subdomains[host]["screenshot"] = f"../visual/screenshots/{screenshot.name}"
-                    break
     
     # Mark login pages (from explicit file OR heuristic)
     login_keywords = ["login", "signin", "auth", "portal", "admin", "entrar", "acesso"]
@@ -332,17 +341,17 @@ def aggregate_by_subdomain(target: str) -> Dict:
         except:
             pass
             
-    # 2. Heuristic from urls_200.txt
-    for url in read_file_lines(base / "urls" / "urls_200.txt"):
-        try:
-            if any(k in url.lower() for k in login_keywords):
-                from urllib.parse import urlparse
-                host = urlparse(url).netloc.split(":")[0]
-                if host in subdomains:
-                    subdomains[host]["is_login"] = True
-                    subdomains[host]["login_urls"].add(url)
-        except:
-            pass
+    # Load Intelligence Classifications
+    intel_path = base / "intelligence" / "url_classification.json"
+    intel_data = read_json_file(intel_path)
+    url_tags = {}
+    if intel_data:
+        url_tags = {item["url"]: item["tags"] for item in intel_data}
+        for host, host_data in subdomains.items():
+            host_data["url_classifications"] = {}
+            for url in host_data["urls"]:
+                if url in url_tags:
+                    host_data["url_classifications"][url] = url_tags[url]
     
     return subdomains
 
@@ -598,6 +607,46 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             color: var(--text-secondary);
         }}
         
+        /* TREE VIEW / SURFACE MAP */
+        .tree {{
+            list-style-type: none;
+            padding-left: 10px;
+        }}
+        .tree ul {{
+            list-style-type: none;
+            padding-left: 20px;
+            border-left: 1px dashed var(--border-color);
+            margin-left: 5px;
+        }}
+        .tree li {{
+            margin: 5px 0;
+            position: relative;
+        }}
+        .tree li:before {{
+            content: "";
+            position: absolute;
+            top: 12px;
+            left: -20px;
+            width: 15px;
+            border-top: 1px dashed var(--border-color);
+        }}
+        .tree-folder {{
+            font-weight: 600;
+            color: var(--accent-blue);
+            cursor: pointer;
+        }}
+        .tree-file {{
+            color: var(--text-primary);
+        }}
+        .tree-tag {{
+            font-size: 9px;
+            background: var(--bg-tertiary);
+            padding: 1px 4px;
+            border-radius: 3px;
+            margin-left: 5px;
+            color: var(--text-muted);
+        }}
+        
         .stat-card.highlight {{ border-left: 3px solid var(--accent-blue); }}
         .stat-card.success {{ border-left: 3px solid var(--accent-green); }}
         .stat-card.warning {{ border-left: 3px solid var(--accent-orange); }}
@@ -809,6 +858,11 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             <div class="nav-icon">📊</div>
             <div class="nav-label">Dashboard</div>
         </button>
+
+        <button class="nav-btn" data-section="intelligence">
+            <div class="nav-icon">🧠</div>
+            <div class="nav-label">Surface Intelligence</div>
+        </button>
         
         <button class="nav-btn" data-section="security">
             <div class="nav-icon">🛡️</div>
@@ -890,6 +944,36 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             <div class="nav-label">CVEs <span class="count">{stats_cves}</span></div>
         </button>
         
+        <button class="nav-btn" data-section="jsroutes">
+            <div class="nav-icon">🗺️</div>
+            <div class="nav-label">API & JS <span class="count">{stats_js_routes}</span></div>
+        </button>
+        
+        <button class="nav-btn" data-section="swagger">
+            <div class="nav-icon">📖</div>
+            <div class="nav-label">Swagger <span class="count">{stats_swagger}</span></div>
+        </button>
+        
+        <button class="nav-btn" data-section="hiddenparams">
+            <div class="nav-icon">🕵️</div>
+            <div class="nav-label">Hidden Params <span class="count">{stats_hidden_params}</span></div>
+        </button>
+        
+        <button class="nav-btn" data-section="logic">
+            <div class="nav-icon">⚙️</div>
+            <div class="nav-label">Logic & Smug. <span class="count">{stats_logic}</span></div>
+        </button>
+
+        <button class="nav-btn" data-section="surfacemap">
+            <div class="nav-icon">🗺️</div>
+            <div class="nav-label">Surface Map</div>
+        </button>
+        
+        <button class="nav-btn" data-section="git">
+            <div class="nav-icon">🕰️</div>
+            <div class="nav-label">Git Exposed <span class="count">{stats_git}</span></div>
+        </button>
+        
         <button class="nav-btn" data-section="cloud">
             <div class="nav-icon">☁️</div>
             <div class="nav-label">Cloud <span class="count">{stats_buckets}</span></div>
@@ -952,9 +1036,13 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                          <div class="value">{stats_emails}</div>
                         <div class="label">Emails</div>
                     </div>
+                    <div class="stat-card orange" style="border-left: 3px solid var(--accent-orange);">
+                         <div class="value">{stats_cors}</div>
+                        <div class="label">CORS Issues</div>
+                    </div>
                 </div>
                 
-                 <div class="card">
+                <div class="card">
                     <div class="card-header">
                         <span class="card-title section-title">Quick Summary</span>
                     </div>
@@ -964,6 +1052,24 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                         {keys_warning}
                     </div>
                 </div>
+
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:20px; margin-top:20px;">
+                    <div>{hvt_dashboard}</div>
+                    <div class="card open">
+                         <div class="card-header">
+                            <span class="card-title">💡 Dicas de Hacking (Recon Intelligence)</span>
+                        </div>
+                        <div class="card-content">
+                            <p style="margin-bottom:15px; color:#888;">Dicas práticas baseadas nas tecnologias detectadas no alvo.</p>
+                            {knowledge_tips}
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section class="section" id="intelligence">
+                <div style="margin-bottom:24px;">{hvt_content}</div>
+                <div style="margin-bottom:24px;">{vuln_patterns_content}</div>
             </section>
             
             <section class="section" id="subdomains">{subdomains_content}</section>
@@ -987,6 +1093,12 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             <section class="section" id="js">{js_content}</section>
             <section class="section" id="params">{params_content}</section>
             <section class="section" id="paramfuzz">{paramfuzz_content}</section>
+            <section class="section" id="jsroutes">{js_routes_content}</section>
+            <section class="section" id="swagger">{swagger_content}</section>
+            <section class="section" id="hiddenparams">{hidden_params_content}</section>
+            <section class="section" id="logic">{logic_content}</section>
+            <section class="section" id="git">{git_content}</section>
+            <section class="section" id="surfacemap">{surfacemap_content}</section>
             <section class="section" id="sourcemaps">{sourcemaps_content}</section>
             <section class="section" id="cloud">{cloud_content}</section>
             <section class="section" id="cve">{cve_content}</section>
@@ -1079,10 +1191,10 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             let firstLine = lines.shift(); 
             
             if (firstLine.startsWith('HTTP/')) {{
-                 firstLine = firstLine.replace(/^(HTTP\/[\d\.]+)\s+(\d+)\s+(.*)$/, 
+                 firstLine = firstLine.replace(/^(HTTP\\/[\\d\\.]+)\\s+(\\d+)\\s+(.*)$/, 
                     '<span class="http-version">$1</span> <span class="status-code">$2</span> <span class="http-version">$3</span>');
             }} else {{
-                 firstLine = firstLine.replace(/^([A-Z]+)\s+(.*)\s+(HTTP\/[\d\.]+)$/,
+                 firstLine = firstLine.replace(/^([A-Z]+)\\s+(.*)\\s+(HTTP\\/[\\d\\.]+)$/,
                     '<span class="http-method">$1</span> <span class="http-path">$2</span> <span class="http-version">$3</span>');
             }}
 
@@ -1180,15 +1292,6 @@ def build_subdomains_content(subdomains: Dict) -> str:
                 {login_html}
             </div>''')
         
-        # === SCREENSHOT (logo após login) ===
-        if "screenshot" in data:
-            content_parts.append(f'''
-            <div style="margin-bottom:16px;">
-                <p><strong>Screenshot:</strong></p>
-                <a href="{data["screenshot"]}" target="_blank">
-                    <img src="{data["screenshot"]}" style="max-width:600px; width:100%; border:1px solid #444; border-radius:6px; margin-top:4px;">
-                </a>
-            </div>''')
 
         if data["ports"]:
             content_parts.append(f'<p><strong>Ports:</strong> {ports_str}</p>')
@@ -1302,8 +1405,11 @@ def build_urls_content(subdomains: Dict) -> str:
             ''')
         
         is_log = item.get("is_login", False)
+        tags = subdomains[item["host"]].get("url_classifications", {}).get(item["url"], [])
+        tag_html = " ".join([f'<span class="tag tag-low" style="background:#333; color:#aaa; font-size:10px;">{t}</span>' for t in tags])
+        
         badge = '<span class="tag tag-medium">LOGIN</span>' if is_log else ""
-        html_parts.append(f'<tr><td><a href="{item["url"]}" target="_blank">{html.escape(item["url"])}</a> {badge}</td></tr>')
+        html_parts.append(f'<tr><td><a href="{item["url"]}" target="_blank">{html.escape(item["url"])}</a> {badge} {tag_html}</td></tr>')
     
     if current_host is not None:
         html_parts.append('</tbody></table></div></div></div>')
@@ -1366,7 +1472,7 @@ def build_keys_content(target: str) -> str:
     
     html_parts = []
     
-    for key in keys_data:  # Removed slicing
+    for key in keys_data:
         risk = key.get("info", {}).get("risk", "UNKNOWN")
         risk_class = "tag-high" if risk == "CRITICAL" else "tag-medium" if risk == "HIGH" else "tag-low"
         
@@ -1379,6 +1485,32 @@ def build_keys_content(target: str) -> str:
             validated_badge = f'<span class="tag tag-low" style="margin-left:8px;" title="{html.escape(val_info)}">✗ INVALID</span>'
         else:
             validated_badge = f'<span class="tag" style="margin-left:8px;background:#30363d;" title="{html.escape(val_info)}">⊘ NOT TESTED</span>'
+        
+        # ── Confidence badge ──
+        confidence = key.get("confidence", {})
+        conf_score = confidence.get("total_score", 0)
+        conf_level = confidence.get("level", "UNKNOWN")
+        conf_entropy = confidence.get("entropy", 0)
+        conf_context = confidence.get("context_type", "unknown")
+        conf_placeholder = confidence.get("is_placeholder", False)
+        conf_reasons = confidence.get("reasons", [])
+        
+        if conf_score >= 85:
+            conf_color = "#f85149"  # red = very high confidence (critical finding)
+            conf_bg = "rgba(248,81,73,0.15)"
+        elif conf_score >= 70:
+            conf_color = "#d29922"  # orange
+            conf_bg = "rgba(210,153,34,0.15)"
+        elif conf_score >= 50:
+            conf_color = "#58a6ff"  # blue
+            conf_bg = "rgba(88,166,255,0.15)"
+        else:
+            conf_color = "#8b949e"  # gray
+            conf_bg = "rgba(139,148,158,0.15)"
+        
+        conf_badge = f'<span class="tag" style="margin-left:8px;background:{conf_bg};color:{conf_color};border:1px solid {conf_color}40;" title="Entropy: {conf_entropy} | Context: {conf_context}">⚡ {conf_score}/100 {conf_level}</span>'
+        
+        placeholder_badge = '<span class="tag" style="margin-left:6px;background:rgba(210,153,34,0.15);color:#d29922;border:1px solid rgba(210,153,34,0.4);">⚠ PLACEHOLDER</span>' if conf_placeholder else ''
         
         # Dados principais
         key_type = key.get("type", "Unknown")
@@ -1394,32 +1526,22 @@ def build_keys_content(target: str) -> str:
         if source_file:
              source_display += f' <span class="tag tag-low" style="margin-left:8px;">{html.escape(source_file)}</span>'
              
-        # -------------------------------------------------------------------------
-        # Logic to handle both Structured (New) and Unstructured (Legacy) Context
-        # -------------------------------------------------------------------------
+        # ── Context parsing ──
         context = key.get("context", {})
         
         before_lines = context.get("before", [])
         match_line = context.get("match_line", "")
         after_lines = context.get("after", [])
         
-        # Fallback: If structured data is missing, try to parse from "full"
         if not match_line and context.get("full"):
             try:
                 full_raw = str(context["full"])
-                # Handle literal escaped newlines common in JSON dumps
                 if "\\n" in full_raw:
                     lines = full_raw.replace("\\n", "\n").split("\n")
                 else:
                     lines = full_raw.splitlines()
                 
-                # Filter empty leading/trailing lines often found in scrapes
-                lines = [l for l in lines] # keep empty lines for spacing logic
-                
-                # Attempt to find the "match line"
-                # 1. Use line number if available (relative to start of snippet?)
-                # Warning: source_line is absolute. Snippet might be partial.
-                # Heuristic: Find the line containing the match string
+                lines = [l for l in lines]
                 
                 target_idx = -1
                 for i, line in enumerate(lines):
@@ -1435,16 +1557,12 @@ def build_keys_content(target: str) -> str:
                     match_line = lines[target_idx]
                     after_lines = lines[target_idx+1:end]
                 else:
-                    # Fallback if match not found: just show everything as "match_line" or "before"
                     match_line = "\n".join(lines)
             except Exception:
                 pass
 
-        # Construir contexto formatado com destaque na linha do match
         context_html = ""
         
-        # Calculate starting line number for display
-        # If we have a source_line, assumes match_line is AT that source_line
         current_line_num = 1
         if isinstance(source_line, int) and source_line > 0:
             current_line_num = max(1, source_line - len(before_lines))
@@ -1453,7 +1571,6 @@ def build_keys_content(target: str) -> str:
             context_html += f'<span style="color:#6e7681;">{current_line_num:4d} │</span> {html.escape(str(line))}\n'
             current_line_num += 1
             
-        # Linha do match destacada
         if match_line:
             context_html += f'<span style="color:#f85149;">▶{current_line_num:4d} │</span> <span style="background:#3d1d1f;color:#ffa198;">{html.escape(str(match_line))}</span>\n'
             current_line_num += 1
@@ -1462,11 +1579,27 @@ def build_keys_content(target: str) -> str:
             context_html += f'<span style="color:#6e7681;">{current_line_num:4d} │</span> {html.escape(str(line))}\n'
             current_line_num += 1
         
-        # Final Fallback
         if not context_html.strip():
-             # Clean up the full context representation
              clean_full = str(context.get("full", "Context not available")).replace("\\n", "\n")
              context_html = html.escape(clean_full)
+        
+        # ── Confidence breakdown row ──
+        breakdown = confidence.get("breakdown", {})
+        conf_details_html = ""
+        if breakdown:
+            conf_details_html = f'''
+                <div style="margin-top:8px; padding:8px 12px; background:#161b22; border-radius:6px; border:1px solid #30363d;">
+                    <p style="font-size:11px; color:#8b949e; margin-bottom:6px;"><strong>Confidence Analysis:</strong></p>
+                    <div style="display:flex; gap:12px; flex-wrap:wrap; font-size:11px;">
+                        <span style="color:#58a6ff;">Entropy: {breakdown.get("entropy", 0)}/30</span>
+                        <span style="color:#3fb950;">Context: {breakdown.get("context", 0)}/30</span>
+                        <span style="color:#d29922;">Format: {breakdown.get("format", 0)}/20</span>
+                        <span style="color:#a371f7;">Validation: {breakdown.get("validation", 0)}/20</span>
+                        <span style="color:#f85149;">Placeholder: {breakdown.get("placeholder_penalty", 0)}</span>
+                        <span style="color:#8b949e;">| Context: {conf_context}</span>
+                        <span style="color:#8b949e;">| Shannon: {conf_entropy}</span>
+                    </div>
+                </div>'''
         
         html_parts.append(f'''
         <div class="card open" style="border-left: 4px solid var(--accent-{ 'red' if risk == 'CRITICAL' else 'orange' if risk == 'HIGH' else 'green' });">
@@ -1475,6 +1608,8 @@ def build_keys_content(target: str) -> str:
                 <span class="tag {risk_class}">{risk}</span>
                 <span class="tag tag-low" style="margin-left:8px;">{html.escape(service)}</span>
                 {validated_badge}
+                {conf_badge}
+                {placeholder_badge}
             </div>
             <div class="card-content" style="display:block; padding-top:8px;">
                 <p style="margin-bottom:8px;"><strong>Match:</strong> <code style="color:var(--accent-orange); background:#2d2d2d; padding:2px 6px; border-radius:4px;">{html.escape(match_val[:80])}</code></p>
@@ -1482,6 +1617,7 @@ def build_keys_content(target: str) -> str:
                 
                 <p style="margin-bottom:4px; font-size:12px; color:var(--text-secondary);"><strong>Context:</strong></p>
                 <pre style="background:#0d1117; color:#c9d1d9; padding:12px; border-radius:6px; font-size:11px; line-height:1.5; overflow-x:auto; white-space:pre-wrap; word-wrap:break-word;">{context_html}</pre>
+                {conf_details_html}
             </div>
         </div>
         ''')
@@ -2747,13 +2883,23 @@ def build_paramfuzz_content(target: str) -> str:
 
     rows = ""
     for item in data:
+        # Prepare Burp Data
+        req_b64 = base64.b64encode((item.get("request_raw") or "").encode("utf-8")).decode("utf-8")
+        res_b64 = base64.b64encode((item.get("response_raw") or "").encode("utf-8")).decode("utf-8")
+        row_id = f"fuzz_{uuid.uuid4().hex[:8]}"
+        burp_script_data = f'<script>BURP_DATA["{row_id}"] = {{ "url": "{html.escape(item.get("url", ""))}", "req": "{req_b64}", "res": "{res_b64}" }};</script>'
+
         rows += f'''
         <tr>
-            <td><code style="color:var(--accent-orange);">{html.escape(item.get("parameter", ""))}</code></td>
-            <td><a href="{html.escape(item.get("url", ""))}" target="_blank">{html.escape(item.get("url", ""))}</a></td>
-            <td><span class="tag tag-medium">{item.get("status")}</span> (Baseline: {item.get("baseline_status")})</td>
-            <td>{item.get("length")} (Baseline: {item.get("baseline_length")})</td>
-            <td style="font-size:12px;">{html.escape(item.get("reason", ""))}</td>
+            <td><code style="color:var(--accent-blue); font-weight:bold;">{html.escape(item.get("parameter", ""))}</code></td>
+            <td style="font-size:11px;"><a href="{html.escape(item.get("url", ""))}" target="_blank" style="color:var(--text-muted);">{html.escape(item.get("url", ""))}</a></td>
+            <td><span class="tag tag-low">{item.get("status")}</span> <small>(was {item.get("baseline_status")})</small></td>
+            <td><strong>{item.get("length")}</strong> <small>(was {item.get("baseline_length")})</small></td>
+            <td><span style="font-size:11px; color:var(--accent-orange);">{html.escape(item.get("reason", ""))}</span></td>
+            <td style="text-align:right;">
+                <button class="burp-btn" onclick="openBurp('{row_id}')">View HTTP</button>
+                {burp_script_data}
+            </td>
         </tr>
         '''
     return f'''
@@ -2772,6 +2918,266 @@ def build_paramfuzz_content(target: str) -> str:
         </div>
     </div>
     '''
+
+def build_js_routes_content(target: str) -> str:
+    path = Path("output") / target / "jsscanner" / "js_routes.json"
+    data = read_json_file(path)
+    if not data: return '<div class="empty-state"><p>No API/JS routes found.</p></div>'
+    
+    html_content = ""
+    for item in data:
+        source = item.get("source", "")
+        routes = item.get("routes", [])
+        params = item.get("parameters", [])
+        
+        routes_html = "".join([f'<li><code style="color:var(--accent-green);">{html.escape(r)}</code></li>' for r in routes])
+        params_html = "".join([f'<li><code style="color:var(--accent-purple);">{html.escape(p)}</code></li>' for p in params])
+        
+        html_content += f'''
+        <div class="card open">
+            <div class="card-header">
+                <span class="card-title">📜 {html.escape(source)}</span>
+                <span class="card-badge">{len(routes)} routes, {len(params)} params</span>
+            </div>
+            <div class="card-content" style="display:flex; gap: 20px;">
+                <div style="flex:1;">
+                    <h4>API Routes</h4>
+                    <ul style="list-style-type: none; padding: 0;">{routes_html or '<li>None</li>'}</ul>
+                </div>
+                <div style="flex:1;">
+                    <h4>Parameters</h4>
+                    <ul style="list-style-type: none; padding: 0;">{params_html or '<li>None</li>'}</ul>
+                </div>
+            </div>
+        </div>
+        '''
+    return html_content
+
+def build_swagger_content(target: str) -> str:
+    path = Path("output") / target / "domain" / "swagger_docs.json"
+    data = read_json_file(path)
+    if not data: return '<div class="empty-state"><p>No Swagger/OpenAPI docs found.</p></div>'
+    
+    rows = ""
+    for endpoint in data:
+        method = endpoint.get("method", "GET")
+        method_color = "var(--accent-green)" if method == "GET" else "var(--accent-blue)" if method == "POST" else "var(--accent-orange)"
+        
+        params = endpoint.get("parameters", [])
+        params_str = ", ".join([f"{p.get('name')} ({p.get('in')})" for p in params])
+        
+        rows += f'''
+        <tr>
+            <td><strong style="color:{method_color}">{method}</strong></td>
+            <td><code>{html.escape(endpoint.get("path", ""))}</code></td>
+            <td>{html.escape(endpoint.get("summary", ""))}</td>
+            <td style="font-size:12px;">{html.escape(params_str)}</td>
+        </tr>
+        '''
+        
+    return f'''
+    <div class="card open" style="border-left: 4px solid var(--accent-blue);">
+        <div class="card-header">
+            <span class="card-title">📘 Swagger/OpenAPI Endpoints</span>
+            <span class="card-badge">{len(data)} endpoints</span>
+        </div>
+        <div class="card-content">
+            <div class="table-wrapper">
+                <table>
+                    <thead><tr><th>Method</th><th>Path</th><th>Summary</th><th>Parameters</th></tr></thead>
+                    <tbody>{rows}</tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    '''
+
+def build_hidden_params_content(target: str) -> str:
+    path = Path("output") / target / "paramfuzz" / "hidden_params.json"
+    data = read_json_file(path)
+    if not data: return '<div class="empty-state"><p>No hidden parameters discovered.</p></div>'
+    
+    rows = ""
+    for item in data:
+        rows += f'''
+        <tr>
+            <td><code style="color:var(--accent-purple);">{html.escape(item.get("parameter", ""))}</code></td>
+            <td><a href="{html.escape(item.get("url", ""))}" target="_blank">{html.escape(item.get("url", ""))}</a></td>
+            <td>
+                <span class="tag tag-high">{item.get("status_code")}</span> 
+                <span style="font-size:11px; opacity:0.7;">(was {item.get("original_status")})</span>
+            </td>
+            <td>
+                {item.get("response_length")} 
+                <span style="font-size:11px; opacity:0.7;">(was {item.get("original_length")})</span>
+            </td>
+            <td style="font-size:12px;">{html.escape(item.get("reason", ""))}</td>
+        </tr>
+        '''
+    return f'''
+    <div class="card open" style="border-left: 4px solid var(--accent-purple);">
+        <div class="card-header">
+            <span class="card-title">🕵️ Hidden Parameters Discovered</span>
+            <span class="card-badge">{len(data)} injections successful</span>
+        </div>
+        <div class="card-content">
+            <div class="table-wrapper">
+                <table>
+                    <thead><tr><th>Parameter</th><th>URL injected</th><th>Status</th><th>Length</th><th>Diff Reason</th><th style="text-align:right;">Actions</th></tr></thead>
+                    <tbody>{rows}</tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    '''
+
+def build_logic_content(target: str) -> str:
+    path = Path("output") / target / "scanners" / "logic_flaws.json"
+    data = read_json_file(path)
+    if not data: return '<div class="empty-state"><p>No logic or smuggling flaws detected.</p></div>'
+    
+    rows = ""
+    for item in data:
+        risk = item.get("risk", "LOW")
+        risk_class = f"tag-{risk.lower()}"
+        
+        rows += f'''
+        <tr>
+            <td><span class="tag {risk_class}">{risk}</span></td>
+            <td><strong>{html.escape(item.get("type", ""))}</strong></td>
+            <td><a href="{html.escape(item.get("url", ""))}" target="_blank">{html.escape(item.get("url", ""))}</a></td>
+            <td style="font-size:12px;">{html.escape(item.get("details", ""))}</td>
+        </tr>
+        '''
+    return f'''
+    <div class="card open" style="border-left: 4px solid var(--accent-red);">
+        <div class="card-header">
+            <span class="card-title">🧩 Logic & Smuggling Flaws</span>
+            <span class="card-badge">{len(data)} flaws</span>
+        </div>
+        <div class="card-content">
+            <div class="table-wrapper">
+                <table>
+                    <thead><tr><th>Risk</th><th>Vulnerability Type</th><th>URL</th><th>Details</th></tr></thead>
+                    <tbody>{rows}</tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    '''
+
+def build_git_content(target: str) -> str:
+    path = Path("output") / target / "domain" / "git_exposed.json"
+    data = read_json_file(path)
+    if not data: return '<div class="empty-state"><p>No exposed Git repositories or CI/CD files found.</p></div>'
+    
+    rows = ""
+    for item in data:
+        secrets = item.get("secrets_found", [])
+        secrets_html = "<br>".join([f'&#8226; <span class="tag tag-high">{s.get("type")}</span> <code>{html.escape(s.get("match", ""))}</code>' for s in secrets])
+        
+        # Prepare Burp Data
+        req_b64 = base64.b64encode((item.get("request_raw") or "").encode("utf-8")).decode("utf-8")
+        res_b64 = base64.b64encode((item.get("response_raw") or "").encode("utf-8")).decode("utf-8")
+        row_id = f"git_{uuid.uuid4().hex[:8]}"
+        burp_script_data = f'<script>BURP_DATA["{row_id}"] = {{ "url": "{html.escape(item.get("url", ""))}", "req": "{req_b64}", "res": "{res_b64}" }};</script>'
+
+        rows += f'''
+        <tr>
+            <td><strong>{html.escape(item.get("type", ""))}</strong></td>
+            <td><a href="{html.escape(item.get("url", ""))}" target="_blank">{html.escape(item.get("url", ""))}</a></td>
+            <td>{item.get("size_bytes")} bytes</td>
+            <td style="font-size:11px;">{secrets_html or '<i>No secrets embedded</i>'}</td>
+            <td style="text-align:right;">
+                <button class="burp-btn" onclick="openBurp('{row_id}')">View HTTP</button>
+                {burp_script_data}
+            </td>
+        </tr>
+        '''
+    return f'''
+    <div class="card open" style="border-left: 4px solid var(--accent-orange);">
+        <div class="card-header">
+            <span class="card-title">🕰️ Git & CI/CD Time Machine</span>
+            <span class="card-badge">{len(data)} exposures</span>
+        </div>
+        <div class="card-content">
+            <div class="table-wrapper">
+                <table>
+                    <thead><tr><th>Configuration Type</th><th>URL Path</th><th>File Size</th><th>Extracted Secrets</th><th style="text-align:right;">Actions</th></tr></thead>
+                    <tbody>{rows}</tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    '''
+
+
+def build_surfacemap_content(subdomains: Dict) -> str:
+    """Gera um mapa visual da superfície de ataque em formato de árvore."""
+    from urllib.parse import urlparse
+    if not subdomains:
+        return '<div class="empty-state"><p>No domains to map.</p></div>'
+
+    def add_to_tree(tree, path_parts, url, tags):
+        current = tree
+        for part in path_parts:
+            if not part: continue
+            if part not in current:
+                current[part] = {"_children": {}, "_url": None, "_tags": []}
+            current = current[part]["_children"]
+        # Last part is the actual page/file
+        # This is a bit simplified for URLs
+        pass
+
+    # Better tree builder
+    tree_data = {}
+
+    for host, host_data in subdomains.items():
+        if host not in tree_data:
+            tree_data[host] = {}
+        
+        urls = host_data.get("urls", [])
+        classifs = host_data.get("url_classifications", {})
+
+        for url in urls:
+            try:
+                parsed = urlparse(url)
+                path = parsed.path
+                if not path or path == "/":
+                    continue
+                
+                parts = [p for p in path.split("/") if p]
+                curr = tree_data[host]
+                for i, part in enumerate(parts):
+                    if part not in curr:
+                        curr[part] = {}
+                    curr = curr[part]
+            except:
+                continue
+
+    def render_tree(node, depth=0):
+        if not node: return ""
+        html_out = "<ul>"
+        for name, children in sorted(node.items()):
+            icon = "📁" if children else "📄"
+            html_out += f'<li><span class="{"tree-folder" if children else "tree-file"}">{icon} {html.escape(name)}</span>'
+            if children:
+                html_out += render_tree(children, depth + 1)
+            html_out += "</li>"
+        html_out += "</ul>"
+        return html_out
+
+    final_html = '<div class="card open"><div class="card-header"><span class="card-title">🗺️ Application Structure Map</span></div><div class="card-content"><div class="tree">'
+    for host, structure in sorted(tree_data.items()):
+        final_html += f'<div style="margin-bottom:20px;"><strong style="font-size:16px; color:var(--accent-green);">🌐 {html.escape(host)}</strong>'
+        if structure:
+            final_html += render_tree(structure)
+        else:
+            final_html += '<p style="margin-left:25px; color:#666; font-size:12px;">No deep paths discovered</p>'
+        final_html += '</div>'
+    final_html += '</div></div></div>'
+    
+    return final_html
 
 def build_sourcemaps_content(target: str) -> str:
     import html
@@ -2808,7 +3214,103 @@ def build_sourcemaps_content(target: str) -> str:
     </div>
     '''
 
-def run(context: Dict[str, Any]) -> List[str]:
+def build_hvt_content(target: str) -> str:
+    path = Path("output") / target / "intelligence" / "risk_ranking.json"
+    data = read_json_file(path)
+    if not data: return ""
+    
+    rows = ""
+    for item in data[:10]: # Top 10
+        score = item.get("score", 0)
+        color = "var(--accent-red)" if score >= 7 else "var(--accent-orange)" if score >= 4 else "var(--accent-green)"
+        tags_html = " ".join([f'<span class="tag tag-low" style="background:#444; color:#eee;">{t}</span>' for t in item.get("tags", [])])
+        reasons_html = "<br>".join([f'<span style="font-size:11px; color:#aaa;">&#8226; {r}</span>' for r in item.get("reasons", [])])
+        
+        rows += f'''
+        <div style="padding:12px; background:var(--bg-tertiary); border-left:4px solid {color}; border-radius:4px; margin-bottom:12px; display:flex; justify-content:space-between; align-items:center;">
+            <div style="flex:1;">
+                <div style="display:flex; align-items:center; gap:10px;">
+                    <strong style="font-size:16px;">{html.escape(item.get("subdomain"))}</strong>
+                    <div style="font-size:24px; font-weight:800; color:{color};">{score}</div>
+                </div>
+                <div style="margin-top:4px;">{tags_html}</div>
+                <div style="margin-top:6px;">{reasons_html}</div>
+            </div>
+            <button class="nav-btn" data-section="urls" style="width:fit-content; padding:6px 12px; height:auto; background:var(--bg-secondary); border:1px solid var(--border-color);">Investigate</button>
+        </div>
+        '''
+    return f'''
+    <div class="card open" style="border-left: 4px solid var(--accent-red);">
+        <div class="card-header">
+            <span class="card-title">🔥 High Value Targets (Ranking)</span>
+            <span class="card-badge">Top Targets</span>
+        </div>
+        <div class="card-content">
+            <p style="margin-bottom:16px; color:#888;">Automated scoring based on exposure, sensitive paths, and technologies.</p>
+            {rows}
+        </div>
+    </div>
+    '''
+
+def build_vuln_patterns_content(target: str) -> str:
+    path = Path("output") / target / "intelligence" / "vuln_patterns.json"
+    data = read_json_file(path)
+    if not data: return '<div class="empty-state"><p>No high-risk URL patterns identified.</p></div>'
+    
+    rows = ""
+    for item in data:
+        risk = item.get("risk_level", "MEDIUM")
+        risk_class = "tag-high" if risk in ["HIGH", "CRITICAL"] else "tag-medium"
+        params = ", ".join(item.get("matched_parameters", []))
+        
+        rows += f'''
+        <tr>
+            <td><span class="tag {risk_class}">{risk}</span></td>
+            <td><strong>{html.escape(item.get("vulnerability"))}</strong></td>
+            <td><a href="{html.escape(item.get("url"))}" target="_blank">{html.escape(item.get("url"))}</a></td>
+            <td><code>{html.escape(params)}</code></td>
+        </tr>
+        '''
+    return f'''
+    <div class="card open" style="border-left: 4px solid var(--accent-orange);">
+        <div class="card-header">
+            <span class="card-title">🎯 Vulnerability Pattern Detection</span>
+            <span class="card-badge">{len(data)} suspicious URLs</span>
+        </div>
+        <div class="card-content">
+            <div class="table-wrapper">
+                <table>
+                    <thead><tr><th>Risk</th><th>Potential Vuln</th><th>URL</th><th>Params</th></tr></thead>
+                    <tbody>{rows}</tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    '''
+
+def build_knowledge_tips_content(target: str) -> str:
+    path = Path("output") / target / "intelligence" / "knowledge_tips.json"
+    data = read_json_file(path)
+    if not data: return ""
+    
+    cards = ""
+    for subdomain, info_kb in data.items():
+        tips = info_kb.get("tips", [])
+        tips_html = "".join([f'<li style="margin-bottom:8px; color:#ddd;">{html.escape(t)}</li>' for t in tips])
+        techs = ", ".join(info_kb.get("matched_technologies", []))
+        
+        cards += f'''
+        <div style="background:var(--bg-tertiary); border:1px solid var(--border-color); border-radius:8px; padding:15px; margin-bottom:15px;">
+            <div style="margin-bottom:10px; display:flex; justify-content:space-between; align-items:center;">
+                <strong style="color:var(--accent-blue); font-size:15px;">{html.escape(subdomain)}</strong>
+                <span style="font-size:11px; color:#666;">Techs: {html.escape(techs)}</span>
+            </div>
+            <ul style="padding-left:18px; margin:0;">
+                {tips_html}
+            </ul>
+        </div>
+        '''
+    return cards
 
 def run(context: Dict[str, Any]) -> List[str]:
     target = context.get("target")
@@ -2851,6 +3353,7 @@ def run(context: Dict[str, Any]) -> List[str]:
         "stats_technologies": stats["technologies"],
         "stats_js": stats["js_files"],
         "stats_routes": stats["routes_found"],
+        "stats_cors": stats.get("cors_count", 0),
         "login_warning": login_warning,
         "keys_warning": keys_warning,
         "stats_buckets": stats.get("cloud_buckets", 0),
@@ -2877,6 +3380,16 @@ def run(context: Dict[str, Any]) -> List[str]:
         "sourcemaps_content": build_sourcemaps_content(target),
         "stats_paramfuzz": stats.get("paramfuzz_count", 0),
         "paramfuzz_content": build_paramfuzz_content(target),
+        "stats_js_routes": stats.get("js_routes_count", 0),
+        "js_routes_content": build_js_routes_content(target),
+        "stats_swagger": stats.get("swagger_count", 0),
+        "swagger_content": build_swagger_content(target),
+        "stats_hidden_params": stats.get("hidden_params_count", 0),
+        "hidden_params_content": build_hidden_params_content(target),
+        "stats_logic": stats.get("logic_flaws_count", 0),
+        "logic_content": build_logic_content(target),
+        "stats_git": stats.get("git_exposed_count", 0),
+        "git_content": build_git_content(target),
         "cloud_content": build_cloud_content(target),
         "cve_content": build_cve_content(subdomains),
         "security_content": build_security_content(target),
@@ -2894,6 +3407,11 @@ def run(context: Dict[str, Any]) -> List[str]:
         "stats_waf": stats.get("waf_count", 0),
         "emails_content": build_emails_content(target),
         "stats_emails": stats.get("emails_count", 0),
+        "hvt_content": build_hvt_content(target),
+        "hvt_dashboard": build_hvt_content(target), # Can be same or subset
+        "vuln_patterns_content": build_vuln_patterns_content(target),
+        "knowledge_tips": build_knowledge_tips_content(target),
+        "surfacemap_content": build_surfacemap_content(subdomains),
     }
     
 
