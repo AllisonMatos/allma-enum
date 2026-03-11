@@ -78,12 +78,17 @@ def resolve_host(hostname: str) -> list:
 
 def detect_wildcard(target: str) -> bool:
     """
-    Detecta wildcard DNS testando resolução de subdomínio inexistente.
-    Se resolve, o domínio usa wildcard DNS.
+    Detecta wildcard DNS testando resolução de 3 subdomínios inexistentes.
+    Se todos resolverem, o domínio usa wildcard DNS.
     """
-    random_sub = f"enum-allma-test-{uuid.uuid4().hex[:12]}.{target}"
-    ips = resolve_host(random_sub)
-    return len(ips) > 0
+    resolved_count = 0
+    for _ in range(3):
+        random_sub = f"enum-allma-test-{uuid.uuid4().hex[:12]}.{target}"
+        ips = resolve_host(random_sub)
+        if ips:
+            resolved_count += 1
+    
+    return resolved_count == 3
 
 
 def resolve_and_filter(target: str, subs_file: Path, outdir: Path) -> dict:

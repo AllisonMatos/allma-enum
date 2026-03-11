@@ -85,7 +85,7 @@ REGEX_PATTERNS = {
     "PyPI Token": r"pypi-[A-Za-z0-9_-]{50,}",
 
     # ── JWT / Auth ───────────────────────────────────────────
-    "JWT Token": r"eyJ[A-Za-z0-9-_]+\.eyJ[A-Za-z0-9-_]+\.[A-Za-z0-9-_.+/]*",
+    "JWT Token": r"eyJ[A-Za-z0-9-_=]+\.eyJ[A-Za-z0-9-_=]+\.[A-Za-z0-9-_.+/=]+",
     "JWT Secret": r"(?i)jwt[_\s]*secret[_\s]*[:=]['\"]?([a-zA-Z0-9_\-]{16,})['\"]?",
     "Bearer Token": r"(?i)bearer\s+[a-zA-Z0-9\-_\.]{20,}",
     "Basic Auth": r"(?i)basic\s+[a-zA-Z0-9+/=]{20,}",

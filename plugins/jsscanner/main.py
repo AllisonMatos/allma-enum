@@ -137,7 +137,7 @@ def locate_jsscanner():
 # ============================================================
 # MAIN LOGIC
 # ============================================================
-async def run_async_scan(target, report_file, raw_file):
+async def run_async_scan(target, outdir, report_file, raw_file):
     import httpx
     
     info(f"{C.BOLD}{C.BLUE}🚀 Iniciando Scan Otimizado (Async)...{C.END}")
@@ -266,7 +266,7 @@ def run(context: dict):
         return []
 
     try:
-        asyncio.run(run_async_scan(target, report_file, raw_file))
+        asyncio.run(run_async_scan(target, outdir, report_file, raw_file))
         return [str(report_file), str(raw_file)]
     except KeyboardInterrupt:
         warn("Scan interrompido pelo usuário.")

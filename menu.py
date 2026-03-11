@@ -46,7 +46,11 @@ MODULES = {
     "18": "waf",
     "19": "emails",
     "20": "sourcemaps",
-    "21": "paramfuzz",
+    "22": "open_redirect",
+    "23": "ssrf",
+    "24": "graphql",
+    "25": "api_security",
+    "26": "cache_deception",
 }
 
 # --------- DEPENDÊNCIAS ---------
@@ -60,9 +64,13 @@ DEPENDENCIES = {
     "7": ["1", "2", "3", "4", "5", "6", "7"],
     "8": ["1", "2", "3", "4", "5", "6", "7", "8"],
     "9": ["1", "2", "3", "4", "5", "6", "7", "8", "9"],
-    "10": ["1", "2", "3", "4", "5", "6", "7", "8", "9", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21"],
+    "10": ["1", "2", "3", "4", "5", "6", "7", "8", "9", "12", "13", "14", "15", "16", "17", "18", "19", "20", "22", "23", "24", "25", "26"],
     "20": ["1", "2", "5", "20"],
-    "21": ["1", "3", "21"],
+    "22": ["1", "2", "22"],
+    "23": ["1", "2", "23"],
+    "24": ["1", "2", "24"],
+    "25": ["1", "2", "25"],
+    "26": ["1", "2", "26"],
 }
 
 
@@ -100,8 +108,12 @@ def print_menu():
         "8": ("wordlist", "Força bruta em diretórios", "🗂️"),
         "9": ("xss", "Detecção de vulnerabilidades XSS", "🎭"),
         "20": ("sourcemaps", "Extração e Análise de Source Maps", "🗺️"),
-        "21": ("paramfuzz", "Fuzzing de Parâmetros Ocultos", "🔍"),
         "15": ("cors", "Omissões de CORS", "🟧"),
+        "22": ("open_redirect", "Scanner de Open Redirect", "🔄"),
+        "23": ("ssrf", "Detector de SSRF", "📡"),
+        "24": ("graphql", "GraphQL Introspection", "🧬"),
+        "25": ("api_security", "Segurança de API", "🛡️"),
+        "26": ("cache_deception", "Cache Deception Detector", "🧊"),
         "10": ("all", "Execução completa", "🚀")
     }
 

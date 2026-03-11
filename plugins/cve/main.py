@@ -64,16 +64,16 @@ def run(context: dict):
         if "technologies" not in data:
             continue
             
-        for tech in data["technologies"]:
-            name = tech.get("name")
-            version = tech.get("version")
-            
-            if not name: continue
-            
-            # Construir termo de busca
-            search_term = name
-            if version:
-                search_term += f" {version}"
+            for tech in data["technologies"]:
+                name = tech.get("name")
+                version = tech.get("version")
+                
+                if not name: continue
+                if not version or version.lower() in ["unknown", "n/a", ""]:
+                    continue
+                
+                # Construir termo de busca
+                search_term = f"{name} {version}"
             
             # Evitar buscar duplicatas
             cache_key = search_term.lower()

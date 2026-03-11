@@ -404,6 +404,28 @@ def run(context):
         error(f"Erro durante Deep Analysis: {e}")
         traceback.print_exc()
 
+    # === ETAPA 8: FILTER INACTIVE SUBDOMAINS ===
+    info(f"\\n{C.BOLD}{C.BLUE}[8/8] Filtrando subdominios inativos...{C.END}")
+    active_hosts = set()
+    for u in valid_urls:
+        active_hosts.add(get_subdomain(u))
+        
+    if ports_final.exists():
+        for line in ports_final.read_text(errors="ignore").splitlines():
+            host = line.split(":")[0].strip()
+            if host: active_hosts.add(host)
+            
+    if subs_file.exists():
+        raw_subs = [s.strip() for s in subs_file.read_text(errors="ignore").splitlines() if s.strip()]
+        
+        # Save ALL subdomains so the report can show Inactive ones
+        all_subs_file = outdir / "subdomains_all.txt"
+        all_subs_file.write_text("\\n".join(raw_subs) + "\\n")
+        
+        alive_subs = [s for s in raw_subs if s in active_hosts]
+        subs_file.write_text("\\n".join(alive_subs) + "\\n")
+        info(f"   [!] Filtrado de {len(raw_subs)} para {len(alive_subs)} ativos (com ports/web). Backup salvo em subdomains_all.txt")
+
     # === FINALIZACAO ===
     success(
         f"\n{C.GREEN}{C.BOLD}DOMAIN concluido com sucesso!{C.END}\n"

@@ -78,7 +78,7 @@ def validate_token(key_type: str, token_value: str) -> dict:
 
 def _get_httpx_client():
     import httpx
-    return httpx.Client(timeout=VALIDATION_TIMEOUT, verify=False, follow_redirects=True)
+    return httpx.Client(timeout=VALIDATION_TIMEOUT, verify=True, follow_redirects=True)
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -148,25 +148,38 @@ def _validate_google(token: str) -> dict:
     key = clean.group(1)
     try:
         with _get_httpx_client() as client:
-            resp = client.get(f"https://www.googleapis.com/oauth2/v3/tokeninfo?access_token={key}")
+            # Google API Keys não são validadas em /tokeninfo (que é para OAuth)
+            # Testamos em serviços comuns que costumam estar habilitados
+            
+            # 1. Maps Geocode API
+            resp = client.get(f"https://maps.googleapis.com/maps/api/geocode/json?address=1600+Amphitheatre+Parkway,+Mountain+View,+CA&key={key}")
             if resp.status_code == 200:
-                return {
-                    "validated": True,
-                    "validation_info": "Google API Key ATIVA",
-                    "validation_type": "api_check",
-                }
-            resp2 = client.get(f"https://maps.googleapis.com/maps/api/geocode/json?address=test&key={key}")
-            if resp2.status_code == 200:
-                data = resp2.json()
-                if data.get("status") != "REQUEST_DENIED":
+                data = resp.json()
+                if data.get("status") in ["OK", "ZERO_RESULTS"]:
                     return {
                         "validated": True,
-                        "validation_info": f"Google API Key ATIVA (Maps API: {data.get('status')})",
+                        "validation_info": "Google API Key ATIVA (Maps API)",
                         "validation_type": "api_check",
                     }
+                elif data.get("status") == "OVER_QUERY_LIMIT":
+                     return {
+                        "validated": True,
+                        "validation_info": "Google API Key ATIVA (Quota Exceeded)",
+                        "validation_type": "api_check",
+                    }
+
+            # 2. Custom Search API (outro alvo comum)
+            resp2 = client.get(f"https://www.googleapis.com/customsearch/v1?q=test&key={key}")
+            if resp2.status_code == 200:
+                 return {
+                    "validated": True,
+                    "validation_info": "Google API Key ATIVA (Custom Search API)",
+                    "validation_type": "api_check",
+                }
+
             return {
                 "validated": False,
-                "validation_info": "Google API Key inválida ou restrita",
+                "validation_info": "Google API Key inválida ou todas as APIs restritas",
                 "validation_type": "api_check",
             }
     except Exception as e:

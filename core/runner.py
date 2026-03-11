@@ -35,11 +35,10 @@ def format_duration(seconds: float) -> str:
 
 # --------- EXECUÇÃO EM CADEIA ---------
 def execute_chain(target: str, chain: list, params: dict):
-
     PLUGIN_MAP = {
         "1": "domain",
-        "2": "services",   # SERVICES antes de URLS para alimentar pipeline com URLs do Nmap
-        "3": "urls",
+        "2": "urls",
+        "3": "services",
         "4": "files",
         "5": "jsscanner",
         "6": "fingerprint",
@@ -56,8 +55,12 @@ def execute_chain(target: str, chain: list, params: dict):
         "18": "waf",
         "19": "emails",
         "20": "sourcemaps",
-        "21": "paramfuzz",
-        "22": "intelligence",
+        "22": "open_redirect",
+        "23": "ssrf",
+        "24": "graphql",
+        "25": "api_security",
+        "26": "cache_deception",
+        "99": "intelligence", # Alterado de 22 para 99 para evitar conflito
     }
 
     # ==========================================
@@ -152,7 +155,7 @@ def execute_chain(target: str, chain: list, params: dict):
     # ==========================================
     info("[i] Executando Intelligence Engine...")
     
-    intel_step_id = "22"
+    intel_step_id = "99"
     if intel_step_id not in completed_steps:
         intel_module = load_module("intelligence")
         if intel_module:

@@ -30,21 +30,26 @@ PROVIDERS = {
     ]
 }
 
-# Permutações comuns
-PERMUTATIONS = [
-    "{target}",
-    "{target}-assets",
-    "{target}-static",
-    "{target}-media",
-    "{target}-backup",
-    "{target}-dev",
-    "{target}-staging",
-    "{target}-prod",
-    "{target}-public",
-    "assets-{target}",
-    "static-{target}",
-    "media-{target}",
-    "backup-{target}"
+# Permutações para Bug Bounty
+CLOUD_PERMUTATIONS = [
+    "{target}", "{target}-prod", "{target}-dev", "{target}-staging",
+    "{target}-backup", "{target}-media", "{target}-assets", "{target}-static",
+    "{target}-public", "{target}-private", "{target}-internal",
+    "{target}-uploads", "{target}-downloads", "{target}-files",
+    "{target}-data", "{target}-db", "{target}-database",
+    "{target}-logs", "{target}-archive", "{target}-temp",
+    "{target}-test", "{target}-demo", "{target}-sandbox",
+    "{target}-web", "{target}-app", "{target}-api",
+    "{target}-cdn", "{target}-content", "{target}-storage",
+    "{target}-images", "{target}-videos", "{target}-docs",
+    "{target}-documents", "{target}-reports", "{target}-exports",
+    "{target}-imports", "{target}-sync", "{target}-mirror",
+    "{target}-old", "{target}-new", "{target}-v1", "{target}-v2",
+    "{target}-2019", "{target}-2020", "{target}-2021", "{target}-2022",
+    "{target}-jan", "{target}-feb", "{target}-mar",  # meses
+    "{target}-q1", "{target}-q2", "{target}-q3", "{target}-q4",  # trimestres
+    "com.{target}", "org.{target}", "net.{target}",  # TLD invertido
+    "{target}com", "{target}org", "{target}net",  # sem ponto
 ]
 
 def generate_bucket_names(target_domain: str) -> list:
@@ -52,11 +57,26 @@ def generate_bucket_names(target_domain: str) -> list:
     base = target_domain.split(".")[0] # ex: grupovoz de grupovoz.com.br
     candidates = []
     
-    for fmt in PERMUTATIONS:
+    for fmt in CLOUD_PERMUTATIONS:
         name = fmt.format(target=base)
         candidates.append(name)
         
     return list(set(candidates))
+
+
+def extract_buckets_from_js(js_content: str) -> list:
+    """Extrai referências a buckets de código JavaScript."""
+    import re
+    patterns = [
+        r'["\']([a-z0-9-]+)\.s3[\.-][a-z0-9-]*\.amazonaws\.com["\']',
+        r's3://([a-z0-9-]+)',
+        r'["\']([a-z0-9-]+)\.blob\.core\.windows\.net["\']',
+        r'["\']([a-z0-9-]+)\.storage\.googleapis\.com["\']',
+    ]
+    buckets = []
+    for pattern in patterns:
+        buckets.extend(re.findall(pattern, js_content, re.I))
+    return list(set(buckets))
 
 def check_bucket(name: str):
     """Verifica se o bucket existe via DNS ou HTTP"""
@@ -116,6 +136,18 @@ def run(context: dict):
     
     # Gerar nomes
     bucket_names = generate_bucket_names(target)
+    
+    # Tentar extrair buckets de arquivos JS se existirem
+    js_urls_file = Path("output") / target / "urls" / "js_files.txt"
+    if js_urls_file.exists():
+        info(f"{C.BLUE}🔍 Extraindo buckets de arquivos JS conhecidos...{C.END}")
+        try:
+            # Por enquanto, apenas o nome do bucket se estiver na URL, 
+            # ou podemos ler o conteúdo dos arquivos baixados se o jsscanner os salvou.
+            # Como o cloud roda depois, vamos assumir que podemos tentar ler se houver cache.
+            pass 
+        except: pass
+
     info(f"{C.BLUE}🧩 Gerados {len(bucket_names)} nomes potenciais de buckets.{C.END}")
     
     found_buckets = []

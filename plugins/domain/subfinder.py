@@ -1,4 +1,5 @@
 import subprocess
+import re
 from .utils import require_binary
 from ..output import info, success, error
 from menu import C   # garante acesso às cores C.BLUE, C.CYAN etc.
@@ -25,7 +26,10 @@ def run_subfinder(target: str, out_file):
     # ============================================================
     # 🔧 Execução do Subfinder
     # ============================================================
-    info(f"{C.BOLD}{C.BLUE}🚀 Executando subfinder...{C.END}")
+    # Validar se o target é um domínio (regex básica)
+    if not re.match(r'^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9][a-z0-9-]{0,61}[a-z0-9]$', target):
+        error(f"❌ Target inválido para subfinder: {target}")
+        return False
 
     cmd = [
         subfinder,
@@ -36,7 +40,7 @@ def run_subfinder(target: str, out_file):
 
     try:
         with open(out_file, "w") as f:
-            subprocess.run(cmd, stdout=f, text=True)
+            subprocess.run(cmd, stdout=f, text=True, timeout=300)
     except Exception as e:
         error(f"❌ Erro ao executar subfinder: {e}")
         return False
