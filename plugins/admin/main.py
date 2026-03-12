@@ -9,6 +9,7 @@ from pathlib import Path
 from urllib.parse import urlparse, urljoin
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
+import base64
 from menu import C
 from ..output import info, success, warn, error
 
@@ -144,6 +145,34 @@ def clean_html_for_fingerprint(html: str) -> str:
     # Remover espacos e normalizar
     html = re.sub(r'\s+', ' ', html).strip()
     return html
+ 
+ 
+def generate_raw_http(request_or_response) -> str:
+    """Gera uma string raw de uma requisição ou resposta do httpx."""
+    try:
+        if hasattr(request_or_response, 'request'): # É uma resposta
+            resp = request_or_response
+            req = resp.request
+            
+            # Request Row
+            req_lines = [f"{req.method} {req.url.target.decode()} HTTP/1.1"]
+            for k, v in req.headers.items():
+                req_lines.append(f"{k}: {v}")
+            req_raw = "\n".join(req_lines) + "\n\n"
+            if req.content:
+                req_raw += req.content.decode(errors='ignore')
+                
+            # Response Row
+            res_lines = [f"HTTP/1.1 {resp.status_code} {resp.reason_phrase}"]
+            for k, v in resp.headers.items():
+                res_lines.append(f"{k}: {v}")
+            res_raw = "\n".join(res_lines) + "\n\n"
+            res_raw += resp.text if resp.text else ""
+            
+            return base64.b64encode(req_raw.encode()).decode(), base64.b64encode(res_raw.encode()).decode()
+    except:
+        pass
+    return "", ""
 
 
 def check_admin_path(base_url: str, path: str) -> dict:
@@ -265,6 +294,11 @@ def check_admin_path(base_url: str, path: str) -> dict:
                         result["bypass_found"] = True
                         result["bypass_methods"] = bypasses_found
                         result["status"] = "403 → BYPASS"
+                        
+                        # Captura o raw do último bypass bem sucedido para exibir no Burp Modal
+                        req_b64, res_b64 = generate_raw_http(r)
+                        result["raw_request"] = req_b64
+                        result["raw_response"] = res_b64
                 
                 return result
 

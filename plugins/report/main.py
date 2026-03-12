@@ -2796,7 +2796,7 @@ def build_admin_content(target: str) -> str:
     rows = ""
     for panel in admin_data:
         status = panel.get("status", 0)
-        status_class = "tag-high" if status == 200 else "tag-medium" if status in (401, 403) else "tag-low"
+        status_class = "tag-high" if status == 200 else "tag-medium" if status in (401, 403) or "BYPASS" in str(status) else "tag-low"
         title = panel.get("title", "")[:60]
         cms = panel.get("cms", "")
         login_icon = "🔑" if panel.get("has_login_form") else ""
@@ -2804,12 +2804,29 @@ def build_admin_content(target: str) -> str:
         
         cms_html = f'<span class="tag tag-low" style="margin-left:4px;">{html.escape(cms)}</span>' if cms else ""
         
+        # Prepare Burp Data if bypass found
+        burp_html = ""
+        if "BYPASS" in str(status) and panel.get("raw_request"):
+            req_b64 = panel.get("raw_request", "")
+            res_b64 = panel.get("raw_response", "")
+            row_id = f"admin_{uuid.uuid4().hex[:8]}"
+            burp_script = f'<script>BURP_DATA["{row_id}"] = {{ "url": "{html.escape(url)}", "req": "{req_b64}", "res": "{res_b64}" }};</script>'
+            burp_html = f'''
+            <div style="margin-top:5px;">
+                <button class="burp-btn" onclick="openBurp('{row_id}')">View HTTP Bypass</button>
+                {burp_script}
+            </div>
+            '''
+        
         rows += f'''
         <tr>
             <td><a href="{html.escape(url)}" target="_blank">{html.escape(url[:80])}</a></td>
             <td><span class="tag {status_class}">{status}</span></td>
             <td>{html.escape(title)}</td>
-            <td>{login_icon}{cms_html}</td>
+            <td>
+                {login_icon}{cms_html}
+                {burp_html}
+            </td>
         </tr>'''
     
     return f'''
@@ -2821,7 +2838,7 @@ def build_admin_content(target: str) -> str:
         <div class="card-content">
             <div class="table-wrapper">
                 <table>
-                    <thead><tr><th>URL</th><th>Status</th><th>Title</th><th>CMS / Login</th></tr></thead>
+                    <thead><tr><th>URL</th><th>Status</th><th>Title</th><th>CMS / Login / Actions</th></tr></thead>
                     <tbody>{rows}</tbody>
                 </table>
             </div>
