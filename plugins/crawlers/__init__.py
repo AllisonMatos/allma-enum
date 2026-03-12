@@ -55,14 +55,25 @@ def validate_urls_quick(urls: list, outdir: Path) -> list:
         "-mc", "200,301,302,307,308,401,403",
         "-timeout", "10",
         "-retries", "1",
+        "-no-color",
         "-silent",
         "-o", str(temp_out)
     ]
     
     try:
-        subprocess.run(cmd, timeout=120, check=False)
-    except:
-        return []
+        subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+    except Exception:
+        pass
+    
+    # Fallback via pipe se -o falhar
+    if not temp_out.exists() or temp_out.stat().st_size == 0:
+        cmd_pipe = [c for c in cmd if c not in ("-o", str(temp_out))]
+        try:
+            r = subprocess.run(cmd_pipe, capture_output=True, text=True, timeout=300)
+            if r.stdout and r.stdout.strip():
+                temp_out.write_text(r.stdout)
+        except Exception:
+            return []
     
     if temp_out.exists():
         valid = [l.strip() for l in temp_out.read_text().splitlines() if l.strip()]

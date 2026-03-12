@@ -204,7 +204,7 @@ def check_admin_path(base_url: str, path: str) -> dict:
                 cleaned_content = clean_html_for_fingerprint(content)
                 content_hash = hashlib.sha256(cleaned_content.encode('utf-8')).hexdigest()
                 
-                return {
+                result = {
                     "url": final_url,
                     "path": path,
                     "status": resp.status_code,
@@ -215,6 +215,58 @@ def check_admin_path(base_url: str, path: str) -> dict:
                     "content_type": resp.headers.get("content-type", ""),
                     "content_hash": content_hash
                 }
+                
+                # 403 Bypass: Tentar headers e path manipulation
+                if resp.status_code == 403:
+                    bypass_headers_list = [
+                        {"X-Forwarded-For": "127.0.0.1"},
+                        {"X-Original-URL": path},
+                        {"X-Rewrite-URL": path},
+                        {"X-Custom-IP-Authorization": "127.0.0.1"},
+                        {"X-Forwarded-Host": "localhost"},
+                        {"X-Host": "localhost"},
+                    ]
+                    bypass_paths = [
+                        path + "/./",
+                        path + "..;/",
+                        path.replace("/", "//"),
+                        "/" + path.lstrip("/").capitalize(),
+                        path + "%20",
+                        path + "?",
+                        path + "#",
+                        path + ";",
+                    ]
+                    
+                    bypasses_found = []
+                    
+                    # Test header bypasses
+                    for bypass_h in bypass_headers_list:
+                        try:
+                            h = {"User-Agent": "Mozilla/5.0"}
+                            h.update(bypass_h)
+                            r = client.get(url, headers=h)
+                            if r.status_code == 200:
+                                header_name = list(bypass_h.keys())[0]
+                                bypasses_found.append(f"Header {header_name}: {bypass_h[header_name]}")
+                        except Exception:
+                            pass
+                    
+                    # Test path bypasses
+                    for bp in bypass_paths:
+                        try:
+                            test = base_url.rstrip("/") + bp
+                            r = client.get(test, headers={"User-Agent": "Mozilla/5.0"})
+                            if r.status_code == 200:
+                                bypasses_found.append(f"Path: {bp}")
+                        except Exception:
+                            pass
+                    
+                    if bypasses_found:
+                        result["bypass_found"] = True
+                        result["bypass_methods"] = bypasses_found
+                        result["status"] = "403 → BYPASS"
+                
+                return result
 
     except Exception:
         pass

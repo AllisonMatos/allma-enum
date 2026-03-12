@@ -1,160 +1,231 @@
 #!/usr/bin/env python3
 """
-GraphQL Introspection Checker — Verifica se o schema está exposto.
+GraphQL Security Scanner — Introspection, Batch Queries, Field Suggestions, Mutations
+Usa httpx + captura raw request/response
 """
-import requests
+import json
 from pathlib import Path
+from urllib.parse import urlparse
 
 from menu import C
 from ..output import info, success, warn, error
+from ..http_utils import format_raw_request, format_raw_response
 
-INTROSPECTION_QUERY = """
-query IntrospectionQuery {
-  __schema {
-    queryType { name }
-    mutationType { name }
-    subscriptionType { name }
-    types {
-      ...FullType
-    }
-  }
-}
-fragment FullType on __Type {
-  kind
-  name
-  description
-  fields(includeDeprecated: true) {
-    name
-    description
-    args {
-      ...InputValue
-    }
-    type {
-      ...TypeRef
-    }
-    isDeprecated
-    deprecationReason
-  }
-}
-fragment InputValue on __InputValue {
-  name
-  description
-  type { ...TypeRef }
-  defaultValue
-}
-fragment TypeRef on __Type {
-  kind
-  name
-  ofType {
-    kind
-    name
-    ofType {
-      kind
-      name
-      ofType {
-        kind
-        name
-        ofType {
-          kind
-          name
-          ofType {
-            kind
-            name
-            ofType {
-              kind
-              name
-              ofType {
-                kind
-                name
-              }
-            }
-          }
-        }
-      }
-    }
-  }
-}
-"""
+try:
+    import httpx
+except ImportError:
+    httpx = None
 
-def ensure_outdir(target: str) -> Path:
-    outdir = Path("output") / target / "graphql"
+
+GRAPHQL_PATHS = [
+    "/graphql", "/graphiql", "/gql", "/query",
+    "/api/graphql", "/api/gql", "/v1/graphql", "/v2/graphql",
+    "/graphql/v1", "/playground", "/__graphql",
+]
+
+INTROSPECTION_QUERY = '{"query": "{ __schema { types { name fields { name } } } }"}'
+
+BATCH_QUERY = '[{"query": "{ __typename }"}, {"query": "{ __typename }"}]'
+
+MUTATIONS_QUERY = '{"query": "{ __schema { mutationType { fields { name args { name type { name } } } } } }"}'
+
+SUGGESTIONS_QUERY = '{"query": "{ __typ }"}'
+
+
+def ensure_outdir(target):
+    outdir = Path("output") / target / "scanners"
     outdir.mkdir(parents=True, exist_ok=True)
     return outdir
 
-def check_graphql(url: str) -> dict | None:
-    """Verifica um endpoint específico."""
+
+def test_endpoint(client, url):
+    """Testa um endpoint GraphQL para diversas vulnerabilidades"""
+    findings = []
+    headers = {
+        "Content-Type": "application/json",
+        "User-Agent": "Mozilla/5.0",
+    }
+    
+    # 1) Introspection
     try:
-        resp = requests.post(
-            url, 
-            json={"query": INTROSPECTION_QUERY}, 
-            verify=False, 
-            timeout=10,
-            headers={"Content-Type": "application/json"}
-        )
-        if resp.status_code == 200 and "__schema" in resp.text:
-            return {
+        resp = client.post(url, content=INTROSPECTION_QUERY, headers=headers, timeout=15)
+        body = resp.text
+        
+        if resp.status_code == 200 and "__schema" in body:
+            raw_req = format_raw_request("POST", url, dict(resp.request.headers), INTROSPECTION_QUERY)
+            raw_res = format_raw_response(resp.status_code, dict(resp.headers), body[:3000])
+            
+            # Contar types
+            try:
+                data = resp.json()
+                types_count = len(data.get("data", {}).get("__schema", {}).get("types", []))
+            except Exception:
+                types_count = 0
+            
+            findings.append({
                 "url": url,
-                "vulnerable": True,
-                "size": len(resp.text)
-            }
-    except:
+                "type": "INTROSPECTION_ENABLED",
+                "risk": "HIGH",
+                "status": resp.status_code,
+                "length": len(body),
+                "introspection": True,
+                "types_count": types_count,
+                "details": f"Introspection habilitada — {types_count} types expostos",
+                "request_raw": raw_req,
+                "response_raw": raw_res,
+            })
+    except Exception:
         pass
-    return None
+    
+    # 2) Batch Queries (DoS potential)
+    try:
+        resp = client.post(url, content=BATCH_QUERY, headers=headers, timeout=15)
+        body = resp.text
+        
+        if resp.status_code == 200:
+            try:
+                data = resp.json()
+                if isinstance(data, list) and len(data) > 1:
+                    raw_req = format_raw_request("POST", url, dict(resp.request.headers), BATCH_QUERY)
+                    raw_res = format_raw_response(resp.status_code, dict(resp.headers), body[:2000])
+                    findings.append({
+                        "url": url,
+                        "type": "BATCH_QUERIES_ALLOWED",
+                        "risk": "MEDIUM",
+                        "status": resp.status_code,
+                        "details": f"Batch queries aceitas — potencial DoS/rate limit bypass",
+                        "request_raw": raw_req,
+                        "response_raw": raw_res,
+                    })
+            except Exception:
+                pass
+    except Exception:
+        pass
+    
+    # 3) Mutations expostas
+    try:
+        resp = client.post(url, content=MUTATIONS_QUERY, headers=headers, timeout=15)
+        body = resp.text
+        
+        if resp.status_code == 200 and "mutationType" in body:
+            try:
+                data = resp.json()
+                mutations = data.get("data", {}).get("__schema", {}).get("mutationType", {})
+                if mutations:
+                    fields = mutations.get("fields", [])
+                    dangerous_mutations = [
+                        f for f in fields
+                        if any(k in f.get("name", "").lower() for k in 
+                               ["delete", "remove", "update", "create", "admin", "reset", "password", "exec"])
+                    ]
+                    if dangerous_mutations:
+                        names = [m["name"] for m in dangerous_mutations[:10]]
+                        raw_req = format_raw_request("POST", url, dict(resp.request.headers), MUTATIONS_QUERY)
+                        raw_res = format_raw_response(resp.status_code, dict(resp.headers), body[:3000])
+                        findings.append({
+                            "url": url,
+                            "type": "DANGEROUS_MUTATIONS_EXPOSED",
+                            "risk": "HIGH",
+                            "status": resp.status_code,
+                            "mutations": names,
+                            "details": f"Mutations perigosas expostas: {', '.join(names)}",
+                            "request_raw": raw_req,
+                            "response_raw": raw_res,
+                        })
+            except Exception:
+                pass
+    except Exception:
+        pass
+    
+    # 4) Field Suggestions (info leak)
+    try:
+        resp = client.post(url, content=SUGGESTIONS_QUERY, headers=headers, timeout=10)
+        body = resp.text
+        
+        if "Did you mean" in body or "suggestions" in body.lower():
+            raw_req = format_raw_request("POST", url, dict(resp.request.headers), SUGGESTIONS_QUERY)
+            raw_res = format_raw_response(resp.status_code, dict(resp.headers), body[:2000])
+            findings.append({
+                "url": url,
+                "type": "FIELD_SUGGESTIONS_ENABLED",
+                "risk": "LOW",
+                "status": resp.status_code,
+                "details": "Field suggestions habilitadas — permite enumeração de campos",
+                "request_raw": raw_req,
+                "response_raw": raw_res,
+            })
+    except Exception:
+        pass
+    
+    return findings
+
 
 def run(context: dict):
     target = context.get("target")
     if not target:
         raise ValueError("Target required")
-        
-    info(
-        f"\n🧬───────────────────────────────────────────────────────────🧬\n"
-        f"   📊 {C.BOLD}{C.CYAN}INICIANDO MÓDULO: GRAPHQL INTROSPECTION CHECKER{C.END}\n"
-        f"   🎯 Alvo: {C.GREEN}{target}{C.END}\n"
-        f"🧬───────────────────────────────────────────────────────────🧬\n"
-    )
     
-    # 1. Carregar URLs e procurar por /graphql
-    urls_file = Path("output") / target / "urls" / "urls_200.txt"
-    if not urls_file.exists():
-        warn("⚠️ Arquivo de URLs não encontrado.")
+    if not httpx:
+        error("httpx não instalado")
         return []
-        
-    urls = [l.strip() for l in urls_file.read_text().splitlines() if l.strip()]
-    
-    # Filtrar potenciais endpoints GraphQL
-    graphql_endpoints = set()
-    for u in urls:
-        if "/graphql" in u or "/gql" in u or "/v1/graphql" in u:
-            graphql_endpoints.add(u)
-    
-    # Se não encontrar nada óbvio, tentar o padrão
-    if not graphql_endpoints:
-        from urllib.parse import urlparse
-        parsed = urlparse(target)
-        base = f"{parsed.scheme}://{parsed.netloc}" if parsed.scheme else f"https://{target}"
-        graphql_endpoints.add(f"{base}/graphql")
-        graphql_endpoints.add(f"{base}/api/graphql")
 
-    info(f"   📂 Testando {len(graphql_endpoints)} potenciais endpoints GraphQL...")
-    
-    findings = []
-    for ep in graphql_endpoints:
-        result = check_graphql(ep)
-        if result:
-            warn(f"   🚩 [GRAPHQL INTROSPECTION] {C.YELLOW}{ep}{C.END} (Schema exposto!)")
-            findings.append(result)
-            
-    # 3. Salvar Resultados
+    info(
+        f"\n🟪───────────────────────────────────────────────────────────🟪\n"
+        f"   🧬  {C.BOLD}{C.CYAN}GRAPHQL SECURITY SCANNER{C.END}\n"
+        f"   🎯 Alvo: {C.GREEN}{target}{C.END}\n"
+        f"🟪───────────────────────────────────────────────────────────🟪\n"
+    )
+
     outdir = ensure_outdir(target)
-    out_file = outdir / "findings.json"
+    results_file = outdir / "graphql.json"
     
-    import json
-    with open(out_file, "w") as f:
-        json.dump(findings, f, indent=4)
-        
-    if findings:
-        success(f"\n   ✔ {len(findings)} endpoints GraphQL vulneráveis encontrados!")
+    # Carregar URLs
+    urls_file = Path("output") / target / "domain" / "urls_valid.txt"
+    if not urls_file.exists():
+        urls_file = Path("output") / target / "urls" / "urls_200.txt"
+    
+    urls = set()
+    if urls_file.exists():
+        for line in urls_file.read_text().splitlines():
+            url = line.strip()
+            if url:
+                parsed = urlparse(url)
+                base = f"{parsed.scheme}://{parsed.netloc}"
+                urls.add(base)
+    
+    # Gerar endpoints GraphQL para cada base URL
+    test_urls = []
+    for base in urls:
+        for path in GRAPHQL_PATHS:
+            test_urls.append(f"{base}{path}")
+    
+    # Adicionar endpoints encontrados pelo endpoint plugin
+    endpoint_file = Path("output") / target / "endpoint" / "graphql.txt"
+    if endpoint_file.exists():
+        for line in endpoint_file.read_text().splitlines():
+            if line.strip():
+                test_urls.append(line.strip())
+    
+    test_urls = list(set(test_urls))
+    info(f"   📊 Testando {len(test_urls)} endpoints GraphQL potenciais")
+    
+    all_findings = []
+    
+
+    
+    with httpx.Client(verify=False, follow_redirects=True, timeout=15) as client:
+        for url in test_urls:
+            findings = test_endpoint(client, url)
+            if findings:
+                all_findings.extend(findings)
+                for f in findings:
+                    info(f"   🚨 {C.RED}{f['type']}: {url}{C.END}")
+    
+    results_file.write_text(json.dumps(all_findings, indent=2, ensure_ascii=False))
+    
+    if all_findings:
+        success(f"🧬 {len(all_findings)} problemas GraphQL encontrados!")
     else:
-        info("\n   ✔ Nenhum endpoint GraphQL com introspection habilitado.")
-        
-    return findings
+        success("✅ Nenhum problema GraphQL detectado")
+    
+    return [str(results_file)]

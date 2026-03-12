@@ -184,7 +184,10 @@ def run(context: dict):
     # ==========================================================================
     try:
         import httpx
-        all_headers = asyncio.run(run_headers_scan_async(urls))
+        async def _run_all_async():
+            headers = await run_headers_scan_async(urls)
+            return headers
+        all_headers = asyncio.run(_run_all_async())
     except ImportError:
         error("httpx não instalado.")
         return []
@@ -226,7 +229,9 @@ def run(context: dict):
     # ==========================================================================
     if hosts:
         try:
-            certs = asyncio.run(run_certs_scan_async(sorted(hosts)))
+            async def _run_certs_async():
+                return await run_certs_scan_async(sorted(hosts))
+            certs = asyncio.run(_run_certs_async())
             cert_file.write_text(json.dumps(certs, indent=2, ensure_ascii=False))
             info(f"   💾 Certificado salvo: {C.GREEN}{cert_file}{C.END}")
         except Exception as e:

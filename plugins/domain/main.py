@@ -21,10 +21,6 @@ from plugins.extractors import (
     extract_inline_scripts,
     analyze_page
 )
-from plugins.extractors.swagger_parser import scan_for_swagger
-from plugins.extractors.git_hunter import scan_exposed_git_cicd
-from plugins.scanners.param_miner import mine_parameters
-from plugins.scanners.logic_fuzzer import fuzz_logic_flaws
 
 CONCURRENCY_LIMIT = 10
 DELAY_BETWEEN_REQUESTS = 0.5
@@ -122,32 +118,13 @@ async def analyze_url_task(client, url, semaphore):
             routes = extract_routes(content, final_url)
             tech_result = analyze_page(final_url, content, headers)
             
-            # --- NEW BUG BOUNTY 2026 PLUGINS ---
-            # These perform their own network requests but handles timeout internally.
-            
-            # 1. Swagger Parser Fuzzing
-            swagger_docs = scan_for_swagger(final_url)
-            
-            # 2. Git Time Machine / CI-CD Check
-            git_exposed = scan_exposed_git_cicd(final_url)
-            
-            # 3. Param Fuzzing
-            hidden_params = mine_parameters(final_url)
-            
-            # 4. Logic Flaws (CORS / Cache)
-            logic_flaws = fuzz_logic_flaws(final_url)
-            
             return {
                 "url": final_url,
                 "is_login": is_login,
                 "keys": keys,
                 "js_files": js_files,
                 "routes": routes,
-                "technologies": tech_result["technologies"],
-                "swagger_docs": swagger_docs,
-                "git_exposed": git_exposed,
-                "hidden_params": hidden_params,
-                "logic_flaws": logic_flaws
+                "technologies": tech_result["technologies"]
             }
             
         except Exception as e:
@@ -420,10 +397,10 @@ def run(context):
         
         # Save ALL subdomains so the report can show Inactive ones
         all_subs_file = outdir / "subdomains_all.txt"
-        all_subs_file.write_text("\\n".join(raw_subs) + "\\n")
+        all_subs_file.write_text("\n".join(raw_subs) + "\n")
         
         alive_subs = [s for s in raw_subs if s in active_hosts]
-        subs_file.write_text("\\n".join(alive_subs) + "\\n")
+        subs_file.write_text("\n".join(alive_subs) + "\n")
         info(f"   [!] Filtrado de {len(raw_subs)} para {len(alive_subs)} ativos (com ports/web). Backup salvo em subdomains_all.txt")
 
     # === FINALIZACAO ===

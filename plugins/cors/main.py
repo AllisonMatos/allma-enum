@@ -100,6 +100,34 @@ def check_cors(url: str, target: str) -> dict | None:
             except Exception:
                 pass
 
+            # 3) Suffix match: evil.comtarget.com
+            suffix_origins = [
+                f"https://evil.com{target}",     # suffix match
+                f"https://{target}.evil.com",     # prefix-dot
+                f"https://{target}evil.com",      # regex bypass
+            ]
+            for so in suffix_origins:
+                try:
+                    resp = client.get(url, headers={
+                        "Origin": so,
+                        "User-Agent": "Mozilla/5.0"
+                    })
+                    acao = resp.headers.get("access-control-allow-origin", "")
+                    acac = resp.headers.get("access-control-allow-credentials", "")
+                    if acao == so:
+                        results.append({
+                            "url": url,
+                            "tested_origin": so,
+                            "acao": acao,
+                            "credentials": acac.lower() == "true",
+                            "severity": "high",
+                            "issue": f"Origin bypass accepted: {so}",
+                            "response_raw": format_http_response(resp),
+                            "request_raw": format_http_request(resp.request)
+                        })
+                except Exception:
+                    pass
+
     except Exception:
         pass
 

@@ -19,16 +19,16 @@ def run_searchsploit(term: str):
 
     cmd = [searchsploit, term, "--json"]
     try:
-        proc = subprocess.run(cmd, capture_output=True, text=True)
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
         if proc.returncode == 0:
             data = json.loads(proc.stdout)
             return data.get("RESULTS_EXPLOIT", [])
-    except:
+    except Exception:
         pass
     return []
 
 def run(context: dict):
-    target = context.get("target") # can be domain or just general
+    target = context.get("target")
     if not target:
         raise ValueError("Target required")
 
@@ -52,7 +52,7 @@ def run(context: dict):
 
     try:
         tech_data = json.loads(tech_file.read_text())
-    except:
+    except Exception:
         error("Erro ao ler technologies.json")
         return []
 
@@ -63,22 +63,22 @@ def run(context: dict):
     for subdomain, data in tech_data.items():
         if "technologies" not in data:
             continue
+
+        for tech in data["technologies"]:
+            name = tech.get("name")
+            version = tech.get("version")
             
-            for tech in data["technologies"]:
-                name = tech.get("name")
-                version = tech.get("version")
-                
-                if not name: continue
-                if not version or version.lower() in ["unknown", "n/a", ""]:
-                    continue
-                
-                # Construir termo de busca
-                search_term = f"{name} {version}"
+            if not name:
+                continue
+            if not version or version.lower() in ["unknown", "n/a", ""]:
+                continue
+            
+            # Construir termo de busca
+            search_term = f"{name} {version}"
             
             # Evitar buscar duplicatas
             cache_key = search_term.lower()
             if cache_key in vulns_found:
-                # Já buscamos isso, só associar ao subdomínio se necessário
                 continue
                 
             info(f"   🔎 Buscando exploits para: {C.YELLOW}{search_term}{C.END}")

@@ -37,3 +37,33 @@ def format_http_response(response: httpx.Response) -> str:
             body = "\n\n[Binary Content]"
 
     return f"{http_version} {status_code} {reason_phrase}\n{headers}{body}"
+
+
+def format_raw_request(method: str, url: str, headers: dict, body: str = "") -> str:
+    """Formats a raw HTTP request string from individual components."""
+    from urllib.parse import urlparse
+    parsed = urlparse(url)
+    path = parsed.path or "/"
+    if parsed.query:
+        path += f"?{parsed.query}"
+    
+    host = parsed.netloc
+    header_lines = f"Host: {host}\n"
+    header_lines += "\n".join(f"{k}: {v}" for k, v in headers.items() if k.lower() != "host")
+    
+    result = f"{method} {path} HTTP/1.1\n{header_lines}"
+    if body:
+        result += f"\n\n{body}"
+    return result
+
+
+def format_raw_response(status_code: int, headers: dict, body: str = "") -> str:
+    """Formats a raw HTTP response string from individual components."""
+    header_lines = "\n".join(f"{k}: {v}" for k, v in headers.items())
+    result = f"HTTP/1.1 {status_code}\n{header_lines}"
+    if body:
+        content = body[:10000]
+        if len(body) > 10000:
+            content += "\n... [Truncated]"
+        result += f"\n\n{content}"
+    return result

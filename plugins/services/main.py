@@ -110,16 +110,26 @@ def run(context):
         safe_host = host.replace(".", "_")
         outfile = outdir / f"scan_{safe_host}.txt"
 
+        import shlex
+        try:
+            nmap_parts = shlex.split(nmap_args)
+        except ValueError:
+            nmap_parts = ["-sV", "-Pn"]
+        
+        # Adicionar timing default se nenhum -T flag for especificado
+        if not any(p.startswith("-T") for p in nmap_parts):
+            nmap_parts.append("-T3")
+
         cmd = [
             "nmap",
-            *nmap_args.split(),
+            *nmap_parts,
             "-p", ports_str,
             host,
             "-oN", str(outfile)
         ]
 
         info(f"   🔎 {C.CYAN}Nmap → {host}:{ports_str}{C.END}")
-        subprocess.run(cmd)
+        subprocess.run(cmd, capture_output=True, text=True)
 
         results.append(outfile)
 

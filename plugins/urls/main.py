@@ -32,21 +32,53 @@ def httpx_validate(in_file: Path, out_file: Path, want_status: str = WANT_STATUS
         httpx,
         "-l", str(in_file),
         "-mc", want_status,
-        "-threads", "100",
+        "-threads", "50",
         "-retries", "2",
         "-timeout", "15",
         "-random-agent",
-
+        "-no-color",
         "-follow-redirects",
         "-o", str(out_file),
         "-silent",
     ]
 
-    subprocess.run(cmd)
+    info(f"   CMD: {' '.join(cmd)}")
 
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+    
+    if result.stderr:
+        stderr_clean = result.stderr.strip()[:500]
+        if stderr_clean:
+            warn(f"httpx stderr: {stderr_clean}")
+
+    if result.returncode != 0:
+        warn(f"httpx exit code: {result.returncode}")
+
+    # Verificar se output existe e tem dados
     if not out_file.exists() or out_file.stat().st_size == 0:
-        warn("⚠️ Nenhuma URL válida encontrada via httpx.")
-        return []
+        # Fallback: tentar via pipe (sem -o)
+        warn("⚠️ httpx -o produziu arquivo vazio. Tentando via pipe...")
+        cmd_pipe = [
+            httpx,
+            "-l", str(in_file),
+            "-mc", want_status,
+            "-threads", "50",
+            "-retries", "2",
+            "-timeout", "15",
+            "-random-agent",
+            "-no-color",
+            "-follow-redirects",
+            "-silent",
+        ]
+        result2 = subprocess.run(cmd_pipe, capture_output=True, text=True, timeout=600)
+        if result2.stdout and result2.stdout.strip():
+            out_file.write_text(result2.stdout)
+            info(f"   ✅ Fallback via pipe funcionou!")
+        else:
+            if result2.stderr:
+                warn(f"httpx pipe stderr: {result2.stderr.strip()[:300]}")
+            warn("⚠️ Nenhuma URL válida encontrada via httpx.")
+            return []
 
     urls = sorted(
         set(

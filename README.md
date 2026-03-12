@@ -17,11 +17,10 @@ Allma-Enum é uma suíte completa para pentest e bug bounty, focada em automaç�
 - **Fingerprinting**: Identificação de tecnologias e serviços com Wappalyzer-like detection.
 
 ### 🔗 Crawling & Discovery Avançado
-- **Multi-Crawler**: Integração com `Katana`, `Gospider` e `URLFinder` com progresso em tempo real.
+- **Multi-Crawler**: Integração com `URLFinder` e ferramentas históricas (GAU/Wayback).
 - **Deep Discovery**: Recursividade inteligente para encontrar URLs escondidas.
-- **Forms & Params**: Extração automática de formulários e parâmetros GET/POST para fuzzing.
-- **News in Code**: Busca profunda por URLs dentro de arquivos JS e scripts inline.
-- **Historical Discovery**: Coleta de URLs históricas via Wayback Machine e Common Crawl.
+- **Forms & Params**: Extração automática de formulários e parâmetros GET/POST para análise.
+- **JS Discovery**: Busca profunda por URLs dentro de arquivos JS e scripts inline.
 
 ### 🔍 Análise de Segurança
 - **Secret Finder**: Busca por chaves de API, tokens e credenciais vazadas em JS/HTML.
@@ -29,18 +28,16 @@ Allma-Enum é uma suíte completa para pentest e bug bounty, focada em automaç�
 - **JS Analysis**: Extração de endpoints e rotas de arquivos JavaScript.
 - **CVE Detection**: Correlação de tecnologias detectadas com CVEs conhecidos via Searchsploit.
 - **🗺️ Source Maps**: Extração de código-fonte original e segredos de arquivos `.map` (Soucemap unpacker).
-- **🎯 Param Fuzz**: Fuzzing avançado e assíncrono para descoberta de parâmetros HTTP ocultos com detecção de reflexão.
-- **🎭 XSS Scanner**: Busca passiva por vulnerabilidades Cross-Site Scripting em parâmetros e formulários.
+- **🗂️ Wordlist**: Geração de dicionários personalizados baseados no alvo para ataques de força bruta.
+- **🎭 XSS Scanner**: Busca passiva por reflexões e sinks perigosos de Cross-Site Scripting.
 
 ### 🔑 Admin Panel Discovery
-- **80+ paths comuns** testados (wp-admin, phpmyadmin, /admin, etc.).
-- **15 portas alternativas** (8080, 8443, 9090, etc.).
-- **CMS Fingerprinting**: WordPress, Joomla, Drupal, Laravel, Django, Jenkins, Grafana, etc.
+- **80+ paths comuns** testados (/admin, /wp-admin, /actuator, etc.).
+- **Bypass de 403**: Técnicas semi-ativas e headers customizados para burlar restrições de acesso.
 - **Login Form Detection**: Identificação automática de formulários de login.
 
 ### ☁️ Cloud Security
-- **Bucket Discovery**: Detecção de buckets S3, GCS e Azure.
-- **🆕 Permission Testing**: Teste automático de permissões LIST/READ/WRITE em buckets (WRITE é opt-in).
+- **Takeover detection**: Verificação de subdomínios órfãos apontando para serviços de nuvem (AWS, Azure, Vercel, etc.).
 
 ### 📦 Dependency Confusion
 - **Package Extraction**: Extrai nomes de pacotes de `require()` e `import` em arquivos JS.
@@ -50,10 +47,8 @@ Allma-Enum é uma suíte completa para pentest e bug bounty, focada em automaç�
 
 ### 📊 Relatórios Profissionais
 - **Dashboard SPA**: Design moderno Dark Mode com navegação por abas.
-- **17 seções**: Dashboard, Subdomains, DNS/IPs, Security, CVEs, Services, URLs, Keys, Endpoints, JS, Params, Param Fuzz, Source Maps, Cloud, Admin Panels, Dep Confusion, Files.
+- **13+ seções**: Dashboard, Subdomains, DNS/IPs, Security, CVEs, Services, URLs, Keys, Endpoints, JS, Source Maps, Admin Panels, Dep Confusion, Emails.
 - **Login Flags**: Badge 🔑 LOGIN em subdomínios com páginas de login detectadas.
-- **Validation Badges**: ✓ VALIDATED / ✗ INVALID / ⊘ NOT TESTED para secrets encontrados.
-- **Cloud Permissions**: Coluna de permissões nos buckets descobertos.
 - **Export**: Dados brutos salvos em JSON/TXT.
 
 ---
@@ -78,24 +73,6 @@ pip install -r requirements.txt
 python3 check_install.py
 ```
 
-### Ferramentas Externas
-
-**Obrigatórias:**
-```bash
-go install github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest
-go install github.com/projectdiscovery/naabu/v2/cmd/naabu@latest
-go install github.com/projectdiscovery/katana/cmd/katana@latest
-go install github.com/projectdiscovery/httpx/cmd/httpx@latest
-go install github.com/jaeles-project/gospider@latest
-```
-
-**Opcionais (melhoram cobertura):**
-```bash
-go install github.com/tomnomnom/waybackurls@latest
-go install github.com/lc/gau/v2/cmd/gau@latest
-go install github.com/hakluke/haktrails@latest
-```
-
 ---
 
 ## 💻 Uso
@@ -107,20 +84,30 @@ python3 menu.py
 ### Módulos Disponíveis
 | ID | Módulo | Descrição |
 |----|--------|-----------|
-| 1 | **domain** | Enumeração de subdomínios, DNS e portas |
-| 2 | **urls** | Crawling profundo (Katana + URLFinder + Histórico) |
-| 3 | **services** | Probing de serviços e Nmap |
-| 4 | **files** | Busca por arquivos sensíveis |
-| 5 | **jsscanner** | Análise estática de JavaScript |
-| 6 | **fingerprint** | Identificação de Tech Stack |
-| 7 | **endpoint** | Mapeamento de API |
-| 8 | **wordlist** | Geração de wordlists customizadas |
-| 9 | **xss** | Scan de XSS |
-| 20 | **sourcemaps** | Extração e Análise de Source Maps |
-| 21 | **paramfuzz** | Fuzzing de Parâmetros Ocultos |
-| 10 | **ALL** | **Executa o fluxo completo (Recomendado)** |
-
-> Módulo "ALL" inclui automaticamente: CVE detection, admin panel discovery, dependency confusion, sourcemaps e paramfuzz.
+| 1 | **domain** | Enumeração de subdomínios e portas |
+| 2 | **urls** | Descoberta e validação de URLs (Wayback + Live) |
+| 3 | **services** | Probing de serviços e banners Nmap |
+| 4 | **files** | Busca e filtragem por arquivos sensíveis |
+| 5 | **jsscanner** | Análise estática profunda de JavaScript |
+| 6 | **fingerprint** | Identificação de Tech Stack e Frameworks |
+| 7 | **endpoint** | Mapeamento de Endpoints e rotas de API |
+| 8 | **wordlist** | Geração de wordlists baseadas no alvo |
+| 9 | **xss** | Scan passivo de vulnerabilidade XSS |
+| 10 | **sourcemaps** | Extração de código de Source Maps |
+| 11 | **cve** | Correlação com banco de dados CVE |
+| 12 | **admin** | Busca por painéis administrativos e bypass |
+| 13 | **depconfusion** | Supply Chain Attack Detection |
+| 14 | **cors** | Misconfigurações de CORS detector |
+| 15 | **takeover** | Subdomain Takeover Scanner |
+| 16 | **headers** | Análise de Security Headers e notas |
+| 17 | **waf** | Identificação de Firewalls Cloud |
+| 18 | **emails** | Harvesting passivo de e-mails corporativos |
+| 19 | **graphql** | GraphQL Introspection & Mutation Scan |
+| 20 | **cache_deception** | Web Cache Deception Detector |
+| 21 | **jwt_analyzer** | Decode e análise de tokens JWT |
+| 22 | **crlf_injection** | CRLF Injection Scanner |
+| 23 | **insecure_deser** | Insecure Deserialization Checker |
+| 24 | **ALL** | **Executa o fluxo completo (1-23)** |
 
 ---
 
@@ -128,17 +115,15 @@ python3 menu.py
 
 ```
 output/example.com/
-├── report/           # Relatório HTML SPA
+├── report/           # Relatório HTML SPA moderno
 ├── domain/           # Subdomínios, DNS, IPs e Portas
 ├── urls/             # URLs descobertas e validadas
-├── crawlers/         # Katana, Gospider
-├── keys/             # Secrets e tokens encontrados
-├── jsscanner/        # Análise de arquivos JS
-├── sourcemaps/       # Segredos extraídos de source maps
-├── paramfuzz/        # Parâmetros ocultos encontrados
-├── admin/            # Admin panels descobertos
-├── depconfusion/     # Dependency confusion results
-└── cloud/            # Cloud buckets e permissões
+├── intelligence/     # Análise de risco e dicas de hacking
+├── jsscanner/        # Extrações de chaves e rotas JS
+├── sourcemaps/       # Código fonte reconstruído de maps
+├── admin/            # Painéis de controle encontrados
+├── depconfusion/     # Pacotes NPM vulneráveis
+└── wordlist/         # Dicionários gerados para brute force
 ```
 
 ---

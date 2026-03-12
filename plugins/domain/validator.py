@@ -175,6 +175,7 @@ def validate_urls(in_file: Path, out_file: Path, threads: int = 50):
         "-retries", "3",
         "-timeout", "20",
         "-random-agent",
+        "-no-color",
         "-follow-redirects",
         "-silent",
         "-threads", str(threads),
@@ -182,10 +183,25 @@ def validate_urls(in_file: Path, out_file: Path, threads: int = 50):
     ]
 
     try:
-        subprocess.run(cmd, check=False)
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+        if result.stderr and result.stderr.strip():
+            warn(f"httpx stderr: {result.stderr.strip()[:300]}")
+    except subprocess.TimeoutExpired:
+        warn("httpx timeout atingido (600s)")
     except Exception as e:
         error(f"Erro executando httpx: {e}")
-        return []
+
+    # Fallback via pipe se -o falhar
+    if not out_file.exists() or out_file.stat().st_size == 0:
+        warn("httpx -o vazio, tentando via pipe...")
+        cmd_pipe = [c for c in cmd if c not in ("-o", str(out_file))]
+        try:
+            r2 = subprocess.run(cmd_pipe, capture_output=True, text=True, timeout=600)
+            if r2.stdout and r2.stdout.strip():
+                out_file.write_text(r2.stdout)
+                info("   ✅ Fallback via pipe funcionou!")
+        except Exception:
+            pass
 
     # Leitura dos resultados
     if not out_file.exists():
@@ -224,6 +240,7 @@ def validate_urls(in_file: Path, out_file: Path, threads: int = 50):
             "-retries", "2",
             "-timeout", "15",
             "-random-agent",
+            "-no-color",
             "-follow-redirects",
             "-silent",
             "-threads", str(threads),
@@ -231,7 +248,13 @@ def validate_urls(in_file: Path, out_file: Path, threads: int = 50):
         ]
         
         try:
-            subprocess.run(cmd_fallback, check=False)
+            subprocess.run(cmd_fallback, capture_output=True, text=True, timeout=600)
+            if not fallback_out.exists() or fallback_out.stat().st_size == 0:
+                # Pipe fallback
+                cmd_pipe2 = [c for c in cmd_fallback if c not in ("-o", str(fallback_out))]
+                r3 = subprocess.run(cmd_pipe2, capture_output=True, text=True, timeout=600)
+                if r3.stdout and r3.stdout.strip():
+                    fallback_out.write_text(r3.stdout)
             if fallback_out.exists():
                 fallback_valid = [x.strip() for x in fallback_out.read_text().splitlines() if x.strip()]
                 if fallback_valid:

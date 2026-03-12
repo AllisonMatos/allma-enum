@@ -19,7 +19,6 @@ ClassificationRules = {
     "ADMIN": r"(?i)(/admin|/administrator|/manage|/dashboard|/panel|/wp-admin)",
     "UPLOAD": r"(?i)(/upload|/import|/media|/file|/attachment)",
     "DEBUG": r"(?i)(/debug|/test|/dev|/trace|/console|phpinfo)",
-    "REDIRECT": r"(?i)(\?url=|\?next=|\?redirect=|\?return=|\?path=)",
     "DOCS": r"(?i)(/swagger|/docs|/openapi|/api-docs)"
 }
 
@@ -30,20 +29,10 @@ VulnPatterns = {
         "name": "Local/Remote File Inclusion",
         "risk": "HIGH"
     },
-    "OPEN_REDIRECT": {
-        "params": ["next", "url", "target", "rurl", "dest", "destination", "redir", "redirect_uri", "continue", "return"],
-        "name": "Open Redirect",
-        "risk": "MEDIUM"
-    },
     "SQLI_IDOR": {
         "params": ["id", "user", "account", "number", "order", "query", "search", "q", "pwd", "email"],
         "name": "SQLi / IDOR",
         "risk": "HIGH"
-    },
-    "SSRF": {
-        "params": ["daemon", "upload", "dir", "download", "log", "ip", "cli", "cmd", "exec", "command", "ping"],
-        "name": "Server Side Request Forgery / RCE",
-        "risk": "CRITICAL"
     }
 }
 

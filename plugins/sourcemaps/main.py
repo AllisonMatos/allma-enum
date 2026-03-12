@@ -163,12 +163,19 @@ async def run_async(context: dict):
     extracted_js = base / "domain" / "extracted_js.json"
     if extracted_js.exists():
         try:
-             data = json.loads(extracted_js.read_text())
-             for items in data.values():
-                  for item in items:
-                       js_urls.add(item)
+              data = json.loads(extracted_js.read_text())
+              if isinstance(data, list):
+                   for entry in data:
+                        url = entry.get("url", "") if isinstance(entry, dict) else str(entry)
+                        if url:
+                             js_urls.add(url)
+              elif isinstance(data, dict):
+                   for items in data.values():
+                        if isinstance(items, list):
+                             for item in items:
+                                  js_urls.add(item if isinstance(item, str) else item.get("url", ""))
         except Exception:
-             pass
+              pass
              
     # Fallback to JSSCANNER output or URLs output
     if not js_urls:

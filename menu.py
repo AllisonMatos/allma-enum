@@ -36,24 +36,25 @@ MODULES = {
     "7": "endpoint",
     "8": "wordlist",
     "9": "xss",
-    "10": "all",
-    "12": "cve",
-    "13": "admin",
-    "14": "depconfusion",
-    "15": "cors",
-    "16": "takeover",
-    "17": "headers",
-    "18": "waf",
-    "19": "emails",
-    "20": "sourcemaps",
-    "22": "open_redirect",
-    "23": "ssrf",
-    "24": "graphql",
-    "25": "api_security",
-    "26": "cache_deception",
+    "10": "sourcemaps",
+    "11": "cve",
+    "12": "admin",
+    "13": "depconfusion",
+    "14": "cors",
+    "15": "takeover",
+    "16": "headers",
+    "17": "waf",
+    "18": "emails",
+    "19": "graphql",
+    "20": "cache_deception",
+    "21": "jwt_analyzer",
+    "22": "crlf_injection",
+    "23": "insecure_deserialization",
+    "24": "all",
 }
 
 # --------- DEPENDÊNCIAS ---------
+# Mapeia quais módulos o módulo X depende para rodar completo
 DEPENDENCIES = {
     "1": ["1"],
     "2": ["1", "2"],
@@ -64,13 +65,21 @@ DEPENDENCIES = {
     "7": ["1", "2", "3", "4", "5", "6", "7"],
     "8": ["1", "2", "3", "4", "5", "6", "7", "8"],
     "9": ["1", "2", "3", "4", "5", "6", "7", "8", "9"],
-    "10": ["1", "2", "3", "4", "5", "6", "7", "8", "9", "12", "13", "14", "15", "16", "17", "18", "19", "20", "22", "23", "24", "25", "26"],
-    "20": ["1", "2", "5", "20"],
+    "10": ["1", "2", "5", "10"],
+    "11": ["1", "2", "3", "6", "11"],
+    "12": ["1", "2", "12"],
+    "13": ["1", "2", "13"],
+    "14": ["1", "2", "14"],
+    "15": ["1", "2", "15"],
+    "16": ["1", "2", "16"],
+    "17": ["1", "2", "17"],
+    "18": ["1", "2", "18"],
+    "19": ["1", "2", "7", "19"],
+    "20": ["1", "2", "20"],
+    "21": ["1", "2", "21"],
     "22": ["1", "2", "22"],
     "23": ["1", "2", "23"],
-    "24": ["1", "2", "24"],
-    "25": ["1", "2", "25"],
-    "26": ["1", "2", "26"],
+    "24": [str(x) for x in range(1, 24)],
 }
 
 
@@ -98,6 +107,7 @@ def print_menu():
     print(f"\n{C.BOLD}{C.CYAN}📋 MÓDULOS DISPONÍVEIS{C.END}\n")
 
     modules = {
+        "0": ("documentation", "Leia como a ferramenta funciona", "📖"),
         "1": ("domain", "Enumeração de subdomínios e portas", "🌐"),
         "2": ("urls", "Descoberta e validação de URLs", "🔗"),
         "3": ("services", "Identificação de serviços", "🛠️"),
@@ -107,14 +117,21 @@ def print_menu():
         "7": ("endpoint", "Enumeração de endpoints API", "🎯"),
         "8": ("wordlist", "Força bruta em diretórios", "🗂️"),
         "9": ("xss", "Detecção de vulnerabilidades XSS", "🎭"),
-        "20": ("sourcemaps", "Extração e Análise de Source Maps", "🗺️"),
-        "15": ("cors", "Omissões de CORS", "🟧"),
-        "22": ("open_redirect", "Scanner de Open Redirect", "🔄"),
-        "23": ("ssrf", "Detector de SSRF", "📡"),
-        "24": ("graphql", "GraphQL Introspection", "🧬"),
-        "25": ("api_security", "Segurança de API", "🛡️"),
-        "26": ("cache_deception", "Cache Deception Detector", "🧊"),
-        "10": ("all", "Execução completa", "🚀")
+        "10": ("sourcemaps", "Extração e Análise de Source Maps", "🗺️"),
+        "11": ("cve", "Varredura de vulnerabilidades conhecidas", "🛡️"),
+        "12": ("admin", "Busca por painéis administrativos", "🔑"),
+        "13": ("depconfusion", "Dependency Confusion Scan", "📦"),
+        "14": ("cors", "Misconfigurações de CORS", "🟧"),
+        "15": ("takeover", "Subdomain Takeover Scan", "🏴‍☠️"),
+        "16": ("headers", "Análise de Security Headers", "📜"),
+        "17": ("waf", "Detecção de WAF", "🛡️"),
+        "18": ("emails", "Extração de e-mails", "📧"),
+        "19": ("graphql", "GraphQL Introspection", "🧬"),
+        "20": ("cache_deception", "Web Cache Deception", "🧊"),
+        "21": ("jwt_analyzer", "Análise de JWT Tokens", "🔑"),
+        "22": ("crlf_injection", "CRLF Injection Scanner", "💉"),
+        "23": ("insecure_deser", "Insecure Deserialization", "🧬"),
+        "24": ("all", "Execução completa", "🚀")
     }
 
     for k, (name, desc, emoji) in modules.items():
@@ -154,10 +171,25 @@ def ask_ports_mode():
 
 # ---------- NMAP ----------
 def ask_nmap_args():
+    import shlex
     print(f"\n{C.BOLD}{C.CYAN}🔧 CONFIGURAÇÃO DO NMAP{C.END}")
     print(f"{C.YELLOW}Padrão:{C.END} {C.GREEN}-sV -Pn{C.END}")
     val = input(f"{C.BOLD}{C.BLUE}Args: {C.END}").strip()
-    return val if val else "-sV -Pn"
+    raw = val if val else "-sV -Pn"
+    # Sanitizar: usar shlex.split para parsing seguro
+    try:
+        parts = shlex.split(raw)
+    except ValueError:
+        print(f"{C.RED}❌ Argumentos inválidos, usando padrão -sV -Pn{C.END}")
+        return "-sV -Pn"
+    # Bloquear flags perigosas
+    blocked = {"--script", "--exec", "--interactive", "-iL", "--script-args", "--script-updatedb"}
+    for part in parts:
+        flag = part.split("=")[0].lower()
+        if flag in blocked:
+            print(f"{C.RED}❌ Flag bloqueada: {flag}. Usando padrão -sV -Pn{C.END}")
+            return "-sV -Pn"
+    return raw
 
 
 # ---------- VALIDAR TARGET ----------
@@ -179,9 +211,15 @@ def main():
     print_banner()
     print_menu()
 
-    # escolher módulo
     print(f"\n{C.BOLD}{C.CYAN}🎯 SELEÇÃO DO MÓDULO{C.END}")
     choice = input(f"\n{C.BOLD}{C.BLUE}Digite o número: {C.END}").strip()
+
+    if choice == "0":
+        print(f"\n{C.GREEN}📖 Iniciando Visualizador de Documentação...{C.END}")
+        from plugins.documentation import main as docs_main
+        docs_main.run_docs()
+        # Se fechar, sai ou recarrega menu? Vamos apenas chamar o main de novo ou sair.
+        sys.exit(0)
 
     if choice not in MODULES:
         print(f"{C.RED}❌ Opção inválida!{C.END}")
@@ -195,8 +233,9 @@ def main():
         print(f"{C.RED}❌ Target inválido.{C.END}")
         sys.exit(1)
 
-    # chain
+    # chain — "10" é meta-módulo (all), não deve entrar na chain de execução
     chain = list(dict.fromkeys(DEPENDENCIES[choice] + [choice]))
+    chain = [c for c in chain if c != "10"]
 
     # parâmetros
     params = {name: {} for name in MODULES.values()}

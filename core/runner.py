@@ -45,22 +45,22 @@ def execute_chain(target: str, chain: list, params: dict):
         "7": "endpoint",
         "8": "wordlist",
         "9": "xss",
-        "10": "cloud",
-        "12": "cve",
-        "13": "admin",
-        "14": "depconfusion",
-        "15": "cors",
-        "16": "takeover",
-        "17": "headers",
-        "18": "waf",
-        "19": "emails",
-        "20": "sourcemaps",
-        "22": "open_redirect",
-        "23": "ssrf",
-        "24": "graphql",
-        "25": "api_security",
-        "26": "cache_deception",
-        "99": "intelligence", # Alterado de 22 para 99 para evitar conflito
+        "10": "sourcemaps",
+        "11": "cve",
+        "12": "admin",
+        "13": "depconfusion",
+        "14": "cors",
+        "15": "takeover",
+        "16": "headers",
+        "17": "waf",
+        "18": "emails",
+        "19": "graphql",
+        "20": "cache_deception",
+        "21": "jwt_analyzer",
+        "22": "crlf_injection",
+        "23": "insecure_deserialization",
+        "24": "all",
+        "99": "intelligence",
     }
 
     # ==========================================
@@ -148,7 +148,12 @@ def execute_chain(target: str, chain: list, params: dict):
             duration = plugin_end - plugin_start
             plugin_timings.append((name, duration, "ERRO"))
             error(f"Erro ao executar '{name}': {e}")
-            sys.exit(1)
+            warn(f"⚠️  Continuando pipeline apesar do erro em '{name}'...")
+            # Salvar checkpoint mesmo com erro para não re-executar
+            checkpoint_file.parent.mkdir(parents=True, exist_ok=True)
+            with checkpoint_file.open("a") as f:
+                f.write(f"{step}\n")
+            continue
 
     # ==========================================
     #  INTELLIGENCE & REPORT — RODA POR ÚLTIMO
