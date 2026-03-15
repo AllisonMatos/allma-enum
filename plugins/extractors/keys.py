@@ -38,7 +38,7 @@ REGEX_PATTERNS = {
     # ── Social/OAuth ─────────────────────────────────────────
     "Facebook Access Token": r"EAA[a-zA-Z0-9]+",
     "Facebook App Secret": r"(?i)facebook[_\-]?(?:app[_\-]?)?secret['\"]?\s*[:=]\s*['\"]?([a-f0-9]{32})['\"]?",
-    "Twitter Bearer Token": r"AAAAAAAAA[A-Za-z0-9%]+",
+    "Twitter Bearer Token": r"AAAA[A-Za-z0-9]{96,}",
     "Twitter API Secret": r"(?i)twitter[_\s]*(?:api[_\s]*)?secret[_\s]*[:=]['\"]([a-zA-Z0-9]{35,50})['\"]",
     "LinkedIn Client Secret": r"(?i)linkedin[_\s]*(?:client[_\s]*)?secret[_\s]*[:=]['\"]([a-zA-Z0-9]{16})['\"]",
     "OAuth Client Secret": r"(?i)(?:oauth[_\s]*)?client[_\s]*secret[_\s]*[:=]['\"]([a-zA-Z0-9_\-]{16,})['\"]",
@@ -60,7 +60,7 @@ REGEX_PATTERNS = {
     "Discord Webhook": r"https://(?:ptb\.|canary\.)?discord(?:app)?\.com/api/webhooks/[0-9]+/[A-Za-z0-9_-]+",
     "Telegram Bot Token": r"[0-9]+:AA[0-9A-Za-z_-]{33}",
     "Twilio API Key": r"SK[0-9a-fA-F]{32}",
-    "Twilio Account SID": r"AC[a-zA-Z0-9_\-]{32}",
+    "Twilio Account SID": r"AC[0-9a-fA-F]{32}",
     "Twilio Auth Token": r"(?i)twilio[_\s]*(?:auth[_\s]*)?token[_\s]*[:=]['\"]([a-f0-9]{32})['\"]",
     "SendGrid API Key": r"SG\.[a-zA-Z0-9_-]{22}\.[a-zA-Z0-9_-]{43}",
     "Mailchimp API Key": r"[a-f0-9]{32}-us[0-9]{1,2}",
@@ -310,6 +310,23 @@ def is_placeholder(value: str) -> bool:
     if _has_repetitive_pattern(value):
         return True
     if "{{" in lower or "${" in lower or "<%" in lower:
+        return True
+    return False
+
+
+def is_media_false_positive(content: str, position: int) -> bool:
+    """Detecta se o contexto ao redor indica que o match é lixo de arquivo de mídia/binário."""
+    start = max(0, position - 200)
+    end = min(len(content), position + 200)
+    nearby = content[start:end].lower()
+    
+    media_indicators = [
+        '.png', '.jpg', '.jpeg', '.gif', '.svg', '.ico', '.webp', '.woff', '.ttf',
+        'data:image', 'base64', 'favicon', 'icon', 'binary', 'octet-stream',
+        'content-type: image', 'attachment; filename='
+    ]
+    
+    if any(ind in nearby for ind in media_indicators):
         return True
     return False
 
@@ -602,6 +619,11 @@ def extract_keys(content: str, source_url: str = None, source_file: str = None) 
             # Deduplicate
             if match_str in seen_values:
                 continue
+            
+            # Rigorous validation: check if it's a media/binary false positive
+            if is_media_false_positive(content, m.start()):
+                continue
+
             seen_values.add(match_str)
 
             # Context

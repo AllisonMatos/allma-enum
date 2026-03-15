@@ -45,6 +45,7 @@ def validate_token(key_type: str, token_value: str) -> dict:
         "AWS Access Key": _validate_aws,
         "Twilio API Key": _validate_twilio,
         "Twilio Account SID": _validate_twilio_sid,
+        "Twitter Bearer Token": _validate_twitter_bearer,
         "Discord Token": _validate_discord_format,
         "NPM Token": _validate_npm_format,
         "PyPI Token": _validate_pypi_format,
@@ -280,15 +281,26 @@ def _validate_twilio(token: str) -> dict:
 
 
 def _validate_twilio_sid(token: str) -> dict:
-    """Valida formato de Twilio Account SID."""
-    clean = re.search(r'(AC[a-zA-Z0-9]{32})', token)
+    """Valida formato de Twilio Account SID (AC + 32 hex chars)."""
+    clean = re.search(r'(AC[a-fA-F0-9]{32})', token)
     if clean:
         return {
             "validated": None,
-            "validation_info": "Formato válido de Twilio Account SID",
+            "validation_info": "Formato válido de Twilio Account SID (Strict HEX)",
             "validation_type": "format_check",
         }
-    return {"validated": False, "validation_info": "Formato inválido", "validation_type": "format_check"}
+    return {"validated": False, "validation_info": "Formato inválido (deve ser AC + 32 hex chars)", "validation_type": "format_check"}
+
+
+def _validate_twitter_bearer(token: str) -> dict:
+    """Valida formato de Twitter Bearer Token."""
+    if token.startswith('AAAA') and len(token) > 100 and '%' not in token:
+        return {
+            "validated": None,
+            "validation_info": "Formato provável de Twitter Bearer Token (Length/Prefix OK)",
+            "validation_type": "format_check",
+        }
+    return {"validated": False, "validation_info": "Falso positivo provável (Prefix/Length/Chars inválidos)", "validation_type": "format_check"}
 
 
 def _validate_sendgrid(token: str) -> dict:
@@ -467,10 +479,14 @@ def _validate_sentry_format(token: str) -> dict:
 # ═══════════════════════════════════════════════════════════════
 
 def _validate_jwt(token: str) -> dict:
-    """Decodifica JWT para verificar expiração."""
+    """Decodifica JWT para verificar expiração e valida tamanho das partes."""
     parts = token.split(".")
     if len(parts) != 3:
         return {"validated": None, "validation_info": "Não é formato JWT válido", "validation_type": "format_check"}
+
+    # Validação rigorosa: cada parte deve ter um tamanho mínimo razoável (evita lixo com pontos)
+    if any(len(p) < 10 for p in parts):
+        return {"validated": False, "validation_info": "JWT inválido (partes muito curtas)", "validation_type": "format_check"}
 
     try:
         payload_b64 = parts[1]
