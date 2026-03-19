@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Enum-Allma: {{ target }}</title>
+    <style>
+        :root {
+            --bg-primary: #0d1117;
+            --bg-secondary: #161b22;
+            --bg-tertiary: #21262d;
+            --text-primary: #e6edf3;
+            --text-secondary: #8b949e;
+            --text-muted: #484f58;
+            --border-color: #30363d;
+            --accent-blue: #2f81f7;
+            --accent-green: #238636;
+            --accent-red: #f85149;
+            --accent-orange: #d29922;
+            --accent-purple: #8957e5;
+            --sidebar-width: 56px;
+            --sidebar-width-expanded: 220px;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.5;
+            height: 100vh;
+            display: flex;
+            overflow: hidden;
+        }
+
+        /* SIDEBAR — identical to report.html */
+        .sidebar {
+            width: var(--sidebar-width);
+            background: var(--bg-secondary);
+            border-right: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 12px 0;
+            z-index: 1000;
+            transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            overflow-x: hidden;
+            overflow-y: auto;
+            flex-shrink: 0;
+        }
+        .sidebar:hover { width: var(--sidebar-width-expanded); align-items: stretch; }
+        .brand { width: 50px; height: 50px; margin: 0 auto 20px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
+        .brand svg { width: 100%; height: 100%; transition: transform 0.3s ease; filter: drop-shadow(0 0 2px rgba(0,0,0,0.5)); }
+        .brand:hover svg { transform: scale(1.1) rotate(5deg); }
+        .nav-btn {
+            width: 100%; height: 48px; display: flex; align-items: center;
+            background: transparent; border: none; color: var(--text-secondary);
+            cursor: pointer; padding: 0; transition: all 0.2s; position: relative;
+            text-decoration: none; white-space: nowrap;
+        }
+        .nav-btn:hover, .nav-btn.active { background: var(--bg-tertiary); color: var(--text-primary); }
+        .nav-btn.active:before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--accent-blue); }
+        .nav-icon { width: var(--sidebar-width); height: 48px; display: flex; align-items: center; justify-content: center; font-size: 20px; flex-shrink: 0; }
+        .nav-label {
+            padding-left: 10px; font-size: 14px; font-weight: 500; opacity: 0;
+            transition: opacity 0.2s; display: flex; align-items: center;
+            justify-content: space-between; flex: 1; padding-right: 16px;
+        }
+        .sidebar:hover .nav-label { opacity: 1; }
+        .count { background: var(--bg-primary); padding: 2px 8px; border-radius: 12px; font-size: 11px; color: var(--text-muted); border: 1px solid var(--border-color); }
+
+        /* CONTENT AREA */
+        .content-wrapper { flex: 1; display: flex; flex-direction: column; overflow: hidden; position: relative; }
+        .top-bar {
+            height: 60px; background: var(--bg-secondary); border-bottom: 1px solid var(--border-color);
+            display: flex; align-items: center; justify-content: space-between; padding: 0 24px; flex-shrink: 0;
+        }
+        .page-title h1 { font-size: 18px; font-weight: 600; color: var(--text-primary); margin: 0; }
+        .page-title span { color: var(--accent-blue); }
+        .meta-info { font-size: 12px; color: var(--text-secondary); background: var(--bg-tertiary); padding: 4px 12px; border-radius: 20px; border: 1px solid var(--border-color); }
+        .main-content { flex: 1; overflow-y: auto; padding: 24px; scroll-behavior: smooth; }
+
+        /* Target Selector */
+        .target-selector {
+            display: flex; align-items: center; gap: 10px;
+        }
+        .target-selector select {
+            background: var(--bg-tertiary); color: var(--text-primary);
+            border: 1px solid var(--border-color); border-radius: 6px;
+            padding: 4px 10px; font-size: 13px; cursor: pointer;
+        }
+
+        /* SECTIONS & CARDS — identical CSS */
+        .section { display: none; max-width: 1200px; margin: 0 auto; }
+        .section.active { display: block; }
+
+        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px; }
+        .stat-card { background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 6px; padding: 16px; transition: transform 0.2s; }
+        .stat-card:hover { transform: translateY(-2px); border-color: var(--text-muted); }
+        .stat-card .value { font-size: 28px; font-weight: 700; color: var(--text-primary); margin-bottom: 4px; }
+        .stat-card .label { font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-secondary); }
+        .stat-card.highlight { border-left: 3px solid var(--accent-blue); }
+        .stat-card.success { border-left: 3px solid var(--accent-green); }
+        .stat-card.warning { border-left: 3px solid var(--accent-orange); }
+        .stat-card.danger { border-left: 3px solid var(--accent-red); }
+
+        /* Cards */
+        .card { background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 6px; margin-bottom: 16px; }
+        .card-header {
+            padding: 12px 16px; border-bottom: 1px solid var(--border-color);
+            display: flex; justify-content: space-between; align-items: center;
+            cursor: pointer; background: rgba(255,255,255,0.01);
+        }
+        .card-header:hover { background: var(--bg-tertiary); }
+        .card-title { font-size: 14px; font-weight: 600; color: var(--text-primary); }
+        .section-title { font-size: 16px; font-weight: 700; color: var(--text-primary); text-transform: uppercase; letter-spacing: 0.5px; }
+        .card-badge { font-size: 11px; padding: 2px 8px; border-radius: 10px; background: var(--bg-tertiary); color: var(--text-secondary); border: 1px solid var(--border-color); }
+        .card-content { padding: 16px; display: none; content-visibility: auto; contain-intrinsic-size: auto 200px; }
+        .card.open .card-content { display: block; }
+        .card-content pre { background: var(--bg-primary); padding: 12px; border-radius: 6px; overflow-x: auto; font-size: 13px; font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace; border: 1px solid var(--border-color); }
+
+        /* Tables */
+        .table-wrapper { overflow-x: auto; }
+        table { width: 100%; border-collapse: collapse; font-size: 13px; table-layout: fixed; }
+        th { text-align: left; padding: 12px; background: var(--bg-tertiary); color: var(--text-secondary); font-weight: 600; border-bottom: 1px solid var(--border-color); white-space: nowrap; }
+        td { padding: 10px 12px; border-bottom: 1px solid var(--border-color); overflow-wrap: anywhere; word-break: break-word; }
+        tr:hover { background: rgba(255,255,255,0.03); }
+        a { color: var(--accent-blue); text-decoration: none; }
+        a:hover { text-decoration: underline; }
+
+        /* Tags */
+        .tag { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; margin-right: 4px; }
+        .tag-high { background: rgba(248, 81, 73, 0.15); color: #ff7b72; border: 1px solid rgba(248, 81, 73, 0.4); }
+        .tag-medium { background: rgba(210, 153, 34, 0.15); color: #d29922; border: 1px solid rgba(210, 153, 34, 0.4); }
+        .tag-low { background: rgba(63, 185, 80, 0.15); color: #3fb950; border: 1px solid rgba(63, 185, 80, 0.4); }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+        .empty-state { text-align: center; padding: 40px; color: var(--text-muted); font-style: italic; }
+
+        /* Loading Spinner */
+        .section-loading {
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            padding: 60px; color: var(--text-secondary);
+        }
+        .spinner {
+            width: 30px; height: 30px; border: 3px solid var(--border-color);
+            border-top-color: var(--accent-blue); border-radius: 50%;
+            animation: spin 0.8s linear infinite; margin-bottom: 12px;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* Burp Modal */
+        .burp-modal-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.7); z-index: 9999;
+            display: none; align-items: center; justify-content: center;
+            backdrop-filter: blur(2px);
+        }
+        .burp-modal {
+            width: 90%; height: 85%; background: #1e1e1e;
+            border: 1px solid #444; border-radius: 6px;
+            display: flex; flex-direction: column;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.8);
+        }
+        .burp-header { padding: 12px 15px; background: #323233; border-bottom: 1px solid #444; display: flex; justify-content: space-between; align-items: center; }
+        .burp-title { color: #fff; font-weight: 600; font-size: 14px; letter-spacing: 0.5px; }
+        .burp-title span { color: #858585; font-weight: normal; margin-left:10px; font-family: monospace;}
+        .burp-actions { display: flex; gap: 10px; }
+        .burp-btn { background: #2d2d2d; border: 1px solid #444; color: #ccc; padding: 4px 10px; border-radius: 3px; cursor: pointer; font-size: 11px; }
+        .burp-btn:hover { background: #3e3e3e; color: #fff; }
+        .burp-close { cursor: pointer; color: #aaa; font-size: 20px; line-height: 1; margin-left: 10px; }
+        .burp-close:hover { color: #fff; }
+        .burp-body { flex: 1; display: flex; overflow: hidden; }
+        .burp-pane { flex: 1; display: flex; flex-direction: column; border-right: 1px solid #444; min-width: 0; }
+        .burp-pane:last-child { border-right: none; }
+        .burp-pane-header { background: #252526; padding: 6px 10px; color: #ccc; font-size: 11px; font-weight: 600; border-bottom: 1px solid #444; text-transform: uppercase; letter-spacing: 0.5px; }
+        .burp-content { flex: 1; padding: 15px; overflow: auto; background: #1e1e1e; color: #d4d4d4; font-family: 'Consolas', 'Monaco', 'Courier New', monospace; font-size: 12px; white-space: pre-wrap; word-break: break-all; line-height: 1.4; }
+        .http-method { color: #ebb626; font-weight: bold; }
+        .http-path { color: #a5d6ff; }
+        .http-version { color: #858585; }
+        .header-key { color: #9cdcfe; font-weight: bold; }
+        .header-val { color: #ce9178; }
+        .status-code { color: #b5cea8; font-weight: bold; }
+
+        /* Tree view */
+        .tree { list-style-type: none; padding-left: 10px; }
+        .tree ul { list-style-type: none; padding-left: 20px; border-left: 1px dashed var(--border-color); margin-left: 5px; }
+        .tree li { margin: 5px 0; position: relative; }
+        .tree li:before { content: ""; position: absolute; top: 12px; left: -20px; width: 15px; border-top: 1px dashed var(--border-color); }
+        .tree-folder { font-weight: 600; color: var(--accent-blue); cursor: pointer; }
+        .tree-file { color: var(--text-primary); }
+        .tree-tag { font-size: 9px; background: var(--bg-tertiary); padding: 1px 4px; border-radius: 3px; margin-left: 5px; color: var(--text-muted); }
+    </style>
+    <script>const BURP_DATA = {};</script>
+</head>
+<body>
+    <nav class="sidebar">
+        <div class="brand">
+            <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+                <g fill="#e6edf3" stroke="#e6edf3" stroke-width="0">
+                    <path d="M20,20 L80,80 L75,85 L15,25 Z" />
+                    <path d="M80,20 L20,80 L25,85 L85,25 Z" />
+                    <circle cx="18" cy="20" r="5" /><circle cx="22" cy="16" r="5" />
+                    <circle cx="82" cy="80" r="5" /><circle cx="78" cy="84" r="5" />
+                    <circle cx="82" cy="20" r="5" /><circle cx="78" cy="16" r="5" />
+                    <circle cx="18" cy="80" r="5" /><circle cx="22" cy="84" r="5" />
+                </g>
+                <path d="M30 45 Q50 15 70 45 L70 65 Q70 75 50 75 Q30 75 30 65 Z" fill="#e6edf3"/>
+                <ellipse cx="50" cy="42" rx="35" ry="8" fill="#e6edf3" />
+                <path d="M35 42 Q50 25 65 42" fill="#e6edf3" stroke="#161b22" stroke-width="2"/>
+                <circle cx="42" cy="55" r="5" fill="#161b22"/>
+                <circle cx="58" cy="55" r="5" fill="#161b22"/>
+                <circle cx="50" cy="62" r="1.5" fill="#161b22"/>
+                <path d="M40 70 L60 70 L60 75 L40 75 Z" fill="#161b22"/>
+                <line x1="45" y1="70" x2="45" y2="75" stroke="#e6edf3" stroke-width="1"/>
+                <line x1="50" y1="70" x2="50" y2="75" stroke="#e6edf3" stroke-width="1"/>
+                <line x1="55" y1="70" x2="55" y2="75" stroke="#e6edf3" stroke-width="1"/>
+            </svg>
+        </div>
+        
+        <button class="nav-btn active" data-section="dashboard"><div class="nav-icon">📊</div><div class="nav-label">Dashboard</div></button>
+        <button class="nav-btn" data-section="quickwins_attack"><div class="nav-icon">⚡</div><div class="nav-label">Quick Wins <span class="count">{{ stats.stats_quickwins }}</span></div></button>
+        <button class="nav-btn" data-section="security"><div class="nav-icon">🛡️</div><div class="nav-label">Security <span class="count">{{ stats.stats_xss }}</span></div></button>
+        <button class="nav-btn" data-section="subdomains"><div class="nav-icon">🌐</div><div class="nav-label">Subdomains <span class="count">{{ stats.stats_subdomains }}</span></div></button>
+        <button class="nav-btn" data-section="takeover"><div class="nav-icon">🏴‍☠️</div><div class="nav-label">Takeover <span class="count">{{ stats.stats_takeover }}</span></div></button>
+        <button class="nav-btn" data-section="urls"><div class="nav-icon">🔗</div><div class="nav-label">URLs <span class="count">{{ stats.stats_urls_combined }}</span></div></button>
+        <button class="nav-btn" data-section="routes"><div class="nav-icon">🛣️</div><div class="nav-label">Endpoints <span class="count">{{ stats.stats_endpoints }}</span></div></button>
+        <button class="nav-btn" data-section="services"><div class="nav-icon">🔌</div><div class="nav-label">Services <span class="count">{{ stats.stats_ports }}</span></div></button>
+        <button class="nav-btn" data-section="keys"><div class="nav-icon">🔑</div><div class="nav-label">Keys <span class="count">{{ stats.stats_keys }}</span></div></button>
+        <button class="nav-btn" data-section="emails"><div class="nav-icon">📧</div><div class="nav-label">Emails <span class="count">{{ stats.stats_emails }}</span></div></button>
+        <button class="nav-btn" data-section="waf"><div class="nav-icon">🧱</div><div class="nav-label">WAF <span class="count">{{ stats.stats_waf }}</span></div></button>
+        <button class="nav-btn" data-section="files"><div class="nav-icon">📁</div><div class="nav-label">Files</div></button>
+        <button class="nav-btn" data-section="js"><div class="nav-icon">📜</div><div class="nav-label">JS Files <span class="count">{{ stats.stats_js }}</span></div></button>
+        <button class="nav-btn" data-section="params"><div class="nav-icon">🧩</div><div class="nav-label">Params <span class="count">{{ stats.stats_params }}</span></div></button>
+        <button class="nav-btn" data-section="sourcemaps"><div class="nav-icon">🗺️</div><div class="nav-label">Source Maps <span class="count">{{ stats.stats_sourcemaps }}</span></div></button>
+        <button class="nav-btn" data-section="cve"><div class="nav-icon">💣</div><div class="nav-label">CVEs <span class="count">{{ stats.stats_cves }}</span></div></button>
+        <button class="nav-btn" data-section="jsroutes"><div class="nav-icon">🗺️</div><div class="nav-label">API & JS <span class="count">{{ stats.stats_js_routes }}</span></div></button>
+        <button class="nav-btn" data-section="swagger"><div class="nav-icon">📖</div><div class="nav-label">Swagger <span class="count">{{ stats.stats_swagger }}</span></div></button>
+        <button class="nav-btn" data-section="logic"><div class="nav-icon">⚙️</div><div class="nav-label">Logic & Smug. <span class="count">{{ stats.stats_logic }}</span></div></button>
+        <button class="nav-btn" data-section="surfacemap"><div class="nav-icon">🗺️</div><div class="nav-label">Surface Map</div></button>
+        <button class="nav-btn" data-section="git"><div class="nav-icon">🕰️</div><div class="nav-label">Git Exposed <span class="count">{{ stats.stats_git }}</span></div></button>
+        <button class="nav-btn" data-section="cloud"><div class="nav-icon">☁️</div><div class="nav-label">Cloud <span class="count">{{ stats.stats_buckets }}</span></div></button>
+        <button class="nav-btn" data-section="admin"><div class="nav-icon">👑</div><div class="nav-label">Admin <span class="count">{{ stats.stats_admin }}</span></div></button>
+        <button class="nav-btn" data-section="depconfusion"><div class="nav-icon">📦</div><div class="nav-label">Dep. Conf. <span class="count">{{ stats.stats_depconfusion }}</span></div></button>
+        <button class="nav-btn" data-section="graphql_scan"><div class="nav-icon">🧬</div><div class="nav-label">GraphQL <span class="count">{{ stats.stats_graphql }}</span></div></button>
+        <button class="nav-btn" data-section="api_sec"><div class="nav-icon">🛡️</div><div class="nav-label">API Security <span class="count">{{ stats.stats_api_security }}</span></div></button>
+        <button class="nav-btn" data-section="jwt_sec"><div class="nav-icon">🔑</div><div class="nav-label">JWT <span class="count">{{ stats.stats_jwt }}</span></div></button>
+        <button class="nav-btn" data-section="crlf_sec"><div class="nav-icon">💉</div><div class="nav-label">CRLF <span class="count">{{ stats.stats_crlf }}</span></div></button>
+        <button class="nav-btn" data-section="smuggling_sec"><div class="nav-icon">🔀</div><div class="nav-label">Smuggling <span class="count">{{ stats.stats_smuggling }}</span></div></button>
+        <button class="nav-btn" data-section="deser_sec"><div class="nav-icon">🧬</div><div class="nav-label">Deserial. <span class="count">{{ stats.stats_deser }}</span></div></button>
+    </nav>
+
+    <div class="content-wrapper">
+        <header class="top-bar">
+            <div class="page-title">
+                <h1>Enum-Allma: <span>{{ target }}</span></h1>
+            </div>
+            <div style="display:flex; align-items:center; gap:15px;">
+                <div class="target-selector">
+                    <select id="targetSelect" onchange="switchTarget(this.value)">
+                        {% for t in all_targets %}
+                        <option value="{{ t }}" {% if t == target %}selected{% endif %}>{{ t }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="meta-info">📅 Web Viewer</div>
+            </div>
+        </header>
+
+        <main class="main-content">
+            <!-- Dashboard — loaded immediately -->
+            <section class="section active" id="section-dashboard">
+                {{ dashboard_html | safe }}
+            </section>
+
+            <!-- All other sections — loaded via AJAX on click -->
+            {% set section_ids = ['quickwins_attack','security','subdomains','takeover','urls','routes','services','keys','emails','waf','files','js','params','sourcemaps','cve','jsroutes','swagger','logic','surfacemap','git','cloud','admin','depconfusion','graphql_scan','api_sec','jwt_sec','crlf_sec','smuggling_sec','deser_sec'] %}
+            {% for sid in section_ids %}
+            <section class="section" id="section-{{ sid }}">
+                <div class="section-loading" id="loader-{{ sid }}">
+                    <div class="spinner"></div>
+                    <span>Loading section...</span>
+                </div>
+                <div id="content-{{ sid }}"></div>
+            </section>
+            {% endfor %}
+
+            <footer style="text-align:center; color:var(--text-muted); font-size:12px; margin-top:40px; padding-bottom:20px;">
+                Generated by Enum-Allma Web Report Viewer
+            </footer>
+        </main>
+    </div>
+
+    <!-- Burp Modal -->
+    <div class="burp-modal-overlay" id="burpModal" onclick="if(event.target===this) closeBurp()">
+        <div class="burp-modal">
+            <div class="burp-header">
+                <div class="burp-title">HTTP Request/Response <span id="burpUrl"></span></div>
+                <div class="burp-actions">
+                    <button class="burp-btn" onclick="copyReq()">Copy Request</button>
+                    <button class="burp-btn" onclick="copyRes()">Copy Response</button>
+                    <div class="burp-close" onclick="closeBurp()">×</div>
+                </div>
+            </div>
+            <div class="burp-body">
+                <div class="burp-pane">
+                    <div class="burp-pane-header">Request</div>
+                    <div class="burp-content" id="burpRequest"></div>
+                </div>
+                <div class="burp-pane">
+                    <div class="burp-pane-header">Response</div>
+                    <div class="burp-content" id="burpResponse"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const currentTarget = "{{ target }}";
+        const loadedSections = {};
+
+        // ==================== Navigation ====================
+        document.querySelectorAll('.nav-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+
+                const sectionId = btn.dataset.section;
+                document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+                const targetSection = document.getElementById('section-' + sectionId);
+                if (targetSection) targetSection.classList.add('active');
+
+                // Lazy-load section from API if not dashboard and not already loaded
+                if (sectionId !== 'dashboard' && !loadedSections[sectionId]) {
+                    fetchSection(sectionId);
+                }
+            });
+        });
+
+        async function fetchSection(sectionId) {
+            const contentDiv = document.getElementById('content-' + sectionId);
+            const loaderDiv = document.getElementById('loader-' + sectionId);
+
+            try {
+                const res = await fetch('/api/section/' + currentTarget + '/' + sectionId);
+                const html = await res.text();
+                
+                contentDiv.innerHTML = html;
+                if (loaderDiv) loaderDiv.style.display = 'none';
+                loadedSections[sectionId] = true;
+
+                // Re-attach card collapse/expand listeners via event delegation (done globally below)
+
+                // Re-process any inline BURP_DATA scripts
+                contentDiv.querySelectorAll('script').forEach(script => {
+                    const newScript = document.createElement('script');
+                    newScript.textContent = script.textContent;
+                    document.body.appendChild(newScript);
+                });
+
+                // Re-init any pagination tables
+                if (typeof initPaginatedTable !== 'undefined' && contentDiv.querySelectorAll('[data-paginate]').length) {
+                    // handled by inline scripts
+                }
+
+            } catch(e) {
+                contentDiv.innerHTML = '<div class="empty-state">Error loading section: ' + e.message + '</div>';
+                if (loaderDiv) loaderDiv.style.display = 'none';
+            }
+        }
+
+        // ==================== Target Switcher ====================
+        function switchTarget(newTarget) {
+            window.location.href = '/report/' + newTarget;
+        }
+
+        // ==================== Card Collapse (Event Delegation for all cards) ====================
+        document.addEventListener('click', (e) => {
+            const header = e.target.closest('.card-header');
+            if (header) {
+                header.parentElement.classList.toggle('open');
+            }
+        });
+
+        // ==================== Burp Modal ====================
+        function openBurp(id) {
+            const data = BURP_DATA[id];
+            if (!data) return;
+            document.getElementById('burpUrl').innerText = data.url;
+            document.getElementById('burpRequest').innerHTML = highlightHttp(atob(data.req));
+            document.getElementById('burpResponse').innerHTML = highlightHttp(atob(data.res));
+            document.getElementById('burpModal').style.display = 'flex';
+        }
+        function closeBurp() { document.getElementById('burpModal').style.display = 'none'; }
+
+        function highlightHttp(text) {
+            if (!text) return '<span style="color:#666">[No raw data captured]</span>';
+            const parts = text.split('\n\n');
+            let headers = parts[0]; let body = parts.slice(1).join('\n\n');
+            const lines = headers.split('\n'); let firstLine = lines.shift();
+            if (firstLine.startsWith('HTTP/')) {
+                firstLine = firstLine.replace(/^(HTTP\/[\d\.]+)\s+(\d+)\s+(.*)$/, '<span class="http-version">$1</span> <span class="status-code">$2</span> <span class="http-version">$3</span>');
+            } else {
+                firstLine = firstLine.replace(/^([A-Z]+)\s+(.*)\s+(HTTP\/[\d\.]+)$/, '<span class="http-method">$1</span> <span class="http-path">$2</span> <span class="http-version">$3</span>');
+            }
+            let coloredHeaders = lines.map(line => {
+                const idx = line.indexOf(':');
+                if (idx > -1) { return `<span class="header-key">${escapeHtml(line.substring(0, idx))}</span>:<span class="header-val">${escapeHtml(line.substring(idx+1))}</span>`; }
+                return escapeHtml(line);
+            }).join('\n');
+            return `<div>${firstLine}\n${coloredHeaders}</div>\n\n${escapeHtml(body)}`;
+        }
+
+        function escapeHtml(text) {
+            if (!text) return '';
+            return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+        }
+        function copyReq() { navigator.clipboard.writeText(document.getElementById('burpRequest').innerText); }
+        function copyRes() { navigator.clipboard.writeText(document.getElementById('burpResponse').innerText); }
+        document.addEventListener('keydown', (e) => { if (e.key === "Escape") closeBurp(); });
+
+        // ==================== Pagination Engine (same as report.html) ====================
+        window.PAGINATION_DATA = {};
+        function initPaginatedTable(tableId, data, cols, renderFn, pageSize=100) {
+            window.PAGINATION_DATA[tableId] = { data: data, cols: cols, page: 1, pageSize: pageSize, renderFn: renderFn };
+            renderPaginatedTable(tableId);
+        }
+        function renderPaginatedTable(tableId) {
+            const tableData = window.PAGINATION_DATA[tableId];
+            if (!tableData) return;
+            const container = document.getElementById(tableId);
+            if (!container) return;
+            const data = tableData.data, cols = tableData.cols, page = tableData.page, pageSize = tableData.pageSize, renderFn = tableData.renderFn;
+            const totalPages = Math.ceil(data.length / pageSize) || 1;
+            const start = (page - 1) * pageSize, end = start + pageSize;
+            const pageData = data.slice(start, end);
+            let tbodyRows = pageData.map(row => renderFn(row)).join('');
+            let paginationHtml = '';
+            if (totalPages > 1) {
+                paginationHtml = `<div style="margin-top: 15px; display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--border-color); padding-top: 10px;">
+                    <div style="font-size: 12px; color: var(--text-secondary);">Showing ${start + 1} to ${Math.min(end, data.length)} of ${data.length} entries</div>
+                    <div><button class="burp-btn" onclick="goToPage('${tableId}', ${page - 1})" ${page === 1 ? 'disabled style="opacity:0.5;cursor:not-allowed;"' : ''}>Previous</button>
+                    <span style="margin: 0 10px; font-size: 13px;">Page ${page} of ${totalPages}</span>
+                    <button class="burp-btn" onclick="goToPage('${tableId}', ${page + 1})" ${page === totalPages ? 'disabled style="opacity:0.5;cursor:not-allowed;"' : ''}>Next</button></div></div>`;
+            }
+            if (cols && cols.length > 0) {
+                let theadThs = cols.map(c => `<th>${c}</th>`).join('');
+                container.innerHTML = `<div class="table-wrapper"><table><thead><tr>${theadThs}</tr></thead><tbody>${tbodyRows}</tbody></table></div>${paginationHtml}`;
+            } else {
+                container.innerHTML = `${tbodyRows}${paginationHtml}`;
+            }
+        }
+        function goToPage(tableId, newPage) {
+            const tableData = window.PAGINATION_DATA[tableId];
+            if (!tableData) return;
+            const totalPages = Math.ceil(tableData.data.length / tableData.pageSize) || 1;
+            if (newPage >= 1 && newPage <= totalPages) { tableData.page = newPage; renderPaginatedTable(tableId); }
+        }
+    </script>
+</body>
+</html>

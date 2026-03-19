@@ -1,5 +1,6 @@
 import re
 import json
+import hashlib
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs
 from collections import defaultdict
@@ -25,32 +26,170 @@ ClassificationRules = {
 # Rule sets for Vulnerability Pattern Detection
 VulnPatterns = {
     "LFI_RFI": {
-        "params": ["file", "path", "dir", "document", "folder", "root", "pg", "style", "pdf", "template"],
+        "params": ["file", "path", "dir", "document", "folder", "root", "pg", "style", "pdf", "template", "include", "page", "read", "cat", "doc", "filename"],
         "name": "Local/Remote File Inclusion",
         "risk": "HIGH"
     },
     "SQLI_IDOR": {
-        "params": ["id", "user", "account", "number", "order", "query", "search", "q", "pwd", "email"],
+        "params": ["id", "user", "account", "number", "order", "query", "search", "q", "pwd", "email", "user_id", "uid", "pid", "item", "no"],
         "name": "SQLi / IDOR",
         "risk": "HIGH"
+    },
+    "SSRF": {
+        "params": ["url", "uri", "src", "source", "dest", "redirect", "next", "target", "rurl", "return", "callback", "webhook", "proxy", "fetch"],
+        "name": "SSRF / Open Redirect",
+        "risk": "HIGH"
+    },
+    "RCE": {
+        "params": ["cmd", "exec", "command", "execute", "ping", "process", "run", "daemon", "upload"],
+        "name": "Remote Code Execution",
+        "risk": "CRITICAL"
+    },
+    "XSS": {
+        "params": ["q", "search", "keyword", "query", "name", "title", "content", "body", "message", "comment", "text", "value", "input", "data"],
+        "name": "Cross-Site Scripting",
+        "risk": "MEDIUM"
     }
 }
 
-# Base de Conhecimento mapeando Tecnologias para Dicas de Hacking (Tips)
-KnowledgeBase = {
-    "Spring Boot": ["Busque por actuators expostos: /actuator/env, /actuator/heapdump", "Teste para restrições de Spring4Shell"],
-    "Cloudflare": ["Tente bypassar o WAF encontrando o IP de origem via Censys/Shodan", "Configurações incorretas de cache (Web Cache Poisoning)"],
-    "Amazon S3": ["Teste se o bucket permite leitura/escrita anônima (AWS CLI)", "Verifique subdomain takeover se retornar 404"],
-    "GraphQL": ["Execute query de instrospecção", "Teste ataque de batch query para bypassar Rate Limiting", "Teste IDORs em queries GraphQL customizadas"],
-    "WebSocket": ["Verifique Cross-Site WebSocket Hijacking (CSWSH)", "Fuzzing para exceções não tratadas que derrubam o websocket"],
-    "WordPress": ["Enumere usuários via /wp-json/wp/v2/users", "Escaneie por plugins obsoletos e vulneráveis", "Verifique xmlrpc.php para ataques de brute-force"],
-    "PHP": ["Procure por phpinfo.php exposto", "Busque por vulnerabilidades de Type Juggling", "Teste comparações soltas (loose comparisons)"],
-    "React": ["Verifique Source Maps por lógica sensível ou chaves expostas", "Busque XSS em dangerouslySetInnerHTML"],
-    "Firebase": ["Verifique se o banco de dados está aberto para leitura/escrita em /.json", "Extraia chaves de API dos bundles JS principais"]
+# Attack Priority Weights
+ATTACK_WEIGHTS = {
+    "login_page": 3,
+    "admin_panel": 5,
+    "graphql_endpoint": 6,
+    "swagger_exposed": 5,
+    "jwt_detected": 4,
+    "api_endpoint": 3,
+    "upload_endpoint": 6,
+    "internal_hostname": 4,
+    "dev_staging_env": 4,
+    "js_secrets": 5,
+    "cors_credentials": 4,
+    "git_exposed": 6,
+    "takeover_vulnerable": 7,
+    "open_admin_no_auth": 8,
 }
 
+# Patterns to detect dev/staging/internal hosts
+DEV_STAGING_PATTERNS = re.compile(
+    r"(?i)(dev\.|staging\.|stage\.|test\.|qa\.|uat\.|sandbox\.|demo\.|internal\.|"
+    r"pre-prod\.|preprod\.|beta\.|alpha\.|local\.)", re.I
+)
+
+INTERNAL_HOSTNAME_PATTERNS = re.compile(
+    r"(?i)(intranet\.|vpn\.|corp\.|private\.|backoffice\.|management\.|"
+    r"sysadmin\.|monitoring\.|grafana\.|kibana\.|jenkins\.|gitlab\.|"
+    r"portainer\.|zabbix\.|nagios\.|prometheus\.)", re.I
+)
+
+# IDOR/Privilege Escalation parameter patterns
+IDOR_PARAMS = {"role", "admin", "user_id", "uid", "account_id", "is_admin", "privilege", "permission", "group", "level", "access"}
+
+# Upload-related path patterns
+UPLOAD_PATTERNS = re.compile(r"(?i)(/upload|/import|/attach|/file|/media|/image|/asset|/document)", re.I)
+
+# Knowledge Base — Expanded with real payloads and categories
+KnowledgeBase = {
+    "Spring Boot": [
+        {"tip": "Busque por actuators expostos", "payload": "GET /actuator/env\nGET /actuator/heapdump\nGET /actuator/mappings\nGET /actuator/configprops\nGET /actuator/beans", "category": "config_leak"},
+        {"tip": "Teste Spring4Shell (CVE-2022-22965)", "payload": "class.module.classLoader.URLs%5B0%5D=0", "category": "rce"},
+        {"tip": "Whitelabel Error Page pode expor stack traces", "payload": "GET /error", "category": "info_disclosure"},
+    ],
+    "Cloudflare": [
+        {"tip": "Bypasse o WAF encontrando o IP de origem", "payload": "Ferramentas: Censys, Shodan, SecurityTrails\nBuscar por headers como X-Forwarded-For no histórico DNS", "category": "waf_bypass"},
+        {"tip": "Web Cache Poisoning via headers", "payload": "X-Forwarded-Host: attacker.com\nX-Original-URL: /admin", "category": "cache_poison"},
+    ],
+    "Amazon S3": [
+        {"tip": "Teste se o bucket permite leitura/escrita anônima", "payload": "aws s3 ls s3://BUCKET_NAME --no-sign-request\naws s3 cp test.txt s3://BUCKET_NAME --no-sign-request", "category": "misconfiguration"},
+        {"tip": "Verifique subdomain takeover se retornar 404", "payload": "Registre o bucket com o mesmo nome no S3", "category": "takeover"},
+    ],
+    "GraphQL": [
+        {"tip": "Execute query de introspecção completa", "payload": "query IntrospectionQuery {\n  __schema {\n    queryType { name }\n    mutationType { name }\n    types {\n      name\n      fields { name args { name type { name } } }\n    }\n  }\n}", "category": "introspection"},
+        {"tip": "Teste ataque de batch query para bypass Rate Limiting", "payload": "[{\"query\":\"{ user(id:1) { email } }\"},{\"query\":\"{ user(id:2) { email } }\"}]", "category": "abuse"},
+        {"tip": "Teste IDORs em queries/mutations customizadas", "payload": "mutation { updateUser(id: OTHER_USER_ID, role: \"admin\") { id } }", "category": "idor"},
+        {"tip": "Field Suggestions para enumerar campos", "payload": "{ __type(name: \"User\") { fields { name type { name } } } }", "category": "enum"},
+    ],
+    "Swagger": [
+        {"tip": "Buscar documentação de API exposta", "payload": "GET /swagger/v1/swagger.json\nGET /swagger.json\nGET /api-docs\nGET /openapi.json\nGET /v2/api-docs\nGET /v3/api-docs\nGET /swagger-resources", "category": "api_docs"},
+        {"tip": "Testar endpoints administrativos sem autenticação", "payload": "Buscar endpoints com /admin/, /users/, /delete/, /create/ na spec", "category": "broken_access"},
+    ],
+    "JWT": [
+        {"tip": "Teste alg:none bypass", "payload": "Trocar header para {\"alg\":\"none\"} e remover assinatura\nToken: eyJhbGciOiJub25lIn0.PAYLOAD.", "category": "auth_bypass"},
+        {"tip": "Teste JWT Confusion (RS256→HS256)", "payload": "Trocar algoritmo de RS256 para HS256 e assinar com a chave pública", "category": "auth_bypass"},
+        {"tip": "Teste kid injection", "payload": "kid: ../../dev/null\nkid: ' UNION SELECT 'secret' --", "category": "injection"},
+        {"tip": "Teste jku/x5u header injection", "payload": "Apontar jku/x5u para servidor atacante com JWKS próprio", "category": "auth_bypass"},
+    ],
+    "WordPress": [
+        {"tip": "Enumere usuários via REST API", "payload": "GET /wp-json/wp/v2/users\nGET /?author=1", "category": "user_enum"},
+        {"tip": "Escaneie plugins vulneráveis", "payload": "wpscan --url TARGET --enumerate p,t,u\nGET /wp-content/plugins/", "category": "vuln_scan"},
+        {"tip": "XML-RPC para brute-force", "payload": "POST /xmlrpc.php\n<methodCall><methodName>wp.getUsersBlogs</methodName><params><param><value>admin</value></param><param><value>password</value></param></params></methodCall>", "category": "brute_force"},
+    ],
+    "PHP": [
+        {"tip": "Procure por phpinfo() exposto", "payload": "GET /phpinfo.php\nGET /info.php\nGET /php_info.php\nGET /test.php", "category": "info_disclosure"},
+        {"tip": "Type Juggling em comparações", "payload": "password=0 (quando comparado com == em vez de ===)\npassword[]='' (Array bypass)", "category": "auth_bypass"},
+    ],
+    "React": [
+        {"tip": "Verifique Source Maps por secrets expostos", "payload": "GET /static/js/main.js.map\nBuscar por: apiKey, secret, token, password", "category": "secret_leak"},
+        {"tip": "XSS via dangerouslySetInnerHTML", "payload": "Injetar em campos que usam dangerouslySetInnerHTML", "category": "xss"},
+    ],
+    "Firebase": [
+        {"tip": "Verifique DB aberto para leitura/escrita", "payload": "GET https://PROJECT-ID.firebaseio.com/.json\nPUT https://PROJECT-ID.firebaseio.com/test.json -d '{\"exploit\":true}'", "category": "misconfiguration"},
+        {"tip": "Extraia configuração do Firebase dos bundles JS", "payload": "Buscar por: apiKey, authDomain, projectId, storageBucket", "category": "secret_leak"},
+    ],
+    "Upload": [
+        {"tip": "Teste upload de extensões perigosas", "payload": "Extensões: .php, .php5, .phtml, .asp, .aspx, .jsp\nBypass: .php.jpg, .php%00.jpg, .pHp\nContent-Type: image/jpeg (com conteúdo PHP)", "category": "rce"},
+        {"tip": "Stored XSS via SVG upload", "payload": "<svg xmlns=\"http://www.w3.org/2000/svg\" onload=\"alert(1)\"/>", "category": "xss"},
+        {"tip": "Path Traversal no filename", "payload": "filename=\"../../../etc/passwd\"\nfilename=\"..\\..\\..\\windows\\win.ini\"", "category": "lfi"},
+    ],
+    "CORS": [
+        {"tip": "Teste CORS com credenciais + wildcard", "payload": "Origin: https://attacker.com\nVerificar: Access-Control-Allow-Credentials: true\nCom: Access-Control-Allow-Origin: *", "category": "cors_bypass"},
+        {"tip": "Teste origin reflection", "payload": "Origin: https://evil.com\nVerificar se o valor é refletido no ACAO header", "category": "cors_bypass"},
+    ],
+    "Node.js": [
+        {"tip": "Prototype Pollution", "payload": "__proto__[isAdmin]=true\nconstructor.prototype.isAdmin=true", "category": "injection"},
+        {"tip": "SSRF via request libraries", "payload": "url=http://169.254.169.254/latest/meta-data/", "category": "ssrf"},
+    ],
+    "Nginx": [
+        {"tip": "Teste path traversal via alias misconfiguration", "payload": "GET /assets../etc/passwd\nGET /static../app/config.py", "category": "lfi"},
+        {"tip": "Off-by-slash", "payload": "location /api { proxy_pass http://backend; }\nGET /api../internal/", "category": "access_bypass"},
+    ],
+    "Apache": [
+        {"tip": "Teste .htaccess bypass e mod_status", "payload": "GET /server-status\nGET /.htaccess\nGET /server-info", "category": "info_disclosure"},
+    ],
+}
+
+# Bug mapping for Attack Graph
+BUG_PATTERNS = {
+    "idor_privesc": {
+        "param_match": ["role", "admin", "user_id", "uid", "account_id", "is_admin", "privilege", "permission", "group", "level", "access", "user_type"],
+        "name": "IDOR / Privilege Escalation",
+        "severity": "HIGH"
+    },
+    "sqli": {
+        "param_match": ["id", "user", "account", "order", "query", "search", "item", "category", "pid", "no"],
+        "name": "SQL Injection",
+        "severity": "HIGH"
+    },
+    "ssrf": {
+        "param_match": ["url", "uri", "src", "dest", "redirect", "next", "callback", "webhook", "proxy", "fetch", "target"],
+        "name": "SSRF / Open Redirect",
+        "severity": "HIGH"
+    },
+    "lfi": {
+        "param_match": ["file", "path", "dir", "document", "template", "include", "page", "read", "filename", "download"],
+        "name": "Local File Inclusion",
+        "severity": "HIGH"
+    },
+    "xss": {
+        "param_match": ["q", "search", "keyword", "name", "title", "content", "body", "message", "comment", "text", "input", "value"],
+        "name": "Cross-Site Scripting (XSS)",
+        "severity": "MEDIUM"
+    }
+}
+
+
 # ====================================================================
-# ENGINE CLASSES
+# ENGINE CLASS
 # ====================================================================
 
 class IntelligenceEngine:
@@ -63,10 +202,29 @@ class IntelligenceEngine:
         # Load Raw Data
         self.urls = self._load_urls()
         self.technologies = self._load_technologies()
-        self.js_files = self._load_json("domain/extracted_js_routes.json") # Note: was moved to jsscanner in domain
+        self.js_files = self._load_json("domain/extracted_js_routes.json")
         if not self.js_files:
-             self.js_files = self._load_json("jsscanner/js_routes.json")
-             
+            self.js_files = self._load_json("jsscanner/js_routes.json")
+        
+        # Load cross-reference data
+        self.admin_panels = self._load_json("admin/admin_panels.json") or []
+        self.swagger_docs = self._load_json("domain/swagger_docs.json") or []
+        self.graphql_data = self._load_json("scanners/graphql.json") or []
+        self.jwt_data = self._load_json("jwt_analyzer/jwt_results.json") or []
+        self.keys_data = self._load_json("domain/extracted_keys.json") or []
+        self.cors_data = self._load_json("cors/cors_results.json") or []
+        self.takeover_data = self._load_json("takeover/takeover_results.json") or []
+        self.js_routes = self._load_json("jsscanner/js_routes.json") or []
+        self.params_data = self._load_json("domain/katana_params_all.json") or {}
+        self.endpoints_data = self._load_json("endpoint/raw_endpoints.json") or []
+        self.extracted_routes = self._load_json("domain/extracted_routes.json") or []
+        
+        # Load subdomains
+        subs_file = self.base_dir / "domain" / "subdomains.txt"
+        self.subdomains = []
+        if subs_file.exists():
+            self.subdomains = [l.strip() for l in subs_file.read_text().splitlines() if l.strip()]
+        
         # Output artifacts
         self.classified_urls = []
         self.vuln_patterns = []
@@ -93,6 +251,416 @@ class IntelligenceEngine:
             except: pass
         return []
 
+    # ================================================================
+    # FEATURE 1: Attack Priority Engine
+    # ================================================================
+    def calculate_attack_priority(self):
+        """Calculate attack priority score per subdomain using weighted factors."""
+        
+        priority_data = defaultdict(lambda: {"score": 0, "factors": [], "tags": []})
+        
+        # Login pages from URL classification
+        for url in self.urls:
+            subdomain = urlparse(url).netloc
+            url_lower = url.lower()
+            
+            if re.search(r"(?i)(/login|/signin|/auth|/sso)", url_lower):
+                priority_data[subdomain]["score"] += ATTACK_WEIGHTS["login_page"]
+                priority_data[subdomain]["factors"].append("Login Page detected")
+                priority_data[subdomain]["tags"].append("LOGIN")
+            
+            if UPLOAD_PATTERNS.search(url_lower):
+                priority_data[subdomain]["score"] += ATTACK_WEIGHTS["upload_endpoint"]
+                priority_data[subdomain]["factors"].append(f"Upload endpoint: {urlparse(url).path}")
+                priority_data[subdomain]["tags"].append("UPLOAD")
+            
+            if re.search(r"(?i)(/api/|/v[0-9]+/|/rest/)", url_lower):
+                if "API" not in priority_data[subdomain]["tags"]:
+                    priority_data[subdomain]["score"] += ATTACK_WEIGHTS["api_endpoint"]
+                    priority_data[subdomain]["factors"].append("API endpoint detected")
+                    priority_data[subdomain]["tags"].append("API")
+        
+        # Admin panels
+        for panel in self.admin_panels:
+            host = urlparse(panel.get("url", "")).netloc
+            if panel.get("status") == 200 and not panel.get("has_login_form"):
+                priority_data[host]["score"] += ATTACK_WEIGHTS["open_admin_no_auth"]
+                priority_data[host]["factors"].append(f"Open Admin Panel (no auth!): {panel.get('url')}")
+                priority_data[host]["tags"].append("ADMIN_OPEN")
+            elif panel.get("status") in (200, 401, 403):
+                priority_data[host]["score"] += ATTACK_WEIGHTS["admin_panel"]
+                priority_data[host]["factors"].append(f"Admin Panel: {panel.get('url')}")
+                priority_data[host]["tags"].append("ADMIN")
+        
+        # GraphQL endpoints
+        for gql in self.graphql_data:
+            host = urlparse(gql.get("url", "")).netloc
+            priority_data[host]["score"] += ATTACK_WEIGHTS["graphql_endpoint"]
+            introspection = " (Introspection Enabled!)" if gql.get("introspection") else ""
+            priority_data[host]["factors"].append(f"GraphQL endpoint{introspection}")
+            priority_data[host]["tags"].append("GRAPHQL")
+        
+        # Swagger
+        for swagger in self.swagger_docs:
+            url = swagger if isinstance(swagger, str) else swagger.get("url", "")
+            host = urlparse(url).netloc
+            if host:
+                priority_data[host]["score"] += ATTACK_WEIGHTS["swagger_exposed"]
+                priority_data[host]["factors"].append(f"Swagger exposed: {url}")
+                priority_data[host]["tags"].append("SWAGGER")
+        
+        # JWT
+        for jwt in self.jwt_data:
+            host = urlparse(jwt.get("url", "")).netloc
+            priority_data[host]["score"] += ATTACK_WEIGHTS["jwt_detected"]
+            alg = jwt.get("algorithm", "unknown")
+            priority_data[host]["factors"].append(f"JWT detected (alg: {alg})")
+            priority_data[host]["tags"].append("JWT")
+        
+        # JS Secrets
+        for key in self.keys_data:
+            if not isinstance(key, dict):
+                continue
+            src = key.get("source", {})
+            if isinstance(src, dict):
+                host = src.get("url", "")
+                host = urlparse(host).netloc if host else ""
+            else:
+                host = urlparse(str(src)).netloc if src else ""
+            if not host:
+                host = key.get("subdomain", "")
+            if host:
+                priority_data[host]["score"] += ATTACK_WEIGHTS["js_secrets"]
+                priority_data[host]["factors"].append(f"Secret/Key in JS: {key.get('type', 'unknown')}")
+                priority_data[host]["tags"].append("JS_SECRET")
+        
+        # Dev/Staging environments
+        for sub in self.subdomains:
+            if DEV_STAGING_PATTERNS.search(sub):
+                priority_data[sub]["score"] += ATTACK_WEIGHTS["dev_staging_env"]
+                priority_data[sub]["factors"].append("Dev/Staging environment")
+                priority_data[sub]["tags"].append("DEV_STAGING")
+            
+            if INTERNAL_HOSTNAME_PATTERNS.search(sub):
+                priority_data[sub]["score"] += ATTACK_WEIGHTS["internal_hostname"]
+                priority_data[sub]["factors"].append("Internal/Management hostname")
+                priority_data[sub]["tags"].append("INTERNAL")
+        
+        # CORS with credentials
+        for cors in self.cors_data:
+            host = urlparse(cors.get("url", "")).netloc
+            if cors.get("credentials") or "credentials" in str(cors.get("issue", "")).lower():
+                priority_data[host]["score"] += ATTACK_WEIGHTS["cors_credentials"]
+                priority_data[host]["factors"].append("CORS with credentials")
+                priority_data[host]["tags"].append("CORS_CREDS")
+        
+        # Takeover
+        for tk in self.takeover_data:
+            sub = tk.get("subdomain", "")
+            if tk.get("status") == "VULNERABLE":
+                priority_data[sub]["score"] += ATTACK_WEIGHTS["takeover_vulnerable"]
+                priority_data[sub]["factors"].append(f"Subdomain Takeover CONFIRMED ({tk.get('service')})")
+                priority_data[sub]["tags"].append("TAKEOVER")
+        
+        # Build final sorted list
+        result = []
+        for subdomain, data in priority_data.items():
+            if not subdomain:
+                continue
+            final_score = min(data["score"], 10)
+            result.append({
+                "subdomain": subdomain,
+                "score": final_score,
+                "factors": list(set(data["factors"])),
+                "tags": list(set(data["tags"]))
+            })
+        
+        result.sort(key=lambda x: x["score"], reverse=True)
+        
+        with open(self.outdir / "attack_priority.json", "w") as f:
+            json.dump(result, f, indent=2)
+        
+        return result
+
+    # ================================================================
+    # FEATURE 2: Attack Graph
+    # ================================================================
+    def build_attack_graph(self):
+        """Build attack chains: subdomain → JS → endpoint → param → possible bug."""
+        attack_paths = []
+        
+        # Build JS-to-subdomain mapping
+        js_map = defaultdict(list)  # subdomain -> [{source, routes, params}]
+        for js_data in (self.js_routes or []):
+            src = js_data.get("source", "")
+            host = urlparse(src).netloc
+            if host:
+                js_map[host].append(js_data)
+        
+        # Build params mapping per URL path
+        url_params = defaultdict(set)
+        for url in self.urls:
+            parsed = urlparse(url)
+            params = parse_qs(parsed.query).keys()
+            for p in params:
+                url_params[parsed.path].add(p)
+        
+        # Also from katana params
+        if isinstance(self.params_data, dict):
+            for url, params_list in self.params_data.items():
+                parsed = urlparse(url)
+                if isinstance(params_list, list):
+                    for p in params_list:
+                        if isinstance(p, str):
+                            url_params[parsed.path].add(p)
+                        elif isinstance(p, dict):
+                            url_params[parsed.path].add(p.get("name", ""))
+        elif isinstance(self.params_data, list):
+            for item in self.params_data:
+                if isinstance(item, dict):
+                    url = item.get("url", "")
+                    parsed = urlparse(url)
+                    param_name = item.get("name", "") or item.get("parameter", "")
+                    if param_name:
+                        url_params[parsed.path].add(param_name)
+        
+        # === Chain 1: Subdomain → JS → Endpoint → Param → Bug ===
+        for subdomain in self.subdomains:
+            js_entries = js_map.get(subdomain, [])
+            for js_entry in js_entries:
+                js_source = js_entry.get("source", "")
+                routes = js_entry.get("routes", [])
+                
+                for route in routes:
+                    route_path = route if isinstance(route, str) else route.get("path", "")
+                    if not route_path:
+                        continue
+                    
+                    # Find params related to this route
+                    route_params = url_params.get(route_path, set())
+                    
+                    # Also check extracted params from JS
+                    js_params = js_entry.get("parameters", [])
+                    if js_params:
+                        route_params.update(js_params if isinstance(js_params, list) else [])
+                    
+                    # Match params to bug patterns
+                    for bug_key, bug_info in BUG_PATTERNS.items():
+                        matched = [p for p in route_params if p.lower() in bug_info["param_match"]]
+                        if matched:
+                            attack_paths.append({
+                                "type": "js_chain",
+                                "subdomain": subdomain,
+                                "js_file": js_source,
+                                "endpoint": route_path,
+                                "parameters": matched,
+                                "possible_bug": bug_info["name"],
+                                "severity": bug_info["severity"],
+                                "chain": [
+                                    {"step": "Subdomain", "value": subdomain},
+                                    {"step": "JS File", "value": js_source.split("/")[-1] if "/" in js_source else js_source},
+                                    {"step": "Endpoint", "value": route_path},
+                                    {"step": "Parameter", "value": ", ".join(matched)},
+                                    {"step": "Possible Bug", "value": bug_info["name"]},
+                                ]
+                            })
+        
+        # === Chain 2: Subdomain → Swagger → Endpoints → Broken Access Control ===
+        swagger_hosts = set()
+        for swagger in self.swagger_docs:
+            url = swagger if isinstance(swagger, str) else swagger.get("url", "")
+            host = urlparse(url).netloc
+            if host:
+                swagger_hosts.add(host)
+                # Find admin-like endpoints from this host's URLs
+                admin_endpoints = []
+                for u in self.urls:
+                    if urlparse(u).netloc == host:
+                        path = urlparse(u).path.lower()
+                        if any(kw in path for kw in ["/admin", "/users", "/delete", "/create", "/update", "/manage"]):
+                            admin_endpoints.append(urlparse(u).path)
+                
+                if admin_endpoints:
+                    attack_paths.append({
+                        "type": "swagger_chain",
+                        "subdomain": host,
+                        "swagger_url": url,
+                        "endpoints": admin_endpoints[:5],
+                        "possible_bug": "Broken Access Control",
+                        "severity": "HIGH",
+                        "chain": [
+                            {"step": "Subdomain", "value": host},
+                            {"step": "Swagger exposed", "value": urlparse(url).path},
+                            {"step": "Sensitive Endpoints", "value": "\n".join(admin_endpoints[:5])},
+                            {"step": "Possible Bug", "value": "Broken Access Control"},
+                        ]
+                    })
+
+        # === Chain 3: Subdomain → Upload → Extension → XSS/RCE ===
+        for url in self.urls:
+            if UPLOAD_PATTERNS.search(url):
+                host = urlparse(url).netloc
+                attack_paths.append({
+                    "type": "upload_chain",
+                    "subdomain": host,
+                    "upload_url": url,
+                    "possible_bug": "File Upload → RCE / Stored XSS",
+                    "severity": "HIGH",
+                    "chain": [
+                        {"step": "Subdomain", "value": host},
+                        {"step": "Upload Endpoint", "value": urlparse(url).path},
+                        {"step": "Test Extensions", "value": ".php, .svg, .html, .jsp"},
+                        {"step": "Possible Bug", "value": "RCE / Stored XSS (SVG)"},
+                    ]
+                })
+        
+        # === Chain 4: Subdomain → JWT → Algorithm → Auth Bypass ===
+        for jwt in self.jwt_data:
+            host = urlparse(jwt.get("url", "")).netloc
+            alg = jwt.get("algorithm", "unknown")
+            attack_paths.append({
+                "type": "jwt_chain",
+                "subdomain": host,
+                "jwt_url": jwt.get("url", ""),
+                "algorithm": alg,
+                "possible_bug": "JWT Authentication Bypass",
+                "severity": "HIGH",
+                "chain": [
+                    {"step": "Subdomain", "value": host},
+                    {"step": "JWT Detected", "value": f"Authorization: Bearer"},
+                    {"step": "Algorithm", "value": alg},
+                    {"step": "Possible Bug", "value": "JWT Confusion / alg:none / kid injection"},
+                ]
+            })
+
+        # === Chain 5: Subdomain → GraphQL → Introspection → Data Exfiltration ===
+        for gql in self.graphql_data:
+            host = urlparse(gql.get("url", "")).netloc
+            attack_paths.append({
+                "type": "graphql_chain",
+                "subdomain": host,
+                "graphql_url": gql.get("url", ""),
+                "possible_bug": "GraphQL Introspection / Batch Query Abuse",
+                "severity": "HIGH",
+                "chain": [
+                    {"step": "Subdomain", "value": host},
+                    {"step": "GraphQL Endpoint", "value": urlparse(gql.get('url', '')).path},
+                    {"step": "Introspection", "value": "Enabled" if gql.get("introspection") else "Test Required"},
+                    {"step": "Possible Bug", "value": "Data Exfiltration / IDOR via Queries"},
+                ]
+            })
+        
+        # Sort by severity
+        severity_order = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3}
+        attack_paths.sort(key=lambda x: severity_order.get(x.get("severity", "LOW"), 3))
+        
+        with open(self.outdir / "attack_graph.json", "w") as f:
+            json.dump(attack_paths, f, indent=2)
+        
+        return attack_paths
+
+    # ================================================================
+    # FEATURE 5: Quick Wins
+    # ================================================================
+    def detect_quick_wins(self):
+        """Identify high-impact, low-effort findings."""
+        quick_wins = []
+        
+        # CORS with credentials
+        for cors in self.cors_data:
+            issue = str(cors.get("issue", "")).lower()
+            if "credentials" in issue or cors.get("credentials"):
+                quick_wins.append({
+                    "type": "CORS with Credentials",
+                    "severity": "HIGH",
+                    "url": cors.get("url", ""),
+                    "detail": cors.get("issue", ""),
+                    "action": "Teste com Origin: https://attacker.com — pode roubar dados autenticados",
+                    "icon": "🎯"
+                })
+        
+        # Admin panels without auth (status 200, no login form)
+        for panel in self.admin_panels:
+            if panel.get("status") == 200 and not panel.get("has_login_form"):
+                quick_wins.append({
+                    "type": "Admin Panel sem Autenticação",
+                    "severity": "CRITICAL",
+                    "url": panel.get("url", ""),
+                    "detail": f"Painel aberto: {panel.get('title', 'N/A')}",
+                    "action": "Acesse diretamente — sem login necessário!",
+                    "icon": "👑"
+                })
+        
+        # Confirmed takeovers
+        for tk in self.takeover_data:
+            if tk.get("status") == "VULNERABLE":
+                quick_wins.append({
+                    "type": "Subdomain Takeover Confirmado",
+                    "severity": "CRITICAL",
+                    "url": tk.get("subdomain", ""),
+                    "detail": f"CNAME: {tk.get('cname', '')} → {tk.get('service', '')}",
+                    "action": f"Registre o serviço {tk.get('service', '')} para assumir o subdomínio",
+                    "icon": "🏴‍☠️"
+                })
+        
+        # Git exposed
+        for panel in self.admin_panels:
+            if "/.git/" in panel.get("path", ""):
+                quick_wins.append({
+                    "type": "Git Repository Exposto",
+                    "severity": "CRITICAL",
+                    "url": panel.get("url", ""),
+                    "detail": "Repositório Git acessível publicamente",
+                    "action": "Use git-dumper para extrair código-fonte completo",
+                    "icon": "🕰️"
+                })
+        
+        # Secrets in JS
+        for key in self.keys_data:
+            if not isinstance(key, dict):
+                continue
+            key_type = key.get("type", "").lower()
+            if any(kw in key_type for kw in ["aws", "api_key", "secret", "token", "password", "private"]):
+                src = key.get("source", {})
+                if isinstance(src, dict):
+                    src_url = src.get("url", "")
+                else:
+                    src_url = str(src) if src else ""
+                if not src_url:
+                    src_url = key.get("subdomain", "")
+                quick_wins.append({
+                    "type": "Secret Exposto em JavaScript",
+                    "severity": "HIGH",
+                    "url": src_url,
+                    "detail": f"Tipo: {key.get('type', 'unknown')} — Value: {str(key.get('match', key.get('value', '')))[:30]}...",
+                    "action": "Valide se a chave/token ainda está ativa e pode ser abusada",
+                    "icon": "🔑"
+                })
+        
+        # GraphQL with introspection
+        for gql in self.graphql_data:
+            if gql.get("introspection"):
+                quick_wins.append({
+                    "type": "GraphQL Introspection Habilitada",
+                    "severity": "HIGH",
+                    "url": gql.get("url", ""),
+                    "detail": "Schema completo pode ser extraído",
+                    "action": "Execute introspection query para mapear toda a API",
+                    "icon": "🧬"
+                })
+        
+        # Sort by severity
+        severity_order = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3}
+        quick_wins.sort(key=lambda x: severity_order.get(x.get("severity", "LOW"), 3))
+        
+        with open(self.outdir / "quick_wins.json", "w") as f:
+            json.dump(quick_wins, f, indent=2)
+        
+        return quick_wins
+
+    # ================================================================
+    # Original methods (updated)
+    # ================================================================
     def classify_urls(self):
         """Analyzes all URLs and assigns tags (LOGIN, API, etc.)"""
         for url in self.urls:
@@ -107,7 +675,6 @@ class IntelligenceEngine:
                     "tags": tags
                 })
                 
-                # Apply rules to Global Risk Score
                 subdomain = urlparse(url).netloc
                 for tag in tags:
                     self.risk_ranking[subdomain]["tags"].add(tag)
@@ -138,13 +705,12 @@ class IntelligenceEngine:
                            "matched_parameters": matched_params
                       })
                       
-                      # Apply to Global Risk Score
                       subdomain = parsed.netloc
                       self.risk_ranking[subdomain]["score"] += 2.0
                       self.risk_ranking[subdomain]["reasons"].append(f"Suspicious params for {vuln_info['name']}")
 
     def generate_knowledge(self):
-        """Map discovered technologies to actionable Hacking Tips"""
+        """Map discovered technologies to actionable Hacking Tips with real payloads."""
         for subdomain, data in self.technologies.items():
             tips = []
             matched_techs = []
@@ -153,23 +719,50 @@ class IntelligenceEngine:
             for tech in tech_list:
                 t_name = tech.get("name", "")
                 
-                # Loose matching against our Knowledge Base
                 for kb_name, kb_tips in KnowledgeBase.items():
                     if kb_name.lower() in t_name.lower():
                         tips.extend(kb_tips)
                         matched_techs.append(t_name)
-                        
-            # Remove duplicated tips
-            tips = list(set(tips))
             
-            if tips:
+            # Also check for Swagger, JWT, etc. from cross-referenced data
+            for swagger in self.swagger_docs:
+                url = swagger if isinstance(swagger, str) else swagger.get("url", "")
+                if subdomain in url:
+                    tips.extend(KnowledgeBase.get("Swagger", []))
+                    matched_techs.append("Swagger")
+            
+            for gql in self.graphql_data:
+                if subdomain in gql.get("url", ""):
+                    tips.extend(KnowledgeBase.get("GraphQL", []))
+                    matched_techs.append("GraphQL")
+
+            for jwt in self.jwt_data:
+                if subdomain in jwt.get("url", ""):
+                    tips.extend(KnowledgeBase.get("JWT", []))
+                    matched_techs.append("JWT")
+
+            for url in self.urls:
+                if subdomain in url and UPLOAD_PATTERNS.search(url):
+                    tips.extend(KnowledgeBase.get("Upload", []))
+                    matched_techs.append("Upload")
+                    break
+
+            # Dedupe tips
+            seen = set()
+            unique_tips = []
+            for tip in tips:
+                tip_key = tip["tip"] if isinstance(tip, dict) else tip
+                if tip_key not in seen:
+                    seen.add(tip_key)
+                    unique_tips.append(tip)
+            
+            if unique_tips:
                 self.knowledge_tips[subdomain] = {
                     "matched_technologies": list(set(matched_techs)),
-                    "tips": tips
+                    "tips": unique_tips
                 }
                 
-                # Factor in the Risk ranking
-                self.risk_ranking[subdomain]["score"] += 0.5 * len(tips)
+                self.risk_ranking[subdomain]["score"] += 0.5 * len(unique_tips)
 
     def process_js_risk(self):
          """Increases risk score if APIs or logic flaws exist in JavaScript"""
@@ -177,13 +770,11 @@ class IntelligenceEngine:
               return
               
          for js_data in self.js_files:
-              # js_routes.json array structure has "source", "routes", "parameters"
               src = js_data.get("source", "")
               num_routes = len(js_data.get("routes", []))
               
               if num_routes > 0:
                    subdomain = urlparse(src).netloc
-                   # Limiting unbounded score growth
                    self.risk_ranking[subdomain]["score"] += min(num_routes * 0.2, 3.0)
                    self.risk_ranking[subdomain]["reasons"].append(f"Exposed {num_routes} API routes in JavaScript")
 
@@ -202,13 +793,19 @@ class IntelligenceEngine:
         info("   - Querying Knowledge Base against Core Technologies...")
         self.generate_knowledge()
         
+        info("   - Calculating Attack Priority Scores...")
+        priority = self.calculate_attack_priority()
+        
+        info("   - Building Attack Graph (exploitation chains)...")
+        attack_graph = self.build_attack_graph()
+        
+        info("   - Detecting Quick Wins...")
+        quick_wins = self.detect_quick_wins()
+        
         # Cleanup and sort Risk Ranking
         final_ranking = []
         for subdomain, metrics in self.risk_ranking.items():
-            # Round score
             final_score = round(min(metrics["score"], 10.0), 1)
-            
-            # Remove duplicate reasons
             reasons = list(set(metrics["reasons"]))
             
             final_ranking.append({
@@ -233,7 +830,9 @@ class IntelligenceEngine:
         with open(self.outdir / "knowledge_tips.json", "w") as f:
             json.dump(self.knowledge_tips, f, indent=2)
             
-        success(f"   + Top High Value Target: {final_ranking[0]['subdomain']} (Score: {final_ranking[0]['score']})" if final_ranking else "   + No high value targets generated.")
+        success(f"   + Top Target: {priority[0]['subdomain']} (Score: {priority[0]['score']})" if priority else "   + No high value targets generated.")
+        success(f"   + {len(attack_graph)} attack chains mapped.")
+        success(f"   + {len(quick_wins)} quick wins identified.")
         success(f"   + {len(self.vuln_patterns)} suspicious vulnerability patterns detected.")
         success(f"   + {len(self.classified_urls)} URLs automatically classified.")
         
@@ -241,7 +840,10 @@ class IntelligenceEngine:
             "risk_ranking": final_ranking,
             "classified_urls": self.classified_urls,
             "vuln_patterns": self.vuln_patterns,
-            "knowledge_tips": self.knowledge_tips
+            "knowledge_tips": self.knowledge_tips,
+            "attack_priority": priority,
+            "attack_graph": attack_graph,
+            "quick_wins": quick_wins,
         }
 
 def run(context: dict):

@@ -119,6 +119,33 @@ CMS_FINGERPRINTS = {
     "Spring Boot": ["actuator", "spring", "whitelabel"],
 }
 
+# Generic page titles that indicate duplicate redirect pages
+GENERIC_TITLES = [
+    "login", "cpanel", "cpanel login", "admin", "administrator",
+    "sign in", "sign-in", "signin", "log in", "log-in",
+    "dashboard", "panel", "webmail", "webmail login",
+    "welcome", "home", "index", "404", "not found",
+    "page not found", "403 forbidden", "forbidden",
+    "redirect", "301 moved", "error", "access denied",
+    "roundcube webmail", "horde", "squirrelmail",
+    "grafana", "kibana", "jenkins", "zabbix",
+    "whm login", "whm", "plesk", "directadmin",
+    "wordpress", "joomla", "drupal",
+]
+
+def normalize_title(title: str) -> str:
+    """Normalize a page title for deduplication."""
+    import re
+    title = title.lower().strip()
+    # Remove version numbers
+    title = re.sub(r'v?\d+\.\d+[\.\d]*', '', title)
+    # Remove extra whitespace
+    title = re.sub(r'\s+', ' ', title).strip()
+    # Remove common suffixes
+    for suffix in [" - login", " login", " :: login", " | login"]:
+        title = title.replace(suffix, "")
+    return title
+
 
 def ensure_outdir(target: str) -> Path:
     outdir = Path("output") / target / "admin"
@@ -175,132 +202,131 @@ def generate_raw_http(request_or_response) -> str:
     return "", ""
 
 
-def check_admin_path(base_url: str, path: str) -> dict:
+def check_admin_path(client, base_url: str, path: str, baseline: dict = None) -> dict:
     """
     Testa um path de admin em uma URL base.
     Retorna dict com resultado ou None se não encontrado.
     """
-    import httpx
-
     url = base_url.rstrip("/") + path
     try:
-        with httpx.Client(timeout=4, verify=False, follow_redirects=True) as client:
-            resp = client.get(url, headers={
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-            })
+        resp = client.get(url)
 
-            # Ignorar 404, 500, 502, 503
-            if resp.status_code in (404, 500, 502, 503, 504):
+        # Ignorar 404, 500, 502, 503
+        if resp.status_code in (404, 500, 502, 503, 504):
+            return None
+
+        content = resp.text[:10000] if resp.text else ""
+        content_len = len(content)
+
+        # Baseline check para Soft 404
+        if baseline and resp.status_code == baseline["status"]:
+            baseline_len = baseline["length"]
+            # Tolerância de 5% no tamanho do conteúdo
+            if abs(content_len - baseline_len) <= max(50, baseline_len * 0.05):
                 return None
 
-            # Verificar se é página real (não redirect genérico para home)
-            final_url = str(resp.url)
-            content = resp.text[:5000] if resp.text else ""
-            content_lower = content.lower()
+        # Verificar se é página real (não redirect genérico para home)
+        final_url = str(resp.url)
+        content_lower = content.lower()
 
-            # Detectar título
-            title = ""
-            title_match = re.search(r"<title>(.*?)</title>", content, re.I | re.S)
-            if title_match:
-                title = title_match.group(1).strip()[:100]
+        # Detectar título
+        title = ""
+        import re
+        title_match = re.search(r"<title>(.*?)</title>", content, re.I | re.S)
+        if title_match:
+            title = title_match.group(1).strip()[:100]
 
-            # Detectar form de login
-            has_login = bool(re.search(
-                r'<input[^>]*type=["\']password["\']', content, re.I
-            ))
+        # Detectar form de login
+        has_login = bool(re.search(
+            r'<input[^>]*type=["\']password["\']', content, re.I
+        ))
 
-            # Fingerprint CMS
-            cms = None
-            for cms_name, patterns in CMS_FINGERPRINTS.items():
-                if any(p.lower() in content_lower for p in patterns):
-                    cms = cms_name
-                    break
+        # Fingerprint CMS
+        cms = None
+        for cms_name, patterns in CMS_FINGERPRINTS.items():
+            if any(p.lower() in content_lower for p in patterns):
+                cms = cms_name
+                break
 
-            # Apenas retornar se parece ser algo real
-            # (tem título, ou tem form, ou é JSON, ou status code específico)
-            is_interesting = (
-                has_login or
-                cms or
-                resp.status_code in (200, 401, 403) or
-                "login" in content_lower or
-                "admin" in content_lower or
-                "dashboard" in content_lower or
-                resp.headers.get("content-type", "").startswith("application/json")
-            )
+        # Apenas retornar se parece ser algo real
+        is_interesting = (
+            has_login or
+            cms or
+            resp.status_code in (200, 401, 403) or
+            "dashboard" in content_lower or
+            resp.headers.get("content-type", "").startswith("application/json")
+        )
 
-            if is_interesting:
-                import hashlib
-                cleaned_content = clean_html_for_fingerprint(content)
-                content_hash = hashlib.sha256(cleaned_content.encode('utf-8')).hexdigest()
+        if is_interesting:
+            import hashlib
+            cleaned_content = clean_html_for_fingerprint(content)
+            content_hash = hashlib.sha256(cleaned_content.encode('utf-8')).hexdigest()
+            
+            result = {
+                "url": final_url,
+                "path": path,
+                "status": resp.status_code,
+                "title": title,
+                "cms": cms,
+                "has_login_form": has_login,
+                "response_size": content_len,
+                "content_type": resp.headers.get("content-type", ""),
+                "content_hash": content_hash
+            }
+            
+            # 403 Bypass: Tentar headers e path manipulation
+            if resp.status_code == 403:
+                bypass_headers_list = [
+                    {"X-Forwarded-For": "127.0.0.1"},
+                    {"X-Original-URL": path},
+                    {"X-Rewrite-URL": path},
+                    {"X-Custom-IP-Authorization": "127.0.0.1"},
+                    {"X-Forwarded-Host": "localhost"},
+                    {"X-Host": "localhost"},
+                ]
+                bypass_paths = [
+                    path + "/./",
+                    path + "..;/",
+                    path.replace("/", "//"),
+                    "/" + path.lstrip("/").capitalize(),
+                    path + "%20",
+                    path + "?",
+                    path + "#",
+                    path + ";",
+                ]
                 
-                result = {
-                    "url": final_url,
-                    "path": path,
-                    "status": resp.status_code,
-                    "title": title,
-                    "cms": cms,
-                    "has_login_form": has_login,
-                    "response_size": len(content),
-                    "content_type": resp.headers.get("content-type", ""),
-                    "content_hash": content_hash
-                }
+                bypasses_found = []
                 
-                # 403 Bypass: Tentar headers e path manipulation
-                if resp.status_code == 403:
-                    bypass_headers_list = [
-                        {"X-Forwarded-For": "127.0.0.1"},
-                        {"X-Original-URL": path},
-                        {"X-Rewrite-URL": path},
-                        {"X-Custom-IP-Authorization": "127.0.0.1"},
-                        {"X-Forwarded-Host": "localhost"},
-                        {"X-Host": "localhost"},
-                    ]
-                    bypass_paths = [
-                        path + "/./",
-                        path + "..;/",
-                        path.replace("/", "//"),
-                        "/" + path.lstrip("/").capitalize(),
-                        path + "%20",
-                        path + "?",
-                        path + "#",
-                        path + ";",
-                    ]
-                    
-                    bypasses_found = []
-                    
-                    # Test header bypasses
-                    for bypass_h in bypass_headers_list:
-                        try:
-                            h = {"User-Agent": "Mozilla/5.0"}
-                            h.update(bypass_h)
-                            r = client.get(url, headers=h)
-                            if r.status_code == 200:
-                                header_name = list(bypass_h.keys())[0]
-                                bypasses_found.append(f"Header {header_name}: {bypass_h[header_name]}")
-                        except Exception:
-                            pass
-                    
-                    # Test path bypasses
-                    for bp in bypass_paths:
-                        try:
-                            test = base_url.rstrip("/") + bp
-                            r = client.get(test, headers={"User-Agent": "Mozilla/5.0"})
-                            if r.status_code == 200:
-                                bypasses_found.append(f"Path: {bp}")
-                        except Exception:
-                            pass
-                    
-                    if bypasses_found:
-                        result["bypass_found"] = True
-                        result["bypass_methods"] = bypasses_found
-                        result["status"] = "403 → BYPASS"
-                        
-                        # Captura o raw do último bypass bem sucedido para exibir no Burp Modal
-                        req_b64, res_b64 = generate_raw_http(r)
-                        result["raw_request"] = req_b64
-                        result["raw_response"] = res_b64
+                # Test header bypasses
+                for bypass_h in bypass_headers_list:
+                    try:
+                        r = client.get(url, headers=bypass_h)
+                        if r.status_code == 200:
+                            header_name = list(bypass_h.keys())[0]
+                            bypasses_found.append(f"Header {header_name}: {bypass_h[header_name]}")
+                    except Exception:
+                        pass
                 
-                return result
+                # Test path bypasses
+                for bp in bypass_paths:
+                    try:
+                        test = base_url.rstrip("/") + bp
+                        r = client.get(test)
+                        if r.status_code == 200:
+                            bypasses_found.append(f"Path: {bp}")
+                    except Exception:
+                        pass
+                
+                if bypasses_found:
+                    result["bypass_found"] = True
+                    result["bypass_methods"] = bypasses_found
+                    result["status"] = "403 → BYPASS"
+                    
+                    req_b64, res_b64 = generate_raw_http(r)
+                    result["raw_request"] = req_b64
+                    result["raw_response"] = res_b64
+            
+            return result
 
     except Exception:
         pass
@@ -310,6 +336,9 @@ def check_admin_path(base_url: str, path: str) -> dict:
 
 def run(context: dict):
     """Executa descoberta de admin panels."""
+    import httpx
+    import uuid
+    
     target = context.get("target")
     if not target:
         raise ValueError("Target required")
@@ -355,55 +384,93 @@ def run(context: dict):
             extended_bases.add(f"https://{host}:{port}")
 
     info(f"   📋 {len(base_urls)} hosts base + {len(ADMIN_PORTS)} portas alternativas")
-    info(f"   🔍 Testando {len(ADMIN_PATHS)} paths em {len(extended_bases)} bases...")
-    info(f"   ⏱️  Total de testes: ~{len(extended_bases) * len(ADMIN_PATHS)}")
+    info(f"   🔍 Analisando conexões ativas nas bases estendidas...")
 
-    # Executar testes em paralelo
-    found_panels = []
-    seen_hashes = set()  # Deduplicar por conteudo real (evita falsos redirects)
-    total_tasks = 0
-
-    with ThreadPoolExecutor(max_workers=35) as executor:
-        futures = {}
-        for base in extended_bases:
-            for path in ADMIN_PATHS:
-                future = executor.submit(check_admin_path, base, path)
-                futures[future] = (base, path)
-                total_tasks += 1
-
-        done_count = 0
-        for future in as_completed(futures):
-            done_count += 1
-            if done_count % 200 == 0:
-                print(f"   [{done_count}/{total_tasks}] Tested... ({len(found_panels)} found)", end="\r")
-
+    # Gerar Baselines (Soft 404) e cliente global
+    baselines = {}
+    valid_bases = set()
+    
+    # httpx configs
+    limits = httpx.Limits(max_keepalive_connections=50, max_connections=100)
+    with httpx.Client(timeout=4, verify=False, follow_redirects=True, limits=limits) as client:
+        client.headers.update({"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"})
+        
+        info("   🛡️  Obtendo Baseline (Catch-all check) para evitar falsos positivos...")
+        for base in list(extended_bases):
             try:
-                result = future.result()
-                if result:
-                    # Deduplicar pelo Hash do HTML final (stripado) + host base
-                    # Isso garante que a mesma pagina de redirect generico seja salva 1 unica vez
-                    norm_url = result["url"].rstrip("/").lower()
-                    host_domain = urlparse(norm_url).netloc
-                    
-                    content_hash = result.get("content_hash", "")
-                    dedup_key = f"{host_domain}_{content_hash}"
-                    
-                    if dedup_key in seen_hashes:
-                        continue
-                        
-                    seen_hashes.add(dedup_key)
-                    
-                    found_panels.append(result)
-                    status_color = C.RED if result["status"] == 200 else C.YELLOW
-                    login_icon = "🔑" if result["has_login_form"] else "📄"
-                    cms_str = f" [{result['cms']}]" if result.get("cms") else ""
-                    info(f"   {login_icon} {status_color}[{result['status']}]{C.END} {result['url']}{cms_str}")
+                rand_path = f"/does_not_exist_{uuid.uuid4().hex[:8]}"
+                r = client.get(base.rstrip("/") + rand_path)
+                baselines[base] = {
+                    "status": r.status_code,
+                    "length": len(r.text) if r.text else 0
+                }
+                valid_bases.add(base)
             except Exception:
+                # O timeout vai falhar bases/portas inacessíveis
                 pass
+
+        if not valid_bases:
+            warn("   ⚠️ Nenhuma porta web de admin respondeu. (Todas instáveis/fechadas).")
+            return []
+
+        info(f"   🚀 Testando {len(ADMIN_PATHS)} paths em {len(valid_bases)} bases ativas...")
+        total_tasks = len(valid_bases) * len(ADMIN_PATHS)
+        info(f"   ⏱️  Total de testes otimizados: ~{total_tasks}")
+
+        # Executar testes em paralelo
+        found_panels = []
+        seen_hashes = set()
+        seen_titles_per_host = set()
+
+        with ThreadPoolExecutor(max_workers=35) as executor:
+            futures = {}
+            for base in valid_bases:
+                for path in ADMIN_PATHS:
+                    future = executor.submit(check_admin_path, client, base, path, baselines.get(base))
+                    futures[future] = (base, path)
+
+            done_count = 0
+            for future in as_completed(futures):
+                done_count += 1
+                if done_count % 100 == 0 or done_count == total_tasks:
+                    print(f"   [{done_count}/{total_tasks}] Tested... ({len(found_panels)} found)", end="\r")
+
+                try:
+                    result = future.result()
+                    if result:
+                        norm_url = result["url"].rstrip("/").lower()
+                        host_domain = urlparse(norm_url).netloc
+                        
+                        # Dedup Hash exato
+                        content_hash = result.get("content_hash", "")
+                        hash_key = f"{host_domain}_{content_hash}"
+                        if hash_key in seen_hashes:
+                            continue
+                        seen_hashes.add(hash_key)
+                        
+                        # Dedup Título por host
+                        title = result.get("title", "")
+                        norm_title = normalize_title(title)
+                        if norm_title:
+                            title_key = f"{host_domain}_{norm_title}"
+                            if title_key in seen_titles_per_host:
+                                continue
+                            seen_titles_per_host.add(title_key)
+                        
+                        found_panels.append(result)
+                        
+                        status_val = result["status"]
+                        status_color = C.RED if status_val in (200, "403 → BYPASS") else C.YELLOW
+                        status_str = str(status_val) if isinstance(status_val, int) else status_val
+                            
+                        login_icon = "🔑" if result["has_login_form"] else "📄"
+                        cms_str = f" [{result['cms']}]" if result.get("cms") else ""
+                        info(f"   {login_icon} {status_color}[{status_str}]{C.END} {result['url']}{cms_str}")
+                except Exception:
+                    pass
 
     print("")  # Newline
 
-    # Já está deduplicado (seen_urls durante execução)
     unique_panels = found_panels
 
     # Salvar resultados
@@ -416,11 +483,11 @@ def run(context: dict):
         # Stats
         with_login = sum(1 for p in unique_panels if p["has_login_form"])
         cms_count = sum(1 for p in unique_panels if p.get("cms"))
-        open_200 = sum(1 for p in unique_panels if p["status"] == 200)
-        auth_required = sum(1 for p in unique_panels if p["status"] in (401, 403))
+        open_200 = sum(1 for p in unique_panels if p["status"] == 200 or p["status"] == "403 → BYPASS")
+        auth_required = sum(1 for p in unique_panels if isinstance(p["status"], int) and p["status"] in (401, 403))
 
         info(f"   📊 Stats:")
-        info(f"      Abertos (200): {C.RED}{open_200}{C.END}")
+        info(f"      Abertos/Bypass: {C.RED}{open_200}{C.END}")
         info(f"      Auth required (401/403): {C.YELLOW}{auth_required}{C.END}")
         info(f"      Com form de login: {with_login}")
         info(f"      CMS detectado: {cms_count}")

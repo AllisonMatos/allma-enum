@@ -8,3 +8,4 @@ weasyprint
 dnspython
 aiohttp
 aiofiles
+flask

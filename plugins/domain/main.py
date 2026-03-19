@@ -169,6 +169,7 @@ def run(context):
 
     target = context["target"]
     ports_mode = context["ports"]
+    closed_scope = context.get("closed_scope", [])
 
     info(
         f"\n[DOMAIN] Iniciando modulo\n"
@@ -184,13 +185,19 @@ def run(context):
     urls_file = outdir / "urls.txt"
     urls_ok = outdir / "urls_valid.txt"
 
-    # === ETAPA 1: SUBFINDER ===
-    info(f"{C.BOLD}{C.BLUE}[1/8] Descobrindo subdominios (Subfinder)...{C.END}")
-    run_subfinder(target, subs_file)
+    if closed_scope:
+        info(f"{C.BOLD}{C.BLUE}[1/8] Escopo fechado selecionado - escrevendo diretamente no arquivo...{C.END}")
+        with open(subs_file, "w") as f:
+            f.write("\n".join(closed_scope) + "\n")
+        info(f"{C.BOLD}{C.BLUE}[2/8] Pulando Multi-source Discovery (crt.sh, haktrails, gau, etc)...{C.END}")
+    else:
+        # === ETAPA 1: SUBFINDER ===
+        info(f"{C.BOLD}{C.BLUE}[1/8] Descobrindo subdominios (Subfinder)...{C.END}")
+        run_subfinder(target, subs_file)
 
-    # === ETAPA 2: MULTI-SOURCE DISCOVERY ===
-    info(f"{C.BOLD}{C.BLUE}[2/8] Multi-source Discovery (crt.sh, haktrails, gau, waybackurls)...{C.END}")
-    discover_subdomains(target, subs_file)
+        # === ETAPA 2: MULTI-SOURCE DISCOVERY ===
+        info(f"{C.BOLD}{C.BLUE}[2/8] Multi-source Discovery (crt.sh, haktrails, gau, waybackurls)...{C.END}")
+        discover_subdomains(target, subs_file)
 
     # === ETAPA 3: DNS RESOLUTION + WILDCARD + CDN FILTER ===
     info(f"{C.BOLD}{C.BLUE}[3/8] DNS Resolution + Wildcard Detection + CDN Filter...{C.END}")

@@ -227,11 +227,29 @@ def main():
 
     # target
     print(f"\n{C.BOLD}{C.CYAN}🎯 DEFINIÇÃO DO ALVO{C.END}")
-    target = input(f"{C.BOLD}{C.BLUE}Domínio: {C.END}").strip()
+    target = input(f"{C.BOLD}{C.BLUE}Domínio/Empresa principal: {C.END}").strip()
 
     if not validate_target(target):
         print(f"{C.RED}❌ Target inválido.{C.END}")
         sys.exit(1)
+
+    print(f"\n{C.BOLD}{C.CYAN}🎯 TIPO DE ESCOPO{C.END}")
+    print(f"  {C.YELLOW}┌─ Modo de Descoberta ──────────────────────────┐{C.END}")
+    print(f"  {C.YELLOW}│{C.END} {C.GREEN}1{C.END} → Subdomain Discovery Automática (Padrão)   {C.YELLOW}│{C.END}")
+    print(f"  {C.YELLOW}│{C.END} {C.GREEN}2{C.END} → Escopo Fechado (Informar subdomínios)     {C.YELLOW}│{C.END}")
+    print(f"  {C.YELLOW}└───────────────────────────────────────────────┘{C.END}")
+    
+    scope_mode = input(f"\n{C.BOLD}{C.BLUE}Escolha o modo [1/2]: {C.END}").strip()
+    closed_scope_list = []
+    
+    if scope_mode == "2":
+        print(f"\n{C.YELLOW}Informe os subdomínios separados por vírgula.{C.END}")
+        domains_input = input(f"{C.BOLD}{C.BLUE}Subdomínios: {C.END}").strip()
+        if domains_input:
+            closed_scope_list = [d.strip() for d in domains_input.split(",") if d.strip()]
+        
+        if not closed_scope_list:
+            print(f"{C.RED}❌ Nenhum subdomínio fornecido. Usando descoberta padrão...{C.END}")
 
     # chain — "10" é meta-módulo (all), não deve entrar na chain de execução
     chain = list(dict.fromkeys(DEPENDENCIES[choice] + [choice]))
@@ -239,6 +257,8 @@ def main():
 
     # parâmetros
     params = {name: {} for name in MODULES.values()}
+
+    params["domain"]["closed_scope"] = closed_scope_list
 
     if "1" in chain:
         params["domain"]["ports"] = ask_ports_mode()

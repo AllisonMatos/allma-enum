@@ -105,6 +105,73 @@ def check_http_fingerprint(subdomain: str, fingerprints: list[str]) -> bool:
     return False
 
 
+def verify_service_available(cname: str, service: str, subdomain: str) -> dict:
+    """Verify if the service is actually claimable/available for takeover."""
+    import httpx
+    
+    verification = {"verified": False, "verification_detail": "Could not verify"}
+    
+    try:
+        if service == "GitHub Pages":
+            # Check if GitHub Pages returns the specific error page
+            with httpx.Client(timeout=8, verify=False, follow_redirects=True) as client:
+                resp = client.get(f"https://{subdomain}")
+                if "There isn't a GitHub Pages site here" in resp.text:
+                    verification["verified"] = True
+                    verification["verification_detail"] = "GitHub Pages site not found — available for takeover via GitHub repository"
+                elif resp.status_code == 404:
+                    verification["verified"] = True
+                    verification["verification_detail"] = "Returns 404 — likely available for claim"
+        
+        elif service in ("AWS S3", "AWS S3 Website"):
+            with httpx.Client(timeout=8, verify=False, follow_redirects=True) as client:
+                resp = client.get(f"https://{subdomain}")
+                if "NoSuchBucket" in resp.text:
+                    verification["verified"] = True
+                    verification["verification_detail"] = f"S3 bucket does not exist — create bucket '{cname.split('.')[0]}' to takeover"
+                elif "AccessDenied" in resp.text:
+                    verification["verified"] = False
+                    verification["verification_detail"] = "Bucket exists but access denied — not vulnerable"
+        
+        elif service == "Heroku":
+            with httpx.Client(timeout=8, verify=False, follow_redirects=True) as client:
+                resp = client.get(f"https://{subdomain}")
+                if "No such app" in resp.text or "no-such-app" in resp.text:
+                    app_name = cname.replace(".herokuapp.com", "")
+                    verification["verified"] = True
+                    verification["verification_detail"] = f"Heroku app '{app_name}' does not exist — create to takeover"
+        
+        elif service == "Shopify":
+            with httpx.Client(timeout=8, verify=False, follow_redirects=True) as client:
+                resp = client.get(f"https://{subdomain}")
+                if "Sorry, this shop is currently unavailable" in resp.text:
+                    verification["verified"] = True
+                    verification["verification_detail"] = "Shopify store not claimed — register to takeover"
+        
+        elif service in ("Azure", "Azure CloudApp", "Azure CDN"):
+            with httpx.Client(timeout=8, verify=False, follow_redirects=True) as client:
+                resp = client.get(f"https://{subdomain}")
+                if resp.status_code == 404 or "not found" in resp.text.lower():
+                    verification["verified"] = True
+                    verification["verification_detail"] = f"Azure resource not found — register '{cname}' to takeover"
+        
+        elif service in ("Netlify", "Vercel", "Surge.sh", "Fly.io"):
+            with httpx.Client(timeout=8, verify=False, follow_redirects=True) as client:
+                resp = client.get(f"https://{subdomain}")
+                if resp.status_code == 404:
+                    verification["verified"] = True
+                    verification["verification_detail"] = f"{service} site not found — claim domain on {service}"
+        
+        else:
+            # Generic: if NXDOMAIN + fingerprint match, consider verified
+            verification["verification_detail"] = "Fingerprint matched but manual verification recommended"
+    
+    except Exception as e:
+        verification["verification_detail"] = f"Verification check failed: {str(e)[:100]}"
+    
+    return verification
+
+
 def check_subdomain(subdomain: str) -> dict | None:
     """Verifica se um subdomínio é vulnerável a takeover."""
     cname = resolve_cname(subdomain)
@@ -118,6 +185,17 @@ def check_subdomain(subdomain: str) -> dict | None:
             has_fingerprint = check_http_fingerprint(subdomain, fingerprints)
 
             if is_nxdomain or has_fingerprint:
+                # Verify if the service is actually available for claiming
+                verification = verify_service_available(cname, service, subdomain)
+                
+                status = "VULNERABLE"
+                if verification["verified"]:
+                    status = "CONFIRMED"
+                elif is_nxdomain:
+                    status = "VULNERABLE"
+                else:
+                    status = "POTENTIAL"
+                
                 return {
                     "subdomain": subdomain,
                     "cname": cname,
@@ -125,7 +203,9 @@ def check_subdomain(subdomain: str) -> dict | None:
                     "severity": severity,
                     "nxdomain": is_nxdomain,
                     "http_fingerprint": has_fingerprint,
-                    "status": "VULNERABLE" if is_nxdomain else "POTENTIAL",
+                    "status": status,
+                    "verified": verification["verified"],
+                    "verification_detail": verification["verification_detail"],
                 }
 
     return None
