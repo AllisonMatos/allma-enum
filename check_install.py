@@ -7,11 +7,6 @@ import importlib
 REQUIRED_PYTHON = [
     "httpx",
     "requests",
-    "bs4", # beautifulsoup4
-    "lxml",
-    "reportlab",
-    "matplotlib",
-    "weasyprint",
     "dns", # dnspython
     "aiohttp",
     "aiofiles",
@@ -29,6 +24,10 @@ REQUIRED_TOOLS = [
     "gospider",
     "httpx", # Project discovery httpx
     "searchsploit",
+    "kr",
+    "trufflehog",
+    "cloud_enum",
+    "interactsh-client",
 ]
 
 # Ferramentas opcionais (melhoram cobertura mas não são obrigatórias)

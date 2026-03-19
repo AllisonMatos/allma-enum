@@ -1,10 +1,5 @@
 httpx
 requests
-beautifulsoup4
-lxml
-reportlab
-matplotlib
-weasyprint
 dnspython
 aiohttp
 aiofiles
