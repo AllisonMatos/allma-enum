@@ -7,12 +7,6 @@ Allma-Enum é uma suíte completa para pentest e bug bounty, focada em automaç�
 
 ![Banner](https://img.shields.io/badge/Status-Active-success)
 ![Python](https://img.shields.io/badge/Python-3.9+-blue)
-![FastAPI](https://img.shields.io/badge/Backend-FastAPI-009688)
-
-## 🌟 O Que Há de Novo? (What's New)
-
-- **Correção Geral no Relatório Estático**: Corrigido bug de renderização no painel estático (`report.html`) onde as tabelas de Subdomínios, URLs e Endpoints apareciam vazias. O relatório agora apresenta as informações dinamicamente no navegador (via JS) sem a necessidade de um backend local!
-- **Contadores da Sidebar Precisos**: Os contadores da barra lateral do relatório agora rastreiam resultados com precisão (contando corretamente ocorrências no `urls_200.txt`, parsing inteligente para XSS em português e JSONs de rotas/cabeçalhos alternativos).
 
 ## 🚀 Funcionalidades (Features)
 
@@ -62,7 +56,6 @@ O novo painel é servido por **FastAPI** e **SQLite (In-memory)**. Ele permite g
 ### Pré-requisitos
 - Python 3.9+
 - Go (para ferramentas externas)
-- MongoDB Database (para a interface WebApp FastAPI)
 
 ### Setup
 
@@ -119,14 +112,6 @@ python3 menu.py
 | 24 | **api_fuzzer** | API Fuzzer (Kiterunner) |
 | 25 | **cloud** | Cloud Recon (S3/Azure/GCP) |
 | 26 | **all** | **Executa o fluxo completo inteligente (1 a 25)** |
-
-### 2. Iniciar o Web App Dashboard
-Abra seu report de forma estática com duplo clique, ou utilize o servidor inteligente executando:
-```bash
-cd core/webapp
-uvicorn main:app --host 0.0.0.0 --port 8000
-```
-Visite `http://localhost:8000` em seu navegador para gerenciar os Relatórios Web interativos!
 
 ---
 
