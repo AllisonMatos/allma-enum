@@ -4,6 +4,7 @@ Report Generator - SPA Dark Mode
 Versao moderna com navegacao por abas e tema escuro profissional
 """
 
+import re
 import html
 import json
 import uuid
@@ -134,9 +135,15 @@ def calculate_stats(target: str) -> Dict:
             stats["cve_vulns"] = len(cve_data)
         except: pass
             
-    # Endpoints
+    # Endpoints (try JSON first, then txt fallback)
+    endpoints_json = base / "endpoint" / "raw_endpoints.json"
+    if endpoints_json.exists():
+        try:
+            stats["endpoints_count"] = len(json.loads(endpoints_json.read_text(errors="ignore")))
+        except: pass
+    
     endpoints_file = base / "endpoint" / "endpoints.txt"
-    if endpoints_file.exists():
+    if endpoints_file.exists() and stats["endpoints_count"] == 0:
         stats["endpoints_count"] += len([l for l in endpoints_file.read_text(errors="ignore").splitlines() if l.strip()])
     
     graphql_file = base / "endpoint" / "graphql.txt"
@@ -146,18 +153,45 @@ def calculate_stats(target: str) -> Dict:
     # XSS
     xss_file = base / "xss" / "final_report.txt"
     if xss_file.exists():
-        # Heuristic: count "Vulnerable" lines or just check file size > 0
         content = xss_file.read_text(errors="ignore")
-        if "Vulnerable" in content or "[POC]" in content:
+        # Parse Total findings line (e.g. 'Total findings: 10140')
+        import re as _re
+        m = _re.search(r'Total findings:\s*(\d+)', content)
+        if m:
+            stats["xss_vulns"] = int(m.group(1))
+        elif "Vulnerable" in content or "[POC]" in content:
             stats["xss_vulns"] = content.count("[POC]") or 1
+        elif content.strip():
+            # File has content but no known markers, count non-empty lines as a rough heuristic
+            stats["xss_vulns"] = len([l for l in content.splitlines() if l.strip()]) // 5 or 1
             
-    # Headers
-    # Headers
-    headers_file = base / "fingerprint" / "headers.txt"
-    if headers_file.exists():
+    # Headers (try JSON results first, then fingerprint fallback)
+    headers_json = base / "headers" / "headers_results.json"
+    if headers_json.exists():
         try:
-             h_data = json.loads(headers_file.read_text(errors="ignore"))
-             stats["headers_count"] = len(h_data)
+            h_data = json.loads(headers_json.read_text(errors="ignore"))
+            stats["headers_count"] = len(h_data)
+        except: pass
+    if stats["headers_count"] == 0:
+        headers_file = base / "fingerprint" / "headers.txt"
+        if headers_file.exists():
+            try:
+                 h_data = json.loads(headers_file.read_text(errors="ignore"))
+                 stats["headers_count"] = len(h_data)
+            except: pass
+
+    # CRLF
+    crlf_file = base / "crlf_injection" / "crlf_results.json"
+    if crlf_file.exists():
+        try:
+            stats["crlf_count"] = len(json.loads(crlf_file.read_text()))
+        except: pass
+
+    # Deserialization
+    deser_file = base / "insecure_deserialization" / "deser_results.json"
+    if deser_file.exists():
+        try:
+            stats["deser_count"] = len(json.loads(deser_file.read_text()))
         except: pass
 
     # Takeover
@@ -203,12 +237,21 @@ def calculate_stats(target: str) -> Dict:
             stats["sourcemaps_count"] = len(json.loads(sourcemaps_file.read_text()))
         except: pass
 
-    # JS Routes
-    js_routes_file = base / "domain" / "extracted_js_routes.json"
-    if js_routes_file.exists():
-        try:
-            stats["js_routes_count"] = len(json.loads(js_routes_file.read_text()))
-        except: pass
+    # JS Routes (try multiple possible paths)
+    for js_routes_path in [
+        base / "domain" / "extracted_js_routes.json",
+        base / "domain" / "extracted_routes.json",
+    ]:
+        if js_routes_path.exists() and stats.get("js_routes_count", 0) == 0:
+            try:
+                data = json.loads(js_routes_path.read_text())
+                stats["js_routes_count"] = len(data) if isinstance(data, list) else sum(len(v) if isinstance(v, list) else 1 for v in data.values()) if isinstance(data, dict) else 0
+            except: pass
+
+    # URLs combined (count from multiple sources)
+    urls_200 = base / "urls" / "urls_200.txt"
+    if urls_200.exists():
+        stats["urls_200_count"] = len([l for l in urls_200.read_text(errors="ignore").splitlines() if l.strip()])
 
     # Swagger
     swagger_file = base / "domain" / "swagger_docs.json"
@@ -1017,6 +1060,11 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             <div class="nav-icon">🧬</div>
             <div class="nav-label">Deserial. <span class="count">{stats_deser}</span></div>
         </button>
+        
+        <button class="nav-btn" data-section="oast_sec">
+            <div class="nav-icon">🚨</div>
+            <div class="nav-label" style="color:#ff7b72">Blind Bugs <span class="count">{stats_oast}</span></div>
+        </button>
     </nav>
     
     <div class="content-wrapper">
@@ -1129,6 +1177,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             <section class="section" id="crlf_sec">{crlf_content}</section>
             <section class="section" id="smuggling_sec">{smuggling_content}</section>
             <section class="section" id="deser_sec">{deser_content}</section>
+            <section class="section" id="oast_sec">{oast_content}</section>
             <section class="section" id="quickwins_attack">{quickwins_attack_content}</section>
             
              <footer style="text-align:center; color:var(--text-muted); font-size:12px; margin-top:40px; padding-bottom:20px;">
@@ -1154,12 +1203,12 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }});
         
         // Card Expand/Collapse
-        document.addEventListener('click', (e) => {
+        document.addEventListener('click', (e) => {{
             const header = e.target.closest('.card-header');
-            if (header) {
+            if (header) {{
                 header.parentElement.classList.toggle('open');
-            }
-        });
+            }}
+        }});
     </script>
     <!-- Burp Modal -->
     <div class="burp-modal-overlay" id="burpModal" onclick="if(event.target===this) closeBurp()">
@@ -1328,6 +1377,55 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 renderPaginatedTable(tableId);
             }}
         }}
+        function goToSubdomain(host) {{
+            host = host.trim();
+            // Switch to subdomains section
+            document.querySelectorAll('.nav-btn').forEach(b => {{
+                if(b.dataset.section === 'subdomains') b.click();
+            }});
+            
+            // Search for the host
+            const searchInput = document.getElementById('subdomainSearch');
+            if(searchInput) {{
+                searchInput.value = host;
+                filterSubdomains(host);
+            }}
+            
+            // Wait for pagination to render and scroll
+            setTimeout(() => {{
+                const cards = document.querySelectorAll('.card');
+                for(let card of cards) {{
+                    if(card.querySelector('.card-title') && card.querySelector('.card-title').innerText.trim() === host) {{
+                        card.classList.add('open');
+                        card.scrollIntoView({{ behavior: 'smooth', block: 'center' }});
+                        card.style.border = '2px solid var(--accent-blue)';
+                        setTimeout(() => card.style.border = '', 3000);
+                        break;
+                    }}
+                }}
+            }}, 500);
+        }}
+
+        function filterSubdomains(query) {{
+            query = query.toLowerCase().trim();
+            const containerId = "subdomains_container";
+            const tableData = window.PAGINATION_DATA[containerId];
+            if (!tableData) return;
+            
+            if (!tableData.fullData) tableData.fullData = [...tableData.data];
+            
+            if (!query) {{
+                tableData.data = [...tableData.fullData];
+            }} else {{
+                tableData.data = tableData.fullData.filter(html => {{
+                    const temp = document.createElement('div');
+                    temp.innerHTML = html;
+                    return temp.textContent.toLowerCase().includes(query);
+                }});
+            }}
+            tableData.page = 1;
+            renderPaginatedTable(containerId);
+        }}
     </script>
 </body>
 </html>'''
@@ -1439,7 +1537,7 @@ def _build_generic_security_card(target: str, file_path: str, title: str, icon: 
             import uuid
             row_id = f"sec_{uuid.uuid4().hex[:8]}"
             burp_script_data = f'<script>BURP_DATA["{row_id}"] = {{ "url": "{html.escape(item.get("url", ""))}", "req": "{req_b64}", "res": "{res_b64}" }};</script>'
-            button_html = f'<td style="text-align:right;"><button class="burp-btn" onclick="openBurp(\'{row_id}\')">View HTTP</button>{burp_script_data}</td>'
+            button_html = f'<button class="burp-btn" onclick="openBurp(\'{row_id}\')">View HTTP</button>{burp_script_data}'
         
         # Details column (if dict, show key-value, if string, show string)
         details = item.get("details", "")
@@ -1451,19 +1549,36 @@ def _build_generic_security_card(target: str, file_path: str, title: str, icon: 
             <td><a href="{html.escape(item.get("url", ""))}" target="_blank">{html.escape(item.get("url", ""))}</a></td>
             <td><strong>{html.escape(item.get("parameter", item.get("type", "General")))}</strong></td>
             <td style="font-size:12px;">{html.escape(str(details))}</td>
-            {button_html}
+            <td style="text-align:right;">{button_html}</td>
         </tr>
         '''
+    
+    explanation_html = ""
+    if "cache_deception" in file_path:
+        explanation_html = '''
+        <div style="padding:15px; background:rgba(187,128,255,0.1); border:1px solid rgba(187,128,255,0.3); border-radius:6px; margin-bottom:15px;">
+            <h4 style="color:var(--accent-purple); margin-bottom:8px; font-size:14px; font-weight:600;">What is Web Cache Deception?</h4>
+            <p style="font-size:13px; color:var(--text-secondary); line-height:1.5;">
+                <strong>Web Cache Deception (WCD)</strong> occurs when an attacker tricks a web cache into storing sensitive, user-specific information (like a profile page) as if it were a static asset (like a .css or .js file).
+                <br><br>
+                <strong>Impact:</strong> An attacker can then access the cached sensitive information by simply requesting the static asset URL.
+                <br><br>
+                <strong>What was tested:</strong> The analyzer appended fake static extensions (e.g., <code>/profile.php/test.css</code>) to sensitive endpoints and checked if the cache server (CDN/WAF) returned a <code>HIT</code> for those paths while still serving the underlying private content.
+            </p>
+        </div>
+        '''
+
     return f'''
-    <div class="card" style="border-left: 3px solid var({border_color}); margin-top:20px;">
+    <div class="card open" style="border-left: 3px solid var({border_color}); margin-top:20px;">
         <div class="card-header">
             <span class="card-title">{icon} {title}</span>
             <span class="card-badge">{len(data)} items</span>
         </div>
         <div class="card-content" style="display:block;">
+            {explanation_html}
             <div class="table-wrapper">
                 <table>
-                    <thead><tr><th>URL</th><th>Type/Parameter</th><th>Details</th>{"<th>Request</th>" if "View HTTP" in rows else ""}</tr></thead>
+                    <thead><tr><th>URL</th><th>Type/Parameter</th><th>Details</th><th>Actions</th></tr></thead>
                     <tbody>{rows}</tbody>
                 </table>
             </div>
@@ -1633,10 +1748,15 @@ def build_subdomains_content(subdomains: Dict, target: str) -> str:
     json_data = json.dumps(html_parts).replace("</", "<\\/")
     
     return f'''
+    <div style="margin-bottom:15px; display:flex; gap:10px;">
+        <input type="text" id="subdomainSearch" placeholder="🔍 Search subdomains..." style="flex:1; background:var(--bg-secondary); border:1px solid var(--border-color); border-radius:6px; padding:8px 12px; color:var(--text-primary); font-size:13px;" onkeyup="filterSubdomains(this.value)">
+    </div>
     <div id="subdomains_container"></div>
     {ips_card}
     <script>
-        initPaginatedTable("subdomains_container", {json_data}, [], function(row) {{ return row; }}, 100);
+        document.addEventListener("DOMContentLoaded", function() {{
+            initPaginatedTable("subdomains_container", {json_data}, [], function(row) {{ return row; }}, 100);
+        }});
     </script>
     '''
 
@@ -1719,26 +1839,28 @@ def build_urls_content(subdomains: Dict, target: str) -> str:
         <div class="card-content" id="urls_container" style="display:block;"></div>
     </div>
     <script>
-        initPaginatedTable(
-            "urls_container", 
-            {json_data}, 
-            ["Host", "URL", "Type", "Tags", "Login"], 
-            function(row) {{
-                let style = row.type === "validated" ? "color:var(--text-primary);" : "color:var(--text-muted);";
-                let type_badge = row.type === "validated" ? '<span class="tag tag-high" style="background:#23863630; color:#3fb950; font-size:10px;">✅ Validated</span>' : '<span class="tag tag-low" style="background:#d2992230; color:#d29922; font-size:10px;">🔍 Discovered</span>';
-                let login_badge = row.is_login ? '<span class="tag tag-medium">🔑 LOGIN</span>' : "";
-                let tags_html = (row.tags || []).map(t => `<span class="tag tag-low" style="background:#333; color:#aaa; font-size:10px;">${{escapeHtml(t)}}</span>`).join(" ");
-                
-                return `<tr>
-                    <td>${{escapeHtml(row.host)}}</td>
-                    <td style="word-break: break-all; max-width: 500px;"><a href="${{escapeHtml(row.url)}}" target="_blank" style="${{style}}">${{escapeHtml(row.url)}}</a></td>
-                    <td>${{type_badge}}</td>
-                    <td>${{tags_html}}</td>
-                    <td>${{login_badge}}</td>
-                </tr>`;
-            }},
-            100 // 100 per page layout
-        );
+        document.addEventListener("DOMContentLoaded", function() {{
+            initPaginatedTable(
+                "urls_container", 
+                {json_data}, 
+                ["Host", "URL", "Type", "Tags", "Login"], 
+                function(row) {{
+                    let style = row.type === "validated" ? "color:var(--text-primary);" : "color:var(--text-muted);";
+                    let type_badge = row.type === "validated" ? '<span class="tag tag-high" style="background:#23863630; color:#3fb950; font-size:10px;">✅ Validated</span>' : '<span class="tag tag-low" style="background:#d2992230; color:#d29922; font-size:10px;">🔍 Discovered</span>';
+                    let login_badge = row.is_login ? '<span class="tag tag-medium">🔑 LOGIN</span>' : "";
+                    let tags_html = (row.tags || []).map(t => `<span class="tag tag-low" style="background:#333; color:#aaa; font-size:10px;">${{escapeHtml(t)}}</span>`).join(" ");
+                    
+                    return `<tr>
+                        <td>${{escapeHtml(row.host)}}</td>
+                        <td style="word-break: break-all; max-width: 500px;"><a href="${{escapeHtml(row.url)}}" target="_blank" style="${{style}}">${{escapeHtml(row.url)}}</a></td>
+                        <td>${{type_badge}}</td>
+                        <td>${{tags_html}}</td>
+                        <td>${{login_badge}}</td>
+                    </tr>`;
+                }},
+                100 // 100 per page layout
+            );
+        }});
     </script>
     '''
 
@@ -2095,21 +2217,23 @@ def build_routes_content(target: str) -> str:
         <div class="card-content" id="routes_container" style="display:block;"></div>
     </div>
     <script>
-        initPaginatedTable(
-            "routes_container", 
-            {json_data}, 
-            ["Subdomain", "Method", "Path", "Source"], 
-            function(row) {{
-                let method_class = ["POST", "PUT", "DELETE"].includes(row.method) ? "tag-medium" : "tag-low";
-                return `<tr>
-                    <td>${{escapeHtml(row.subdomain)}}</td>
-                    <td><span class="tag ${{method_class}}">${{escapeHtml(row.method)}}</span></td>
-                    <td style="word-break: break-all;"><a href="${{escapeHtml(row.url)}}" target="_blank">${{escapeHtml(row.path)}}</a></td>
-                    <td>${{escapeHtml(row.source)}}</td>
-                </tr>`;
-            }},
-            100
-        );
+        document.addEventListener("DOMContentLoaded", function() {{
+            initPaginatedTable(
+                "routes_container", 
+                {json_data}, 
+                ["Subdomain", "Method", "Path", "Source"], 
+                function(row) {{
+                    let method_class = ["POST", "PUT", "DELETE"].includes(row.method) ? "tag-medium" : "tag-low";
+                    return `<tr>
+                        <td>${{escapeHtml(row.subdomain)}}</td>
+                        <td><span class="tag ${{method_class}}">${{escapeHtml(row.method)}}</span></td>
+                        <td style="word-break: break-all;"><a href="${{escapeHtml(row.url)}}" target="_blank">${{escapeHtml(row.path)}}</a></td>
+                        <td>${{escapeHtml(row.source)}}</td>
+                    </tr>`;
+                }},
+                100
+            );
+        }});
     </script>
     ''')
     
@@ -2145,22 +2269,24 @@ def build_js_content(target: str) -> str:
         <div class="card-content" id="js_container" style="display:block;"></div>
     </div>
     <script>
-        initPaginatedTable(
-            "js_container", 
-            {json_data_str}, 
-            ["Subdomain", "Filename", "Type", "Size", "Link"], 
-            function(row) {{
-                let filename = row.url.split("/").pop() || row.url;
-                return `<tr>
-                    <td>${{escapeHtml(row.subdomain)}}</td>
-                    <td style="word-break: break-all;"><a href="${{escapeHtml(row.url)}}" target="_blank">${{escapeHtml(filename)}}</a></td>
-                    <td><span class="tag tag-low">${{escapeHtml(row.type)}}</span></td>
-                    <td>${{row.size}} bytes</td>
-                    <td><a href="${{escapeHtml(row.url)}}" target="_blank" style="font-size:12px">View</a></td>
-                </tr>`;
-            }},
-            100
-        );
+        document.addEventListener("DOMContentLoaded", function() {{
+            initPaginatedTable(
+                "js_container", 
+                {json_data_str}, 
+                ["Subdomain", "Filename", "Type", "Size", "Link"], 
+                function(row) {{
+                    let filename = row.url.split("/").pop() || row.url;
+                    return `<tr>
+                        <td>${{escapeHtml(row.subdomain)}}</td>
+                        <td style="word-break: break-all;"><a href="${{escapeHtml(row.url)}}" target="_blank">${{escapeHtml(filename)}}</a></td>
+                        <td><span class="tag tag-low">${{escapeHtml(row.type)}}</span></td>
+                        <td>${{row.size}} bytes</td>
+                        <td><a href="${{escapeHtml(row.url)}}" target="_blank" style="font-size:12px">View</a></td>
+                    </tr>`;
+                }},
+                100
+            );
+        }});
     </script>
     ''')
 
@@ -2233,7 +2359,9 @@ def build_forms_content(target: str) -> str:
     return f'''
     <div id="forms_container"></div>
     <script>
-        initPaginatedTable("forms_container", {json_data}, [], function(row) {{ return row; }}, 100);
+        document.addEventListener("DOMContentLoaded", function() {{
+            initPaginatedTable("forms_container", {json_data}, [], function(row) {{ return row; }}, 100);
+        }});
     </script>
     '''
 
@@ -2312,13 +2440,15 @@ def build_params_content(target: str) -> str:
             </div>
         </div>
         <script>
-            initPaginatedTable("params_dang_container", {dang_json}, ["Parameter", "Found In"], function(row) {{
-                let url_list = row.urls.map(u => `<a href="${{escapeHtml(u)}}" target="_blank" style="color:var(--accent-blue);font-size:11px;">${{escapeHtml(u.substring(0,60))}}</a>`).join("<br>");
-                return `<tr>
-                    <td style="width:150px;"><code style="color:var(--accent-orange);background:#2d2d2d;padding:2px 6px;border-radius:4px;">${{escapeHtml(row.param)}}</code></td>
-                    <td style="font-size:12px;">${{url_list}}</td>
-                </tr>`;
-            }}, 50);
+            document.addEventListener("DOMContentLoaded", function() {{
+                initPaginatedTable("params_dang_container", {dang_json}, ["Parameter", "Found In"], function(row) {{
+                    let url_list = row.urls.map(u => `<a href="${{escapeHtml(u)}}" target="_blank" style="color:var(--accent-blue);font-size:11px;">${{escapeHtml(u.substring(0,60))}}</a>`).join("<br>");
+                    return `<tr>
+                        <td style="width:150px;"><code style="color:var(--accent-orange);background:#2d2d2d;padding:2px 6px;border-radius:4px;">${{escapeHtml(row.param)}}</code></td>
+                        <td style="font-size:12px;">${{url_list}}</td>
+                    </tr>`;
+                }}, 50);
+            }});
         </script>
         ''')
     
@@ -2333,14 +2463,16 @@ def build_params_content(target: str) -> str:
             <div class="card-content" id="params_norm_container" style="display:block;"></div>
         </div>
         <script>
-            initPaginatedTable("params_norm_container", {norm_json}, ["Parameter", "Found In"], function(row) {{
-                let first_url = row.urls.length > 0 ? row.urls[0] : "Unknown";
-                let extra = row.urls.length > 1 ? ` (+${{row.urls.length - 1}} more)` : "";
-                return `<tr>
-                    <td style="width:150px;"><code style="background:#2d2d2d;padding:2px 6px;border-radius:4px;">${{escapeHtml(row.param)}}</code></td>
-                    <td><a href="${{escapeHtml(first_url)}}" target="_blank" style="color:var(--accent-blue);font-size:11px;">${{escapeHtml(first_url.substring(0,50))}}</a>${{extra}}</td>
-                </tr>`;
-            }}, 100);
+            document.addEventListener("DOMContentLoaded", function() {{
+                initPaginatedTable("params_norm_container", {norm_json}, ["Parameter", "Found In"], function(row) {{
+                    let first_url = row.urls.length > 0 ? row.urls[0] : "Unknown";
+                    let extra = row.urls.length > 1 ? ` (+${{row.urls.length - 1}} more)` : "";
+                    return `<tr>
+                        <td style="width:150px;"><code style="background:#2d2d2d;padding:2px 6px;border-radius:4px;">${{escapeHtml(row.param)}}</code></td>
+                        <td><a href="${{escapeHtml(first_url)}}" target="_blank" style="color:var(--accent-blue);font-size:11px;">${{escapeHtml(first_url.substring(0,50))}}</a>${{extra}}</td>
+                    </tr>`;
+                }}, 100);
+            }});
         </script>
         ''')
         
@@ -2387,11 +2519,28 @@ def build_cloud_content(target: str) -> str:
             <td>{perms_html}</td>
         </tr>'''
         
+    cloud_enum_html = ""
+    ce_file = base / "cloud" / "cloud_enum_results.json"
+    if ce_file.exists():
+        try:
+            ce_data = read_json_file(ce_file)
+            if ce_data:
+                cloud_enum_html = f'''
+                <div class="card open" style="margin-top: 20px; border-left: 4px solid var(--accent-blue);">
+                    <div class="card-header"><span class="card-title">Cloud_enum Extra Findings</span></div>
+                    <div class="card-content">
+                        <pre style="background:var(--bg-primary); padding:10px; border-radius:4px; max-height:400px; overflow-y:auto; font-size:12px;">{html.escape(json.dumps(ce_data, indent=2))}</pre>
+                    </div>
+                </div>
+                '''
+        except:
+            pass
+
     return f'''
     <div class="card open">
         <div class="card-header">
             <span class="card-title">Cloud Buckets</span>
-            <span class="card-badge">{len(lines)} discovered</span>
+            <span class="card-badge">{len(lines) if lines else 0} discovered</span>
         </div>
         <div class="card-content">
             <div class="table-wrapper">
@@ -2402,6 +2551,7 @@ def build_cloud_content(target: str) -> str:
             </div>
         </div>
     </div>
+    {cloud_enum_html}
     '''
 
 def build_cve_content(subdomains: Dict) -> str:
@@ -3312,6 +3462,14 @@ def build_smuggling_content(target: str) -> str:
             <span class="card-badge warning">{len(data)} findings</span>
         </div>
         <div class="card-content" style="display:block;">
+            <div style="padding:15px; background:rgba(248,81,73,0.1); border:1px solid rgba(248,81,73,0.3); border-radius:6px; margin-bottom:15px;">
+                <h4 style="color:var(--accent-red); margin-bottom:8px; font-size:14px; font-weight:600;">HTTP Smuggling Explanation</h4>
+                <p style="font-size:13px; color:var(--text-secondary); line-height:1.5;">
+                    This section focuses on <strong>HTTP Request Smuggling</strong> (CL.TE, TE.CL, TE.TE). It occurs when the load balancer and backend server have inconsistent parsing of the <code>Content-Length</code> and <code>Transfer-Encoding</code> headers.
+                    <br><br>
+                    <strong>What was tested:</strong> Timing-based and error-based smuggling techniques. If a finding is listed, the server was confirmed to be vulnerable to desynchronization. Use <strong>View HTTP</strong> to inspect the smuggling preamble.
+                </p>
+            </div>
             <div class="table-wrapper">
                 <table>
                     <thead><tr><th>Risk</th><th>Type</th><th>URL</th><th>Details</th><th>Actions</th></tr></thead>
@@ -3369,6 +3527,66 @@ def build_deser_content(target: str) -> str:
     </div>
     '''
 
+
+def build_oast_content(target: str) -> str:
+    """Build OAST (Out-of-Band) interactions section."""
+    from pathlib import Path
+    import json
+    path = Path("output") / target / "interactsh.json"
+    if not path.exists(): return '<div class="empty-state"><p>No OAST interactions detected yet.</p></div>'
+    
+    try:
+        lines = [l for l in path.read_text(errors="ignore").splitlines() if l.strip()]
+        data = []
+        for l in lines:
+            try: data.append(json.loads(l))
+            except: continue
+    except:
+        return '<div class="empty-state"><p>Error reading OAST data.</p></div>'
+
+    if not data: return '<div class="empty-state"><p>No OAST interactions detected yet.</p></div>'
+    
+    rows = ""
+    for item in data:
+        proto = item.get("protocol", "unknown").upper()
+        remote = item.get("remote-address", "unknown")
+        timestamp = item.get("timestamp", "")
+        if "T" in timestamp:
+             timestamp = timestamp.split("T")[1].split(".")[0]
+             
+        rows += f'''
+        <tr>
+            <td><span class="tag tag-high">{proto}</span></td>
+            <td><code>{html.escape(remote)}</code></td>
+            <td>{html.escape(timestamp)}</td>
+            <td style="font-size:11px;">{html.escape(item.get("unique-id", ""))} interaction on {html.escape(item.get("full-id", ""))}</td>
+        </tr>
+        '''
+        
+    return f'''
+    <div class="card open" style="border-left: 4px solid var(--accent-purple);">
+        <div class="card-header">
+            <span class="card-title">🚨 OAST / Blind Bugs (Interactsh)</span>
+            <span class="card-badge warning">{len(data)} interactions</span>
+        </div>
+        <div class="card-content">
+            <div style="padding:15px; background:rgba(137,87,229,0.1); border:1px solid rgba(137,87,229,0.3); border-radius:6px; margin-bottom:15px;">
+                <h4 style="color:var(--accent-purple); margin-bottom:8px; font-size:14px; font-weight:600;">Out-of-Band Interaction</h4>
+                <p style="font-size:13px; color:var(--text-secondary); line-height:1.5;">
+                    These are <strong>critical</strong> findings. An interaction here means the target server made an external request to our OAST server. 
+                    <br><br>
+                    <strong>Impact:</strong> This confirms vulnerabilities like <strong>Blind SSRF</strong>, <strong>Blind XSS</strong>, or <strong>Blind RCE</strong> that would otherwise be invisible because they don't return data in the standard HTTP response.
+                </p>
+            </div>
+            <div class="table-wrapper">
+                <table>
+                    <thead><tr><th>Proto</th><th>Remote IP</th><th>Time</th><th>Interaction ID</th></tr></thead>
+                    <tbody>{rows}</tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    '''
 
 def build_surfacemap_content(subdomains: Dict) -> str:
     """Gera um mapa visual da superfície de ataque em formato de árvore."""
@@ -3507,7 +3725,7 @@ def build_attack_priority_content(target: str) -> str:
             <div style="display:flex; justify-content:space-between; align-items:center;">
                 <div style="flex:1;">
                     <div style="display:flex; align-items:center; gap:10px;">
-                        <strong style="font-size:15px;">{html.escape(str(item.get("subdomain", "")))}</strong>
+                        <a href="javascript:void(0)" onclick="goToSubdomain(\'{html.escape(str(item.get("subdomain", "")))} \')" style="font-size:15px; font-weight:bold; color:var(--accent-blue); text-decoration:none;">{html.escape(str(item.get("subdomain", "")))}</a>
                         <div style="font-size:22px; font-weight:800; color:{color};">{score}</div>
                     </div>
                     <div style="margin:6px 0; background:var(--bg-primary); border-radius:3px; height:6px; overflow:hidden;">
@@ -3803,7 +4021,7 @@ def run(context: Dict[str, Any]) -> List[str]:
         "date": now.strftime("%Y-%m-%d"),
         "time": now.strftime("%H:%M:%S"),
         "stats_subdomains": stats["subdomains"],
-        "stats_urls": stats["urls_valid"],
+        "stats_urls": max(stats["urls_valid"], stats.get("urls_200_count", 0)),
         "stats_ports": stats["ports_total"],
         "stats_login": stats["login_pages"],
         "stats_keys": stats["keys_found"],
@@ -3826,7 +4044,7 @@ def run(context: Dict[str, Any]) -> List[str]:
         "js_content": build_js_content(target),
         "files_content": build_files_content(target),
         "services_content": build_services_content(target),
-        "stats_urls_combined": stats["urls_valid"] + len(read_file_lines(Path("output") / target / "crawlers" / "katana_valid.txt") or read_file_lines(Path("output") / target / "domain" / "crawlers" / "katana_valid.txt")),
+        "stats_urls_combined": max(stats["urls_valid"], stats.get("urls_200_count", 0)) + len(read_file_lines(Path("output") / target / "crawlers" / "katana_valid.txt") or read_file_lines(Path("output") / target / "domain" / "crawlers" / "katana_valid.txt") or read_file_lines(Path("output") / target / "domain" / "katana_valid.txt")),
         "forms_content": build_forms_content(target),
         "stats_forms": len(read_json_file(Path("output") / target / "crawlers" / "katana_forms.json") or read_json_file(Path("output") / target / "domain" / "crawlers" / "katana_forms.json") or []),
         "params_content": build_params_content(target),
@@ -3876,19 +4094,24 @@ def run(context: Dict[str, Any]) -> List[str]:
         "deser_content": build_deser_content(target),
         "quickwins_attack_content": build_quickwins_attack_combined_content(target),
         "stats_quickwins": len(read_json_file(Path("output") / target / "intelligence" / "quick_wins.json") or []) + len(read_json_file(Path("output") / target / "intelligence" / "attack_graph.json") or []),
+        "stats_oast": len(read_file_lines(Path("output") / target / "interactsh.json")),
+        "oast_content": build_oast_content(target),
     }
     
 
-    # Escape { and } in content values so .format() doesn't interpret
-    # BURP_DATA JS literals as format placeholders
-    for key, val in template_vars.items():
-        if isinstance(val, str) and ("{" in val or "}" in val):
-            template_vars[key] = val.replace("{", "{{").replace("}", "}}")
+    # Generate HTML safely using regex replacement to avoid brace issues with .format()
+    def safe_replace(match):
+        key = match.group(1)
+        return str(template_vars.get(key, match.group(0)))
+
+    html_content = re.sub(r'\{([a-zA-Z0-9_]+)\}', safe_replace, HTML_TEMPLATE)
     
-    # Generate HTML
+    # Second pass for double braces (if any were meant to be single after format)
+    html_content = html_content.replace("{{", "{").replace("}}", "}")
+
     try:
-        html_content = HTML_TEMPLATE.format(**template_vars)
         html_file.write_text(html_content, encoding='utf-8')
+
         success(f"Report HTML gerado: {html_file}")
     except Exception as e:
         error(f"Error generating HTML report: {e}")
