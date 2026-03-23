@@ -254,6 +254,7 @@
         <button class="nav-btn" data-section="crlf_sec"><div class="nav-icon">💉</div><div class="nav-label">CRLF <span class="count">{{ stats.stats_crlf }}</span></div></button>
         <button class="nav-btn" data-section="smuggling_sec"><div class="nav-icon">🔀</div><div class="nav-label">Smuggling <span class="count">{{ stats.stats_smuggling }}</span></div></button>
         <button class="nav-btn" data-section="deser_sec"><div class="nav-icon">🧬</div><div class="nav-label">Deserial. <span class="count">{{ stats.stats_deser }}</span></div></button>
+        <button class="nav-btn" data-section="oast_sec"><div class="nav-icon">🚨</div><div class="nav-label" style="color:#ff7b72">Blind Bugs <span class="count">{{ stats.stats_oast }}</span></div></button>
     </nav>
 
     <div class="content-wrapper">
@@ -308,6 +309,7 @@
                     <div class="burp-close" onclick="closeBurp()">×</div>
                 </div>
             </div>
+            <div id="burpInfo" style="display:none; padding:10px 15px; background:rgba(210,153,34,0.15); border-bottom:1px solid rgba(210,153,34,0.4); color:#d29922; font-size:13px; font-family:monospace; white-space:pre-wrap;"></div>
             <div class="burp-body">
                 <div class="burp-pane">
                     <div class="burp-pane-header">Request</div>
@@ -393,6 +395,16 @@
             const data = BURP_DATA[id];
             if (!data) return;
             document.getElementById('burpUrl').innerText = data.url;
+            
+            const infoEl = document.getElementById('burpInfo');
+            if (data.info) {
+                infoEl.innerText = data.info;
+                infoEl.style.display = 'block';
+            } else {
+                infoEl.style.display = 'none';
+                infoEl.innerText = '';
+            }
+            
             document.getElementById('burpRequest').innerHTML = highlightHttp(atob(data.req));
             document.getElementById('burpResponse').innerHTML = highlightHttp(atob(data.res));
             document.getElementById('burpModal').style.display = 'flex';
@@ -461,6 +473,61 @@
             if (!tableData) return;
             const totalPages = Math.ceil(tableData.data.length / tableData.pageSize) || 1;
             if (newPage >= 1 && newPage <= totalPages) { tableData.page = newPage; renderPaginatedTable(tableId); }
+        }
+        function goToSubdomain(host) {
+            host = host.trim();
+            // Switch to subdomains section
+            document.querySelectorAll('.nav-btn').forEach(b => {
+                if(b.dataset.section === 'subdomains') b.click();
+            });
+            
+            // Wait for section to load (it might be lazy-loaded)
+            let attempts = 0;
+            const checkAndSearch = setInterval(() => {
+                const searchInput = document.getElementById('subdomainSearch');
+                if(searchInput) {
+                    clearInterval(checkAndSearch);
+                    searchInput.value = host;
+                    filterSubdomains(host);
+                    
+                    // Wait for pagination to render
+                    setTimeout(() => {
+                        const cards = document.querySelectorAll('.card');
+                        for(let card of cards) {
+                            const titleEl = card.querySelector('.card-title');
+                            if(titleEl && titleEl.innerText.trim() === host) {
+                                card.classList.add('open');
+                                card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                card.style.border = '2px solid var(--accent-blue)';
+                                setTimeout(() => card.style.border = '', 3000);
+                                break;
+                            }
+                        }
+                    }, 500);
+                }
+                if(++attempts > 10) clearInterval(checkAndSearch);
+            }, 200);
+        }
+
+        function filterSubdomains(query) {
+            query = query.toLowerCase().trim();
+            const containerId = "subdomains_container";
+            const tableData = window.PAGINATION_DATA[containerId];
+            if (!tableData) return;
+            
+            if (!tableData.originalData) tableData.originalData = [...tableData.data];
+            
+            if (!query) {
+                tableData.data = [...tableData.originalData];
+            } else {
+                tableData.data = tableData.originalData.filter(html => {
+                    const temp = document.createElement('div');
+                    temp.innerHTML = html;
+                    return temp.textContent.toLowerCase().includes(query);
+                });
+            }
+            tableData.page = 1;
+            renderPaginatedTable(containerId);
         }
     </script>
 </body>

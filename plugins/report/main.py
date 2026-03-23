@@ -3072,9 +3072,15 @@ def build_admin_content(target: str) -> str:
             req_b64 = panel.get("raw_request", "")
             res_b64 = panel.get("raw_response", "")
             row_id = f"admin_{uuid.uuid4().hex[:8]}"
-            burp_script = f'<script>BURP_DATA["{row_id}"] = {{ "url": "{html.escape(url)}", "req": "{req_b64}", "res": "{res_b64}" }};</script>'
+            
+            bypass_methods = panel.get("bypass_methods", [])
+            info_text = "Métodos de Bypass Encontrados:\\n" + "\\n".join(f"- {m}" for m in bypass_methods) if bypass_methods else ""
+            import json
+            info_json = json.dumps(info_text) if info_text else '""'
+            
+            burp_script = f'<script>BURP_DATA["{row_id}"] = {{ "url": "{html.escape(url)}", "req": "{req_b64}", "res": "{res_b64}", "info": {info_json} }};</script>'
             burp_html = f'''
-            <div style="margin-top:5px;">
+            <div style="margin-top:5px; display:inline-flex; align-items:center;">
                 <button class="burp-btn" onclick="openBurp('{row_id}')">View HTTP Bypass</button>
                 {burp_script}
             </div>

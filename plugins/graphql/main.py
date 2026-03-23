@@ -6,6 +6,7 @@ Usa httpx + captura raw request/response
 import json
 from pathlib import Path
 from urllib.parse import urlparse
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from menu import C
 from ..output import info, success, warn, error
@@ -207,19 +208,34 @@ def run(context: dict):
                 test_urls.append(line.strip())
     
     test_urls = list(set(test_urls))
-    info(f"   📊 Testando {len(test_urls)} endpoints GraphQL potenciais")
+    total_urls = len(test_urls)
+    info(f"   📊 Testando {total_urls} endpoints GraphQL potenciais")
     
     all_findings = []
     
+    limits = httpx.Limits(max_keepalive_connections=50, max_connections=100)
+    with httpx.Client(verify=False, follow_redirects=True, timeout=15, limits=limits) as client:
+        with ThreadPoolExecutor(max_workers=35) as executor:
+            futures = {executor.submit(test_endpoint, client, url): url for url in test_urls}
+            
+            done_count = 0
+            for future in as_completed(futures):
+                done_count += 1
+                if done_count % 20 == 0 or done_count == total_urls:
+                    pct = int((done_count / total_urls) * 100) if total_urls > 0 else 100
+                    print(f"   [Total: {total_urls} | Atual: {done_count}] {pct}% completo... ({len(all_findings)} encontrados)", end="\r")
 
+                try:
+                    findings = future.result()
+                    if findings:
+                        all_findings.extend(findings)
+                        print(" " * 80, end="\r")
+                        for f in findings:
+                            info(f"   🚨 {C.RED}{f['type']}: {futures[future]}{C.END}")
+                except Exception:
+                    pass
     
-    with httpx.Client(verify=False, follow_redirects=True, timeout=15) as client:
-        for url in test_urls:
-            findings = test_endpoint(client, url)
-            if findings:
-                all_findings.extend(findings)
-                for f in findings:
-                    info(f"   🚨 {C.RED}{f['type']}: {url}{C.END}")
+    print("")  # Quebra de linha apos o progresso
     
     results_file.write_text(json.dumps(all_findings, indent=2, ensure_ascii=False))
     
