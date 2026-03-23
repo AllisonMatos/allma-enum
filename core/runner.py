@@ -5,6 +5,7 @@ from pathlib import Path
 from datetime import datetime
 from importlib import import_module
 from core.output import info, error, success, warn
+from menu import C
 
 
 # --------- CARREGAMENTO DINÂMICO ---------
@@ -59,7 +60,9 @@ def execute_chain(target: str, chain: list, params: dict):
         "21": "jwt_analyzer",
         "22": "crlf_injection",
         "23": "insecure_deserialization",
-        "24": "all",
+        "23": "insecure_deserialization",
+        "24": "api_fuzzer",
+        "25": "cloud",
         "99": "intelligence",
     }
 
@@ -91,6 +94,46 @@ def execute_chain(target: str, chain: list, params: dict):
                 info("🔄 Recomeçando do zero...")
             else:
                 info(f"⏩ Resumindo — pulando {len(completed_steps)} módulos já completos\n")
+
+    # ==========================================
+    #  OAST: Start Interactsh-Client
+    # ==========================================
+    import subprocess, re
+    import shutil
+    
+    interactsh_proc = None
+    interactsh_out = Path("output") / target / "interactsh.json"
+    oast_payload_file = Path("output") / target / "oast_payload.txt"
+    oast_url = None
+    
+    interactsh_bin = shutil.which("interactsh-client")
+    if interactsh_bin:
+        info(f"\n{C.BOLD}{C.PURPLE}[i] Iniciando Interactsh-client (OAST) em background...{C.END}")
+        
+        # Limpar saida antiga
+        if interactsh_out.exists():
+            interactsh_out.unlink()
+            
+        interactsh_proc = subprocess.Popen(
+            [interactsh_bin, "-json", "-o", str(interactsh_out), "-ps", "-psf", str(oast_payload_file)],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            text=True
+        )
+        
+        # Read the payload from the file when it is written (usually takes 1-3 seconds)
+        start_wait = time.time()
+        while time.time() - start_wait < 15:
+            if oast_payload_file.exists():
+                content = oast_payload_file.read_text().strip()
+                if content:
+                    oast_url = content
+                    info(f"   [+] Payload OAST Ativo: {C.YELLOW}{oast_url}{C.END}")
+                    break
+            time.sleep(1)
+        
+        if not oast_url:
+            warn("   ⚠️ Não foi possível obter a URL do interactsh a tempo.")
 
     # ==========================================
     #  TIMING: Inicialização
@@ -205,6 +248,28 @@ def execute_chain(target: str, chain: list, params: dict):
     else:
         error("Plugin 'report' não encontrado — pulando report.")
         plugin_timings.append(("report", 0.0, "NOT_FOUND"))
+
+    # ==========================================
+    #  OAST: Stop Interactsh-Client
+    # ==========================================
+    if interactsh_proc:
+        info(f"\n{C.BOLD}{C.PURPLE}[i] Encerrando sessão OAST (Interactsh) e coletando pings tardios...{C.END}")
+        # Wait a bit just in case some last minute pings arrived
+        time.sleep(3) 
+        interactsh_proc.terminate()
+        try:
+            interactsh_proc.wait(timeout=5)
+        except:
+            interactsh_proc.kill()
+            
+        if interactsh_out.exists():
+            lines = [l for l in interactsh_out.read_text(errors="ignore").splitlines() if l.strip()]
+            if lines:
+                success(f"🚨 ALERTA CRÍTICO: {len(lines)} interações OAST (Blind Bugs) detectadas!")
+                for line in lines[:3]: # print amostra
+                    info(f"   {line[:150]}...")
+            else:
+                info("   Nenhuma interação OAST detectada.")
 
     # ==========================================
     #  TIMING: Finalização e geração do arquivo

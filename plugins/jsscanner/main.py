@@ -85,6 +85,39 @@ async def analyze_js_file_async(client, url, semaphore):
         except Exception:
             return None
 
+def run_trufflehog(js_dir: Path) -> list:
+    """Roda TruffleHog v3 num diretório e retorna lista de secrets"""
+    th = shutil.which("trufflehog")
+    if not th:
+        warn("⚠️ TruffleHog não encontrado no PATH. Usando apenas Regex para segredos.")
+        return []
+    
+    cmd = [th, "filesystem", str(js_dir), "--json", "--no-update"]
+    res = subprocess.run(cmd, capture_output=True, text=True)
+    
+    secrets = []
+    import json
+    for line in res.stdout.splitlines():
+        if not line.strip(): continue
+        try:
+            data = json.loads(line)
+            # Extract from TruffleHog v3 JSON structure
+            if "SourceMetadata" in data:
+                file_path = data.get("SourceMetadata", {}).get("Data", {}).get("Filesystem", {}).get("file", "")
+                secret = data.get("Raw", "")
+                secret_type = data.get("DetectorName", "")
+                verified = data.get("Verified", False)
+                if secret:
+                    secrets.append({
+                        "file": str(Path(file_path).name) if file_path else "unknown",
+                        "secret": secret,
+                        "type": secret_type,
+                        "verified": verified
+                    })
+        except:
+            pass
+    return secrets
+
 # ============================================================
 # SYNC HELPERS (Legacy/Utils)
 # ============================================================
@@ -192,6 +225,32 @@ async def run_async_scan(target, outdir, report_file, raw_file):
                 
     print("") # Newline after progress
     
+    # 3.5 [BUG BOUNTY] - Executar TruffleHog nos arquivos baixados
+    raw_js_dir = outdir / "raw_js"
+    raw_js_dir.mkdir(parents=True, exist_ok=True)
+    
+    for i, item in enumerate(results_data):
+        safe_name = f"jsfile_{i}.js"
+        item['safe_name'] = safe_name
+        (raw_js_dir / safe_name).write_text(item['text'], errors="ignore")
+        
+    info(f"{C.BOLD}{C.BLUE}🐷 Executando TruffleHog para detecção de segredos por Entropia...{C.END}")
+    th_secrets = run_trufflehog(raw_js_dir)
+    
+    if th_secrets:
+        success(f"   + {len(th_secrets)} potenciais segredos extraídos pelo TruffleHog!")
+        for th_s in th_secrets:
+            for item in results_data:
+                if item.get('safe_name') == th_s['file']:
+                    label = "[✅ VERIFIED]" if th_s['verified'] else "[UNVERIFIED]"
+                    # Convert to string format compatible with current JSON
+                    item['keys'].append(f"{label} {th_s['type']}: {th_s['secret']}")
+                    break
+    
+    # Limpa arquivos temporários do Trufflehog
+    if raw_js_dir.exists():
+        shutil.rmtree(raw_js_dir)
+
     # 4. Save Results
     info("💾 Salvando relatório...")
     

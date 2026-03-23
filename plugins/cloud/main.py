@@ -8,8 +8,10 @@ import requests
 import concurrent.futures
 from pathlib import Path
 
+import subprocess
 from menu import C
 from ..output import info, success, warn, error
+from ..http_utils import check_tool_installed
 from .utils import ensure_outdir
 
 # ============================================================
@@ -145,8 +147,38 @@ def run(context: dict):
             # Por enquanto, apenas o nome do bucket se estiver na URL, 
             # ou podemos ler o conteúdo dos arquivos baixados se o jsscanner os salvou.
             # Como o cloud roda depois, vamos assumir que podemos tentar ler se houver cache.
+            # Como o cloud roda depois, vamos assumir que podemos tentar ler se houver cache.
             pass 
         except: pass
+
+    # ===============================
+    # 🌩️ Executar Cloud_enum (se disponível)
+    # ===============================
+    if check_tool_installed("cloud_enum"):
+        info(f"\n{C.BLUE}🌩️ Executando cloud_enum... aguarde, isso pode demorar alguns minutos.{C.END}")
+        base_keyword = target.split(".")[0]
+        ce_out = outdir / "cloud_enum_results.json"
+        
+        cmd = [
+             "cloud_enum", "-k", base_keyword,
+             "-j", str(ce_out)
+        ]
+        try:
+             subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=300)
+             info(f"   [+] cloud_enum finalizado.")
+        except subprocess.TimeoutExpired:
+             warn(f"   [!] Timeout ao executar cloud_enum.")
+        except Exception as e:
+             warn(f"   [!] Erro com cloud_enum: {e}")
+             
+        # Tentar fazer parse do JSON do cloud_enum caso tenha salvo algo util
+        # Formato cloud_enum.json costuma ter chaves por provedor
+        # Vamos apenas informar que o log bruto foi salvo.
+        if ce_out.exists():
+             info(f"   [✔] Resultados adicionais do cloud_enum salvos em: {ce_out}")
+             
+    else:
+        warn("Ferramenta 'cloud_enum' não encontrada. Usando apenas scanner interno rápido.")
 
     info(f"{C.BLUE}🧩 Gerados {len(bucket_names)} nomes potenciais de buckets.{C.END}")
     

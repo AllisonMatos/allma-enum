@@ -67,3 +67,9 @@ def format_raw_response(status_code: int, headers: dict, body: str = "") -> str:
             content += "\n... [Truncated]"
         result += f"\n\n{content}"
     return result
+
+
+def check_tool_installed(name: str) -> bool:
+    """Verifica se uma ferramenta (binário) está instalada no sistema."""
+    import shutil
+    return shutil.which(name) is not None

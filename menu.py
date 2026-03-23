@@ -50,7 +50,9 @@ MODULES = {
     "21": "jwt_analyzer",
     "22": "crlf_injection",
     "23": "insecure_deserialization",
-    "24": "all",
+    "24": "api_fuzzer",
+    "25": "cloud",
+    "26": "all",
 }
 
 # --------- DEPENDÊNCIAS ---------
@@ -79,7 +81,9 @@ DEPENDENCIES = {
     "21": ["1", "2", "21"],
     "22": ["1", "2", "22"],
     "23": ["1", "2", "23"],
-    "24": [str(x) for x in range(1, 24)],
+    "24": ["1", "2", "7", "24"],
+    "25": ["1", "25"],
+    "26": [str(x) for x in range(1, 26)],
 }
 
 
@@ -131,7 +135,9 @@ def print_menu():
         "21": ("jwt_analyzer", "Análise de JWT Tokens", "🔑"),
         "22": ("crlf_injection", "CRLF Injection Scanner", "💉"),
         "23": ("insecure_deser", "Insecure Deserialization", "🧬"),
-        "24": ("all", "Execução completa", "🚀")
+        "24": ("api_fuzzer", "API Fuzzer (Kiterunner)", "🪁"),
+        "25": ("cloud", "Cloud Recon (S3/Azure/GCP)", "🌩️"),
+        "26": ("all", "Execução completa", "🚀")
     }
 
     for k, (name, desc, emoji) in modules.items():
@@ -251,9 +257,9 @@ def main():
         if not closed_scope_list:
             print(f"{C.RED}❌ Nenhum subdomínio fornecido. Usando descoberta padrão...{C.END}")
 
-    # chain — "10" é meta-módulo (all), não deve entrar na chain de execução
+    # chain — "26" é meta-módulo (all), não deve entrar na chain de execução
     chain = list(dict.fromkeys(DEPENDENCIES[choice] + [choice]))
-    chain = [c for c in chain if c != "10"]
+    chain = [c for c in chain if c != "26"]
 
     # parâmetros
     params = {name: {} for name in MODULES.values()}

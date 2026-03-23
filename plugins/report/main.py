@@ -1132,11 +1132,11 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 
                 <div style="display:grid; grid-template-columns: 1fr 1fr; gap:20px; margin-top:20px;">
                     <div>{hvt_dashboard}</div>
-                    <div class="card open">
+                    <div class="card open" style="border-left: 4px solid var(--accent-blue);">
                          <div class="card-header">
-                            <span class="card-title">💡 Dicas de Hacking (Recon Intelligence)</span>
+                            <span class="card-title">🧠 Dicas de Hacking (Recon Intelligence)</span>
                         </div>
-                        <div class="card-content">
+                        <div class="card-content" style="display:block;">
                             <p style="margin-bottom:15px; color:#888;">Dicas práticas baseadas nas tecnologias detectadas no alvo.</p>
                             {knowledge_tips}
                         </div>
@@ -1208,7 +1208,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             if (header) {{
                 header.parentElement.classList.toggle('open');
             }}
-        }});
+        }}, 0);
     </script>
     <!-- Burp Modal -->
     <div class="burp-modal-overlay" id="burpModal" onclick="if(event.target===this) closeBurp()">
@@ -1221,6 +1221,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                     <div class="burp-close" onclick="closeBurp()">×</div>
                 </div>
             </div>
+            <div id="burpInfo" style="display:none; padding:10px 15px; background:rgba(210,153,34,0.15); border-bottom:1px solid rgba(210,153,34,0.4); color:#d29922; font-size:13px; font-family:monospace; white-space:pre-wrap;"></div>
             <div class="burp-body">
                 <div class="burp-pane">
                     <div class="burp-pane-header">Request</div>
@@ -1244,6 +1245,16 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             if (!data) return;
             
             document.getElementById('burpUrl').innerText = data.url;
+            
+            const infoEl = document.getElementById('burpInfo');
+            if (data.info) {{
+                infoEl.innerText = data.info;
+                infoEl.style.display = 'block';
+            }} else {{
+                infoEl.style.display = 'none';
+                infoEl.innerText = '';
+            }}
+            
             document.getElementById('burpRequest').innerHTML = highlightHttp(atob(data.req));
             document.getElementById('burpResponse').innerHTML = highlightHttp(atob(data.res));
             document.getElementById('burpModal').style.display = 'flex';
@@ -1754,9 +1765,9 @@ def build_subdomains_content(subdomains: Dict, target: str) -> str:
     <div id="subdomains_container"></div>
     {ips_card}
     <script>
-        document.addEventListener("DOMContentLoaded", function() {{
+        setTimeout(function() {{
             initPaginatedTable("subdomains_container", {json_data}, [], function(row) {{ return row; }}, 100);
-        }});
+        }}, 0);
     </script>
     '''
 
@@ -1839,7 +1850,7 @@ def build_urls_content(subdomains: Dict, target: str) -> str:
         <div class="card-content" id="urls_container" style="display:block;"></div>
     </div>
     <script>
-        document.addEventListener("DOMContentLoaded", function() {{
+        setTimeout(function() {{
             initPaginatedTable(
                 "urls_container", 
                 {json_data}, 
@@ -1860,7 +1871,7 @@ def build_urls_content(subdomains: Dict, target: str) -> str:
                 }},
                 100 // 100 per page layout
             );
-        }});
+        }}, 0);
     </script>
     '''
 
@@ -2217,7 +2228,7 @@ def build_routes_content(target: str) -> str:
         <div class="card-content" id="routes_container" style="display:block;"></div>
     </div>
     <script>
-        document.addEventListener("DOMContentLoaded", function() {{
+        setTimeout(function() {{
             initPaginatedTable(
                 "routes_container", 
                 {json_data}, 
@@ -2233,7 +2244,7 @@ def build_routes_content(target: str) -> str:
                 }},
                 100
             );
-        }});
+        }}, 0);
     </script>
     ''')
     
@@ -2269,7 +2280,7 @@ def build_js_content(target: str) -> str:
         <div class="card-content" id="js_container" style="display:block;"></div>
     </div>
     <script>
-        document.addEventListener("DOMContentLoaded", function() {{
+        setTimeout(function() {{
             initPaginatedTable(
                 "js_container", 
                 {json_data_str}, 
@@ -2286,7 +2297,7 @@ def build_js_content(target: str) -> str:
                 }},
                 100
             );
-        }});
+        }}, 0);
     </script>
     ''')
 
@@ -2359,9 +2370,9 @@ def build_forms_content(target: str) -> str:
     return f'''
     <div id="forms_container"></div>
     <script>
-        document.addEventListener("DOMContentLoaded", function() {{
+        setTimeout(function() {{
             initPaginatedTable("forms_container", {json_data}, [], function(row) {{ return row; }}, 100);
-        }});
+        }}, 0);
     </script>
     '''
 
@@ -2440,7 +2451,7 @@ def build_params_content(target: str) -> str:
             </div>
         </div>
         <script>
-            document.addEventListener("DOMContentLoaded", function() {{
+            setTimeout(function() {{
                 initPaginatedTable("params_dang_container", {dang_json}, ["Parameter", "Found In"], function(row) {{
                     let url_list = row.urls.map(u => `<a href="${{escapeHtml(u)}}" target="_blank" style="color:var(--accent-blue);font-size:11px;">${{escapeHtml(u.substring(0,60))}}</a>`).join("<br>");
                     return `<tr>
@@ -2448,7 +2459,7 @@ def build_params_content(target: str) -> str:
                         <td style="font-size:12px;">${{url_list}}</td>
                     </tr>`;
                 }}, 50);
-            }});
+            }}, 0);
         </script>
         ''')
     
@@ -2463,7 +2474,7 @@ def build_params_content(target: str) -> str:
             <div class="card-content" id="params_norm_container" style="display:block;"></div>
         </div>
         <script>
-            document.addEventListener("DOMContentLoaded", function() {{
+            setTimeout(function() {{
                 initPaginatedTable("params_norm_container", {norm_json}, ["Parameter", "Found In"], function(row) {{
                     let first_url = row.urls.length > 0 ? row.urls[0] : "Unknown";
                     let extra = row.urls.length > 1 ? ` (+${{row.urls.length - 1}} more)` : "";
@@ -2472,7 +2483,7 @@ def build_params_content(target: str) -> str:
                         <td><a href="${{escapeHtml(first_url)}}" target="_blank" style="color:var(--accent-blue);font-size:11px;">${{escapeHtml(first_url.substring(0,50))}}</a>${{extra}}</td>
                     </tr>`;
                 }}, 100);
-            }});
+            }}, 0);
         </script>
         ''')
         
@@ -3776,72 +3787,6 @@ def build_attack_priority_content(target: str) -> str:
     '''
 
 
-def build_attack_graph_content(target: str) -> str:
-    """Build Attack Graph section with exploitation chains."""
-    path = Path("output") / target / "intelligence" / "attack_graph.json"
-    data = read_json_file(path)
-    if not data: return '<div class="empty-state"><p>No attack chains identified. Run Intelligence module first.</p></div>'
-    
-    chains_html = ""
-    for i, chain_data in enumerate(data[:20]):  # Top 20 chains
-        severity = chain_data.get("severity", "MEDIUM")
-        sev_class = "tag-high" if severity in ["HIGH", "CRITICAL"] else "tag-medium" if severity == "MEDIUM" else "tag-low"
-        chain_type = chain_data.get("type", "unknown").replace("_chain", "").upper()
-        
-        # Build tree visualization
-        steps = chain_data.get("chain", [])
-        tree_html = ""
-        for j, step in enumerate(steps):
-            indent = j * 28
-            arrow = "↓" if j < len(steps) - 1 else "★"
-            step_label = step.get("step", "")
-            step_value = html.escape(str(step.get("value", "")))
-            
-            is_last = j == len(steps) - 1
-            value_color = "var(--accent-red)" if is_last else "var(--accent-blue)" if j == 0 else "var(--text-primary)"
-            
-            tree_html += f'''
-            <div style="margin-left:{indent}px; margin-bottom:4px;">
-                <span style="color:var(--text-muted); font-size:11px; font-weight:600;">{html.escape(step_label)}</span><br>
-                <span style="color:{value_color}; font-size:13px; font-weight:{'700' if is_last else '500'};">{step_value}</span>
-                {'<div style="color:var(--text-muted); font-size:16px; margin:2px 0 2px 10px;">' + arrow + '</div>' if j < len(steps) - 1 else ''}
-            </div>
-            '''
-        
-        chains_html += f'''
-        <div class="card" style="border-left:3px solid {'var(--accent-red)' if severity in ['HIGH', 'CRITICAL'] else 'var(--accent-orange)'};">
-            <div class="card-header">
-                <span class="card-title" style="font-size:13px;">
-                    <span class="tag {sev_class}">{severity}</span>
-                    {html.escape(chain_data.get("possible_bug", "Unknown"))}
-                </span>
-                <span class="card-badge">{chain_type}</span>
-            </div>
-            <div class="card-content">
-                <div style="padding:8px; background:var(--bg-primary); border-radius:4px; border:1px solid var(--border-color);">
-                    {tree_html}
-                </div>
-            </div>
-        </div>
-        '''
-    
-    return f'''
-    <div class="card open" style="border-left: 4px solid var(--accent-purple);">
-        <div class="card-header">
-            <span class="card-title">⚔️ Attack Graph — Exploitation Chains</span>
-            <span class="card-badge">{len(data)} chains</span>
-        </div>
-        <div class="card-content">
-            <div style="margin-bottom:16px; padding:10px; background:var(--bg-tertiary); border-radius:6px; border:1px solid var(--border-color);">
-                <span style="font-weight:bold; color:var(--text-primary); font-size:13px;">🧠 O que é o Attack Graph?</span>
-                <p style="margin-top:4px; font-size:12px; color:var(--text-secondary);">Correlação automática de dados para mapear caminhos de exploração reais: <code>subdomain → JS → endpoint → parameter → possible bug</code>. Cada cadeia representa um possível vetor de ataque identificado automaticamente.</p>
-            </div>
-            {chains_html}
-        </div>
-    </div>
-    '''
-
-
 def build_quick_wins_content(target: str) -> str:
     """Build Quick Wins section with high-impact, low-effort findings."""
     path = Path("output") / target / "intelligence" / "quick_wins.json"
@@ -3887,40 +3832,6 @@ def build_quick_wins_content(target: str) -> str:
     </div>
     '''
 
-
-def build_hvt_content(target: str) -> str:
-    """Build HVT section — combines Attack Priority + Attack Graph + Quick Wins."""
-    priority = build_attack_priority_content(target)
-    graph = build_attack_graph_content(target)
-    quick_wins = build_quick_wins_content(target)
-    
-    return f"{quick_wins}\n{priority}\n{graph}"
-
-
-def build_quickwins_attack_combined_content(target: str) -> str:
-    """Build combined Quick Wins + Attack Graph dedicated section."""
-    quick_wins = build_quick_wins_content(target)
-    graph = build_attack_graph_content(target)
-    priority = build_attack_priority_content(target)
-    
-    parts = []
-    
-    # Quick Wins first (low effort, high impact)
-    if quick_wins and 'empty-state' not in quick_wins:
-        parts.append(quick_wins)
-    
-    # Attack Priority Engine
-    if priority:
-        parts.append(priority)
-    
-    # Attack Graph (exploitation chains)
-    if graph and 'empty-state' not in graph:
-        parts.append(graph)
-    
-    if not parts:
-        return '<div class="empty-state"><p>No quick wins or attack chains identified. Run Intelligence module first.</p></div>'
-    
-    return "\n".join(parts)
 
 def build_vuln_patterns_content(target: str) -> str:
     path = Path("output") / target / "intelligence" / "vuln_patterns.json"
@@ -4084,8 +3995,7 @@ def run(context: Dict[str, Any]) -> List[str]:
         "stats_waf": stats.get("waf_count", 0),
         "emails_content": build_emails_content(target),
         "stats_emails": stats.get("emails_count", 0),
-        "hvt_content": build_hvt_content(target),
-        "hvt_dashboard": build_hvt_content(target), # Can be same or subset
+        "hvt_dashboard": build_attack_priority_content(target),
         "vuln_patterns_content": build_vuln_patterns_content(target),
         "knowledge_tips": build_knowledge_tips_content(target),
         "surfacemap_content": build_surfacemap_content(subdomains),
@@ -4098,8 +4008,8 @@ def run(context: Dict[str, Any]) -> List[str]:
         "smuggling_content": build_smuggling_content(target),
         "stats_deser": len(read_json_file(Path("output") / target / "insecure_deserialization" / "deser_results.json") or []),
         "deser_content": build_deser_content(target),
-        "quickwins_attack_content": build_quickwins_attack_combined_content(target),
-        "stats_quickwins": len(read_json_file(Path("output") / target / "intelligence" / "quick_wins.json") or []) + len(read_json_file(Path("output") / target / "intelligence" / "attack_graph.json") or []),
+        "quickwins_attack_content": build_quick_wins_content(target),
+        "stats_quickwins": len(read_json_file(Path("output") / target / "intelligence" / "quick_wins.json") or []),
         "stats_oast": len(read_file_lines(Path("output") / target / "interactsh.json")),
         "oast_content": build_oast_content(target),
     }

@@ -396,18 +396,35 @@ def run(context: dict):
         client.headers.update({"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"})
         
         info("   🛡️  Obtendo Baseline (Catch-all check) para evitar falsos positivos...")
-        for base in list(extended_bases):
+        
+        def check_baseline(base_url):
             try:
+                import uuid
                 rand_path = f"/does_not_exist_{uuid.uuid4().hex[:8]}"
-                r = client.get(base.rstrip("/") + rand_path)
-                baselines[base] = {
-                    "status": r.status_code,
-                    "length": len(r.text) if r.text else 0
-                }
-                valid_bases.add(base)
+                r = client.get(base_url.rstrip("/") + rand_path)
+                return base_url, {"status": r.status_code, "length": len(r.text) if r.text else 0}
             except Exception:
-                # O timeout vai falhar bases/portas inacessíveis
-                pass
+                return base_url, None
+
+        total_bases = len(extended_bases)
+        done_bases = 0
+        with ThreadPoolExecutor(max_workers=35) as base_executor:
+            base_futures = [base_executor.submit(check_baseline, b) for b in extended_bases]
+            for fut in as_completed(base_futures):
+                done_bases += 1
+                if done_bases % 10 == 0 or done_bases == total_bases:
+                    pct = int((done_bases / total_bases) * 100)
+                    print(f"   [Baseline Total: {total_bases} | Atual: {done_bases}] {pct}% completo...", end="\r")
+                
+                try:
+                    b, res = fut.result()
+                    if res:
+                        baselines[b] = res
+                        valid_bases.add(b)
+                except Exception:
+                    pass
+        print("") # Quebra de linha apos o progresso
+        
 
         if not valid_bases:
             warn("   ⚠️ Nenhuma porta web de admin respondeu. (Todas instáveis/fechadas).")
@@ -432,8 +449,9 @@ def run(context: dict):
             done_count = 0
             for future in as_completed(futures):
                 done_count += 1
-                if done_count % 100 == 0 or done_count == total_tasks:
-                    print(f"   [{done_count}/{total_tasks}] Tested... ({len(found_panels)} found)", end="\r")
+                if done_count % 20 == 0 or done_count == total_tasks:
+                    pct = int((done_count / total_tasks) * 100)
+                    print(f"   [Total: {total_tasks} | Atual: {done_count}] {pct}% completo... ({len(found_panels)} encontrados)", end="\r")
 
                 try:
                     result = future.result()

@@ -63,11 +63,11 @@ def import_target(target: str):
         build_security_content, build_admin_content, build_depconfusion_content,
         build_graphql_content, build_api_security_content,
         build_takeover_content, build_waf_content, build_emails_content,
-        build_hvt_content, build_quickwins_attack_combined_content,
+        build_quick_wins_content,
         build_vuln_patterns_content, build_knowledge_tips_content,
         build_surfacemap_content, build_attack_priority_content,
         build_jwt_content, build_crlf_content, build_smuggling_content,
-        build_deser_content,
+        build_deser_content, build_oast_content
     )
 
     print(f"  [+] Importing: {target}")
@@ -161,7 +161,8 @@ def import_target(target: str):
         "stats_crlf": len(read_json_file(Path("output") / target / "crlf_injection" / "crlf_results.json") or []),
         "stats_smuggling": len(read_json_file(Path("output") / target / "http_smuggling" / "smuggling_results.json") or []),
         "stats_deser": len(read_json_file(Path("output") / target / "insecure_deserialization" / "deser_results.json") or []),
-        "stats_quickwins": len(read_json_file(Path("output") / target / "intelligence" / "quick_wins.json") or []) + len(read_json_file(Path("output") / target / "intelligence" / "attack_graph.json") or []),
+        "stats_quickwins": len(read_json_file(Path("output") / target / "intelligence" / "quick_wins.json") or []),
+        "stats_oast": len(read_file_lines(Path("output") / target / "interactsh.json")),
     }
 
     # Build all section content
@@ -194,9 +195,9 @@ def import_target(target: str):
         "crlf_sec": build_crlf_content(target),
         "smuggling_sec": build_smuggling_content(target),
         "deser_sec": build_deser_content(target),
-        "quickwins_attack": build_quickwins_attack_combined_content(target),
-        "hvt": build_hvt_content(target),
-        "knowledge_tips": build_knowledge_tips_content(target),
+        "quickwins_attack": build_quick_wins_content(target),
+                "knowledge_tips": build_knowledge_tips_content(target),
+        "oast_sec": build_oast_content(target),
     }
 
     # Save to in-memory DB

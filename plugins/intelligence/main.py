@@ -158,34 +158,6 @@ KnowledgeBase = {
     ],
 }
 
-# Bug mapping for Attack Graph
-BUG_PATTERNS = {
-    "idor_privesc": {
-        "param_match": ["role", "admin", "user_id", "uid", "account_id", "is_admin", "privilege", "permission", "group", "level", "access", "user_type"],
-        "name": "IDOR / Privilege Escalation",
-        "severity": "HIGH"
-    },
-    "sqli": {
-        "param_match": ["id", "user", "account", "order", "query", "search", "item", "category", "pid", "no"],
-        "name": "SQL Injection",
-        "severity": "HIGH"
-    },
-    "ssrf": {
-        "param_match": ["url", "uri", "src", "dest", "redirect", "next", "callback", "webhook", "proxy", "fetch", "target"],
-        "name": "SSRF / Open Redirect",
-        "severity": "HIGH"
-    },
-    "lfi": {
-        "param_match": ["file", "path", "dir", "document", "template", "include", "page", "read", "filename", "download"],
-        "name": "Local File Inclusion",
-        "severity": "HIGH"
-    },
-    "xss": {
-        "param_match": ["q", "search", "keyword", "name", "title", "content", "body", "message", "comment", "text", "input", "value"],
-        "name": "Cross-Site Scripting (XSS)",
-        "severity": "MEDIUM"
-    }
-}
 
 
 # ====================================================================
@@ -381,183 +353,6 @@ class IntelligenceEngine:
             json.dump(result, f, indent=2)
         
         return result
-
-    # ================================================================
-    # FEATURE 2: Attack Graph
-    # ================================================================
-    def build_attack_graph(self):
-        """Build attack chains: subdomain → JS → endpoint → param → possible bug."""
-        attack_paths = []
-        
-        # Build JS-to-subdomain mapping
-        js_map = defaultdict(list)  # subdomain -> [{source, routes, params}]
-        for js_data in (self.js_routes or []):
-            src = js_data.get("source", "")
-            host = urlparse(src).netloc
-            if host:
-                js_map[host].append(js_data)
-        
-        # Build params mapping per URL path
-        url_params = defaultdict(set)
-        for url in self.urls:
-            parsed = urlparse(url)
-            params = parse_qs(parsed.query).keys()
-            for p in params:
-                url_params[parsed.path].add(p)
-        
-        # Also from katana params
-        if isinstance(self.params_data, dict):
-            for url, params_list in self.params_data.items():
-                parsed = urlparse(url)
-                if isinstance(params_list, list):
-                    for p in params_list:
-                        if isinstance(p, str):
-                            url_params[parsed.path].add(p)
-                        elif isinstance(p, dict):
-                            url_params[parsed.path].add(p.get("name", ""))
-        elif isinstance(self.params_data, list):
-            for item in self.params_data:
-                if isinstance(item, dict):
-                    url = item.get("url", "")
-                    parsed = urlparse(url)
-                    param_name = item.get("name", "") or item.get("parameter", "")
-                    if param_name:
-                        url_params[parsed.path].add(param_name)
-        
-        # === Chain 1: Subdomain → JS → Endpoint → Param → Bug ===
-        for subdomain in self.subdomains:
-            js_entries = js_map.get(subdomain, [])
-            for js_entry in js_entries:
-                js_source = js_entry.get("source", "")
-                routes = js_entry.get("routes", [])
-                
-                for route in routes:
-                    route_path = route if isinstance(route, str) else route.get("path", "")
-                    if not route_path:
-                        continue
-                    
-                    # Find params related to this route
-                    route_params = url_params.get(route_path, set())
-                    
-                    # Also check extracted params from JS
-                    js_params = js_entry.get("parameters", [])
-                    if js_params:
-                        route_params.update(js_params if isinstance(js_params, list) else [])
-                    
-                    # Match params to bug patterns
-                    for bug_key, bug_info in BUG_PATTERNS.items():
-                        matched = [p for p in route_params if p.lower() in bug_info["param_match"]]
-                        if matched:
-                            attack_paths.append({
-                                "type": "js_chain",
-                                "subdomain": subdomain,
-                                "js_file": js_source,
-                                "endpoint": route_path,
-                                "parameters": matched,
-                                "possible_bug": bug_info["name"],
-                                "severity": bug_info["severity"],
-                                "chain": [
-                                    {"step": "Subdomain", "value": subdomain},
-                                    {"step": "JS File", "value": js_source.split("/")[-1] if "/" in js_source else js_source},
-                                    {"step": "Endpoint", "value": route_path},
-                                    {"step": "Parameter", "value": ", ".join(matched)},
-                                    {"step": "Possible Bug", "value": bug_info["name"]},
-                                ]
-                            })
-        
-        # === Chain 2: Subdomain → Swagger → Endpoints → Broken Access Control ===
-        swagger_hosts = set()
-        for swagger in self.swagger_docs:
-            url = swagger if isinstance(swagger, str) else swagger.get("url", "")
-            host = urlparse(url).netloc
-            if host:
-                swagger_hosts.add(host)
-                # Find admin-like endpoints from this host's URLs
-                admin_endpoints = []
-                for u in self.urls:
-                    if urlparse(u).netloc == host:
-                        path = urlparse(u).path.lower()
-                        if any(kw in path for kw in ["/admin", "/users", "/delete", "/create", "/update", "/manage"]):
-                            admin_endpoints.append(urlparse(u).path)
-                
-                if admin_endpoints:
-                    attack_paths.append({
-                        "type": "swagger_chain",
-                        "subdomain": host,
-                        "swagger_url": url,
-                        "endpoints": admin_endpoints[:5],
-                        "possible_bug": "Broken Access Control",
-                        "severity": "HIGH",
-                        "chain": [
-                            {"step": "Subdomain", "value": host},
-                            {"step": "Swagger exposed", "value": urlparse(url).path},
-                            {"step": "Sensitive Endpoints", "value": "\n".join(admin_endpoints[:5])},
-                            {"step": "Possible Bug", "value": "Broken Access Control"},
-                        ]
-                    })
-
-        # === Chain 3: Subdomain → Upload → Extension → XSS/RCE ===
-        for url in self.urls:
-            if UPLOAD_PATTERNS.search(url):
-                host = urlparse(url).netloc
-                attack_paths.append({
-                    "type": "upload_chain",
-                    "subdomain": host,
-                    "upload_url": url,
-                    "possible_bug": "File Upload → RCE / Stored XSS",
-                    "severity": "HIGH",
-                    "chain": [
-                        {"step": "Subdomain", "value": host},
-                        {"step": "Upload Endpoint", "value": urlparse(url).path},
-                        {"step": "Test Extensions", "value": ".php, .svg, .html, .jsp"},
-                        {"step": "Possible Bug", "value": "RCE / Stored XSS (SVG)"},
-                    ]
-                })
-        
-        # === Chain 4: Subdomain → JWT → Algorithm → Auth Bypass ===
-        for jwt in self.jwt_data:
-            host = urlparse(jwt.get("url", "")).netloc
-            alg = jwt.get("algorithm", "unknown")
-            attack_paths.append({
-                "type": "jwt_chain",
-                "subdomain": host,
-                "jwt_url": jwt.get("url", ""),
-                "algorithm": alg,
-                "possible_bug": "JWT Authentication Bypass",
-                "severity": "HIGH",
-                "chain": [
-                    {"step": "Subdomain", "value": host},
-                    {"step": "JWT Detected", "value": f"Authorization: Bearer"},
-                    {"step": "Algorithm", "value": alg},
-                    {"step": "Possible Bug", "value": "JWT Confusion / alg:none / kid injection"},
-                ]
-            })
-
-        # === Chain 5: Subdomain → GraphQL → Introspection → Data Exfiltration ===
-        for gql in self.graphql_data:
-            host = urlparse(gql.get("url", "")).netloc
-            attack_paths.append({
-                "type": "graphql_chain",
-                "subdomain": host,
-                "graphql_url": gql.get("url", ""),
-                "possible_bug": "GraphQL Introspection / Batch Query Abuse",
-                "severity": "HIGH",
-                "chain": [
-                    {"step": "Subdomain", "value": host},
-                    {"step": "GraphQL Endpoint", "value": urlparse(gql.get('url', '')).path},
-                    {"step": "Introspection", "value": "Enabled" if gql.get("introspection") else "Test Required"},
-                    {"step": "Possible Bug", "value": "Data Exfiltration / IDOR via Queries"},
-                ]
-            })
-        
-        # Sort by severity
-        severity_order = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3}
-        attack_paths.sort(key=lambda x: severity_order.get(x.get("severity", "LOW"), 3))
-        
-        with open(self.outdir / "attack_graph.json", "w") as f:
-            json.dump(attack_paths, f, indent=2)
-        
-        return attack_paths
 
     # ================================================================
     # FEATURE 5: Quick Wins
@@ -794,11 +589,7 @@ class IntelligenceEngine:
         self.generate_knowledge()
         
         info("   - Calculating Attack Priority Scores...")
-        priority = self.calculate_attack_priority()
-        
-        info("   - Building Attack Graph (exploitation chains)...")
-        attack_graph = self.build_attack_graph()
-        
+        priority = self.calculate_attack_priority()        
         info("   - Detecting Quick Wins...")
         quick_wins = self.detect_quick_wins()
         
@@ -831,7 +622,6 @@ class IntelligenceEngine:
             json.dump(self.knowledge_tips, f, indent=2)
             
         success(f"   + Top Target: {priority[0]['subdomain']} (Score: {priority[0]['score']})" if priority else "   + No high value targets generated.")
-        success(f"   + {len(attack_graph)} attack chains mapped.")
         success(f"   + {len(quick_wins)} quick wins identified.")
         success(f"   + {len(self.vuln_patterns)} suspicious vulnerability patterns detected.")
         success(f"   + {len(self.classified_urls)} URLs automatically classified.")
@@ -842,7 +632,6 @@ class IntelligenceEngine:
             "vuln_patterns": self.vuln_patterns,
             "knowledge_tips": self.knowledge_tips,
             "attack_priority": priority,
-            "attack_graph": attack_graph,
             "quick_wins": quick_wins,
         }
 
