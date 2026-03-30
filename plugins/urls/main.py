@@ -114,13 +114,16 @@ def run_historical_discovery(target: str, out_file: Path):
         tool_name = Path(tool).name
         info(f"   🛠️ Usando ferramenta: {C.YELLOW}{tool_name}{C.END}")
         
-        cmd = [tool, target]
+        cmd = [tool]
         if "gau" in tool_name:
-            cmd.extend(["--threads", "10"])
+            cmd.extend([target, "--threads", "10"])
             
         try:
             with out_file.open("w", encoding="utf-8", errors="ignore") as fout:
-                subprocess.run(cmd, stdout=fout, stderr=subprocess.DEVNULL, timeout=300)
+                if "waybackurls" in tool_name:
+                    subprocess.run(cmd, input=target.encode(), stdout=fout, stderr=subprocess.DEVNULL, timeout=300)
+                else:
+                    subprocess.run(cmd, stdout=fout, stderr=subprocess.DEVNULL, timeout=300)
         except Exception as e:
             error(f"Erro na coleta histórica ({tool_name}): {e}")
 

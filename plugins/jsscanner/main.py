@@ -22,8 +22,7 @@ from plugins.extractors.js_analyzer import extract_js_logic
 # REGEX CONFIG
 # ============================================================
 SCRIPT_SRC_RE = re.compile(r'<script[^>]+src=["\']([^"\']+)["\']', re.I)
-RE_URL = re.compile(r"https?://[^\s'\"<>]+")
-RE_KEY  = re.compile(r"(?i)(apikey|token|secret|bearer)[\s'\":=]{1,8}([A-Za-z0-9\-_]{8,128})")
+RE_URL = re.compile(r"https?://[^\s'\"<>\)]+")
 
 CONCURRENCY_LIMIT = 10
 DELAY = 0.5
@@ -69,7 +68,14 @@ async def analyze_js_file_async(client, url, semaphore):
             text = r.text
             # Basic analysis
             found_urls = RE_URL.findall(text)
-            found_keys = [m[1] for m in RE_KEY.findall(text)]
+            
+            from plugins.extractors.keys import extract_keys
+            try:
+                extracted = extract_keys(text, source_url=url)
+                # Formatar para compatibilidade com o JSScanner (apenas as top-tier)
+                found_keys = [f"{k['type']}: {k['match']}" for k in extracted if k["confidence"]["total_score"] >= 30]
+            except Exception:
+                found_keys = []
             
             # Bug Bounty 2026: Deep JS Analysis (Routes & Parameters)
             logic_data = extract_js_logic(text, url)

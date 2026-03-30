@@ -431,10 +431,19 @@ class IntelligenceEngine:
         for subdomain, data in priority_data.items():
             if not subdomain:
                 continue
-            final_score = min(data["score"], 10)
+                
+            # SINCRONIZAÇÃO: Mesclar Priority Metrics com Risk Ranking
+            # Isso impede que os pontuações divirgam no Painel de Admin
+            self.risk_ranking[subdomain]["score"] += data["score"]
+            self.risk_ranking[subdomain]["reasons"].extend(data["factors"])
+            for t in data["tags"]: self.risk_ranking[subdomain]["tags"].add(t)
+            
+            # Rebalancear Priority para que reflita o Risk Ranking unificado
+            unified_score = min(self.risk_ranking[subdomain]["score"], 10.0)
+            
             result.append({
                 "subdomain": subdomain,
-                "score": final_score,
+                "score": round(unified_score, 1),
                 "factors": list(set(data["factors"])),
                 "tags": list(set(data["tags"]))
             })
@@ -492,14 +501,29 @@ class IntelligenceEngine:
         
         # Git exposed
         for panel in self.admin_panels:
-            if "/.git/" in panel.get("path", "") and panel.get("status") == 200:
+            url_str = panel.get("url", "")
+            status = panel.get("status")
+            
+            # Repositório Base Exposto
+            if "/.git/" in url_str and status == 200:
                 quick_wins.append({
                     "type": "Git Repository Exposto",
                     "severity": "CRITICAL",
-                    "url": panel.get("url", ""),
+                    "url": url_str,
                     "detail": "Repositório Git acessível (200 OK)",
-                    "action": "Use git-dumper para extrair código-fonte completo",
+                    "action": "Use git-dumper para extrair código-fonte completo (já deve ter sido disparado no módulo Enum-Admin)",
                     "icon": "🕰️"
+                })
+                
+            # Extração Ativa do GitLeaks
+            if panel.get("cms") == "GitLeaks Exfiltration":
+                quick_wins.append({
+                    "type": "GitLeaks: Secret Hackeada",
+                    "severity": "CRITICAL",
+                    "url": url_str,
+                    "detail": panel.get("title", "Key"),
+                    "action": f"Secret/Chave Vazada Diretamente no Commit! Valor/Hash: {panel.get('content_hash', '')[:20]}...",
+                    "icon": "🩸"
                 })
         
         # Secrets in JS

@@ -1,5 +1,11 @@
-
 import httpx
+import time
+from core.config import REQUEST_DELAY
+
+def throttle():
+    """Aplica delay configurado globalmente para prevenir bans ou sobrecarga rate limit em paralelismo."""
+    if REQUEST_DELAY > 0:
+        time.sleep(REQUEST_DELAY)
 
 def format_http_request(request: httpx.Request) -> str:
     """Formats an httpx.Request into a raw HTTP string."""

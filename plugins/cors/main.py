@@ -2,6 +2,7 @@
 CORS Misconfiguration Scanner — Detecta configurações CORS inseguras.
 Testa reflexão de Origin, wildcard, null origin em URLs válidas.
 """
+from core.config import DEFAULT_USER_AGENT, REQUEST_DELAY
 import json
 import re
 from pathlib import Path
@@ -34,7 +35,7 @@ def check_cors(url: str, target: str) -> dict | None:
                 try:
                     resp = client.get(url, headers={
                         "Origin": origin,
-                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+                        "User-Agent": DEFAULT_USER_AGENT
                     })
 
                     acao = resp.headers.get("access-control-allow-origin", "")
@@ -76,7 +77,7 @@ def check_cors(url: str, target: str) -> dict | None:
             try:
                 resp = client.get(url, headers={
                     "Origin": subdomain_origin,
-                    "User-Agent": "Mozilla/5.0"
+                    "User-Agent": DEFAULT_USER_AGENT
                 })
                 acao = resp.headers.get("access-control-allow-origin", "")
                 acac = resp.headers.get("access-control-allow-credentials", "")
@@ -105,7 +106,7 @@ def check_cors(url: str, target: str) -> dict | None:
                 try:
                     resp = client.get(url, headers={
                         "Origin": so,
-                        "User-Agent": "Mozilla/5.0"
+                        "User-Agent": DEFAULT_USER_AGENT
                     })
                     acao = resp.headers.get("access-control-allow-origin", "")
                     acac = resp.headers.get("access-control-allow-credentials", "")
@@ -130,7 +131,7 @@ def check_cors(url: str, target: str) -> dict | None:
                         "Origin": origin,
                         "Access-Control-Request-Method": "PUT",
                         "Access-Control-Request-Headers": "X-Custom-Header",
-                        "User-Agent": "Mozilla/5.0"
+                        "User-Agent": DEFAULT_USER_AGENT
                     })
                     acam = resp.headers.get("access-control-allow-methods", "")
                     acao = resp.headers.get("access-control-allow-origin", "")

@@ -9,12 +9,16 @@ DEFAULT_TIMEOUT = 10
 # Máximo de workers para ThreadPoolExecutor
 DEFAULT_MAX_WORKERS = 15
 
-# User-Agent padrão
+# User-Agent padrão (Permite burlar bloqueios baseados em signatures repetitivas)
 DEFAULT_USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
     "AppleWebKit/537.36 (KHTML, like Gecko) "
     "Chrome/120.0.0.0 Safari/537.36"
 )
+
+# Atraso (Delay) em segundos entre as requisições paralelas nos plugins. 
+# Mude para 0.1, 0.5 ou 1.0 se o WAF estiver te banindo.
+REQUEST_DELAY = 0.0
 
 # Limites de URLs por scan
 MAX_URLS_PER_SCAN = 150

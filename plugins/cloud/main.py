@@ -94,12 +94,13 @@ def check_bucket(name: str):
     """Verifica se o bucket existe via DNS ou HTTP"""
     results = []
     
-    # 1. AWS S3 (DNS check is reliable for CNAMEs, but bucket direct access is better checked via HTTP)
-    # AWS pattern: http://<name>.s3.amazonaws.com
-    aws_url = f"http://{name}.s3.amazonaws.com"
+    # 1. AWS S3 (Path-style universal, suporta qualquer região)
+    # AWS pattern: https://s3.amazonaws.com/<name>
+    aws_url = f"https://s3.amazonaws.com/{name}"
     try:
         r = httpx.head(aws_url, timeout=3)
-        if r.status_code != 404: # 200 (Open), 403 (Auth Required) -> Both mean it exists
+        # O 400 Bad Request também significa que o bucket existe (region error do head), mas o 403 e 200 são absolutos
+        if r.status_code != 404:
             status = "OPEN" if r.status_code == 200 else "PROTECTED"
             results.append({"provider": "AWS", "name": name, "status": status, "url": aws_url})
     except Exception:
@@ -247,7 +248,7 @@ def test_bucket_permissions(provider: str, name: str, url: str, test_write: bool
     if provider == "AWS":
         # LIST: GET /?list-type=2
         try:
-            r = httpx.get(f"http://{name}.s3.amazonaws.com/?list-type=2", timeout=5)
+            r = httpx.get(f"https://s3.amazonaws.com/{name}/?list-type=2", timeout=5)
             if r.status_code == 200 and "<Contents>" in r.text:
                 permissions.append("LIST")
         except Exception:
@@ -255,7 +256,7 @@ def test_bucket_permissions(provider: str, name: str, url: str, test_write: bool
 
         # READ: GET /test - tentar ler qualquer objeto
         try:
-            r = httpx.get(f"http://{name}.s3.amazonaws.com/", timeout=5)
+            r = httpx.get(f"https://s3.amazonaws.com/{name}/", timeout=5)
             if r.status_code == 200:
                 permissions.append("READ")
         except Exception:
@@ -265,7 +266,7 @@ def test_bucket_permissions(provider: str, name: str, url: str, test_write: bool
         if test_write:
             try:
                 r = httpx.put(
-                    f"http://{name}.s3.amazonaws.com/enum-allma-permission-test.txt",
+                    f"https://s3.amazonaws.com/{name}/enum-allma-permission-test.txt",
                     data="permission_test",
                     timeout=5
                 )
@@ -274,7 +275,7 @@ def test_bucket_permissions(provider: str, name: str, url: str, test_write: bool
                     # Limpar o arquivo de teste
                     try:
                         httpx.delete(
-                            f"http://{name}.s3.amazonaws.com/enum-allma-permission-test.txt",
+                            f"https://s3.amazonaws.com/{name}/enum-allma-permission-test.txt",
                             timeout=5
                         )
                     except Exception:

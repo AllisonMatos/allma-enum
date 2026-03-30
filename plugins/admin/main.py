@@ -2,6 +2,7 @@
 Admin Panel Discovery — Descobre painéis administrativos expostos.
 Testa 80+ paths comuns em URLs válidas + portas alternativas.
 """
+from core.config import DEFAULT_USER_AGENT, REQUEST_DELAY
 import json
 import re
 import shutil
@@ -401,7 +402,7 @@ def run(context: dict):
     # httpx configs
     limits = httpx.Limits(max_keepalive_connections=50, max_connections=100)
     with httpx.Client(timeout=4, verify=False, follow_redirects=True, limits=limits) as client:
-        client.headers.update({"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"})
+        client.headers.update({"User-Agent": DEFAULT_USER_AGENT})
         
         info("   🛡️  Obtendo Baseline (Catch-all check) para evitar falsos positivos...")
         

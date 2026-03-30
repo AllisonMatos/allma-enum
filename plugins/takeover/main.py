@@ -2,6 +2,7 @@
 Subdomain Takeover Detection — Detecta subdomínios vulneráveis a takeover.
 Verifica CNAMEs apontando para serviços desativados (GitHub Pages, Heroku, S3, Azure, etc).
 """
+from core.config import DEFAULT_USER_AGENT, REQUEST_DELAY
 import json
 import re
 import dns.resolver
@@ -89,7 +90,7 @@ def check_http_fingerprint(subdomain: str, fingerprints: list[str]) -> bool:
         try:
             with httpx.Client(timeout=8, verify=False, follow_redirects=True) as client:
                 resp = client.get(f"{scheme}://{subdomain}", headers={
-                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+                    "User-Agent": DEFAULT_USER_AGENT
                 })
                 content = resp.text[:5000].lower()
                 for fp in fingerprints:

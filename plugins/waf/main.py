@@ -1,6 +1,7 @@
 """
 WAF Detection — Detecta Web Application Firewalls por headers, cookies e body patterns.
 """
+from core.config import DEFAULT_USER_AGENT, REQUEST_DELAY
 import json
 import re
 from pathlib import Path
@@ -125,7 +126,7 @@ def detect_waf(url: str) -> dict | None:
     try:
         with httpx.Client(timeout=8, verify=False, follow_redirects=True) as client:
             resp = client.get(url, headers={
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+                "User-Agent": DEFAULT_USER_AGENT
             })
 
             headers_lower = {k.lower(): v.lower() for k, v in resp.headers.items()}

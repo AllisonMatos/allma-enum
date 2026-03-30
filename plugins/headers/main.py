@@ -2,6 +2,7 @@
 HTTP Security Headers Check — Verifica headers de segurança em URLs válidas.
 Classifica de A-F baseado na presença de headers recomendados.
 """
+from core.config import DEFAULT_USER_AGENT, REQUEST_DELAY
 import json
 from pathlib import Path
 from urllib.parse import urlparse
@@ -85,7 +86,7 @@ def check_headers(url: str) -> dict | None:
     try:
         with httpx.Client(timeout=8, verify=False, follow_redirects=True) as client:
             resp = client.get(url, headers={
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+                "User-Agent": DEFAULT_USER_AGENT
             })
 
             if resp.status_code >= 500:

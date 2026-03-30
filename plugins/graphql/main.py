@@ -3,6 +3,7 @@
 GraphQL Security Scanner — Introspection, Batch Queries, Field Suggestions, Mutations
 Usa httpx + captura raw request/response
 """
+from core.config import DEFAULT_USER_AGENT, REQUEST_DELAY
 import json
 from pathlib import Path
 from urllib.parse import urlparse
@@ -39,7 +40,7 @@ def test_endpoint(client, url):
     findings = []
     headers = {
         "Content-Type": "application/json",
-        "User-Agent": "Mozilla/5.0",
+        "User-Agent": DEFAULT_USER_AGENT,
     }
     
     # 1) Introspection

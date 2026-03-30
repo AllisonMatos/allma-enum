@@ -1,3 +1,4 @@
+from core.config import DEFAULT_USER_AGENT, REQUEST_DELAY
 import subprocess
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -99,7 +100,7 @@ def validate_single_url(url: str, timeout: int = 15) -> dict:
     }
     
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "User-Agent": DEFAULT_USER_AGENT,
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
     }
     

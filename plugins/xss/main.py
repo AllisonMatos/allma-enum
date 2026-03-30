@@ -4,6 +4,7 @@ plugins/xss/main.py - XSS passive scanner otimizado
 Com: threading, conexões persistentes, análise em batch e cache
 """
 
+from core.config import DEFAULT_USER_AGENT, REQUEST_DELAY
 from pathlib import Path
 from urllib.parse import urlparse, parse_qsl, urljoin
 import re
@@ -121,7 +122,7 @@ class AsyncHTTPClient:
             connector=connector,
             timeout=aiohttp.ClientTimeout(total=self.timeout),
             headers={
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                "User-Agent": DEFAULT_USER_AGENT
             }
         )
         return self

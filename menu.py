@@ -33,7 +33,8 @@ MODULES = {
     "24": "api_fuzzer",
     "25": "ssrf",
     "26": "cloud",
-    "27": "all",
+    "27": "http_smuggling",
+    "28": "all",
 }
 
 # --------- DEPENDÊNCIAS ---------
@@ -65,7 +66,7 @@ DEPENDENCIES = {
     "24": ["1", "2", "7", "24"],
     "25": ["1", "2", "25"],
     "26": ["1", "26"],
-    "27": [str(x) for x in range(1, 27)],
+    "27": ["1", "2", "27"],
 }
 
 
@@ -240,9 +241,9 @@ def main():
         if not closed_scope_list:
             print(f"{C.RED}❌ Nenhum subdomínio fornecido. Usando descoberta padrão...{C.END}")
 
-    # chain — "26" é meta-módulo (all), não deve entrar na chain de execução
+    # chain — "28" é meta-módulo (all), não deve entrar na chain de execução
     chain = list(dict.fromkeys(DEPENDENCIES[choice] + [choice]))
-    chain = [c for c in chain if c != "26"]
+    chain = [c for c in chain if c != "28"]
 
     # parâmetros
     params = {name: {} for name in MODULES.values()}

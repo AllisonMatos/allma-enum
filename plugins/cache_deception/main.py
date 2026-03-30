@@ -31,70 +31,72 @@ CACHE_HEADERS = [
 ]
 
 
-def test_cache_deception(client, url):
-    """Testa cache deception numa URL"""
+def test_cache_deception(client, url, auth_headers):
+    """Testa cache deception injetando state e validando diff anônimo"""
     findings = []
     
     try:
-        # Request 1: URL original
-        resp_orig = client.get(url, timeout=10)
-        body_orig = resp_orig.text
-        
-        if resp_orig.status_code != 200:
-            return []
-        
-        # Para cada extensão estática
-        for ext in CACHE_EXTENSIONS[:5]:  # Limitar para performance
-            test_url = url.rstrip("/") + f"/nonexistent{ext}"
+        # 1. Baseline: Dados restritos do usuário (Logado)
+        r_auth = client.get(url, headers=auth_headers, timeout=10)
+        if r_auth.status_code != 200 or len(r_auth.text) < 100:
+            return [] # Só prosseguimos em rotas válidas de usuário
             
+        # 2. Baseline: Dados Anônimos (Deslogado)
+        r_anon_base = client.get(url, timeout=10)
+        
+        import difflib
+        # Se Anônimo e Logado forem quase iguais, a rota é publica ou auth falhou. Aborta!
+        if len(r_anon_base.text) > 0:
+            ratio_base = difflib.SequenceMatcher(None, r_auth.text[:2000], r_anon_base.text[:2000]).ratio()
+            if ratio_base > 0.95:
+                # O auth nao teve efeito na resposta ou rota pública
+                return [] 
+                
+        # 3. Ataque: OCDN State Poisoning
+        for ext in CACHE_EXTENSIONS[:3]:
+            test_url = url.rstrip("/") + f"/wcd_test{ext}"
+            
+            # 3.A: Vítima (logada) acessa link falso, forçando o CDN edge a cachear seus dados como arquivo estático
             try:
-                resp_test = client.get(test_url, timeout=10)
-                body_test = resp_test.text
+                client.get(test_url, headers=auth_headers, timeout=10)
+            except Exception: continue
+            
+            # 3.B: Atacante (Anônimo) acessa o mesmo link instantaneamente
+            try:
+                r_leak = client.get(test_url, timeout=10)
+            except Exception: continue
+            
+            if r_leak.status_code == 200:
+                # O atacante anônimo conseguiu ver a mesma tela do usuário logado?
+                leak_ratio = difflib.SequenceMatcher(None, r_auth.text[:5000], r_leak.text[:5000]).ratio()
+                anon_to_leak_ratio = difflib.SequenceMatcher(None, r_anon_base.text[:5000], r_leak.text[:5000]).ratio()
                 
-                if resp_test.status_code != 200:
-                    continue
-                
-                # Verificar se há headers de cache
-                has_cache = False
-                cache_info = ""
-                for ch in CACHE_HEADERS:
-                    val = resp_test.headers.get(ch, "")
-                    if val:
-                        has_cache = True
-                        cache_info += f"{ch}: {val}; "
-                
-                # Verificar se o conteúdo dinâmico foi cacheado
-                # (o conteúdo da URL com extensão é similar ao original)
-                similarity = 0
-                if has_cache and len(body_test) > 100:
-                    import difflib
-                    if len(body_orig) > 0:
-                        matcher = difflib.SequenceMatcher(None, body_orig[:10000], body_test[:10000])
-                        ratio = matcher.ratio()
-                        size_ratio = min(len(body_test), len(body_orig)) / max(len(body_test), len(body_orig))
-                        if ratio > 0.90 and size_ratio > 0.8:
-                            similarity = ratio
-                
-                if similarity > 0.7:
-                    raw_req = format_raw_request("GET", test_url, dict(resp_test.request.headers))
-                    raw_res = format_raw_response(resp_test.status_code, dict(resp_test.headers), body_test[:2000])
+                # Para ser leak: O leak deve ser similar ao perfil do usuário logado E diferente daperfil deslogado padrão
+                if leak_ratio > 0.85 and anon_to_leak_ratio < 0.85:
+                    
+                    cache_info = ""
+                    for ch in CACHE_HEADERS:
+                        val = r_leak.headers.get(ch, "")
+                        if val: cache_info += f"{ch}: {val}; "
+                            
+                    raw_req = format_raw_request("GET", test_url, dict(r_leak.request.headers))
+                    raw_res = format_raw_response(r_leak.status_code, dict(r_leak.headers), r_leak.text[:2000])
+                    
                     findings.append({
                         "url": url,
                         "test_url": test_url,
-                        "type": "CACHE_DECEPTION",
+                        "type": "WEB CACHE DECEPTION",
                         "extension": ext,
-                        "risk": "HIGH",
-                        "status": resp_test.status_code,
+                        "risk": "CRITICAL",
+                        "status": r_leak.status_code,
                         "cache_headers": cache_info,
-                        "similarity": f"{similarity:.0%}",
-                        "details": f"Conteúdo dinâmico cacheado com extensão '{ext}' ({cache_info.strip()})",
+                        "similarity": f"{leak_ratio:.0%}",
+                        "details": f"Informações privadas do usuário foram cacheadas no CDN (Edge) por conta da extensão {ext} e vazadas em sessões anônimas.",
                         "request_raw": raw_req,
                         "response_raw": raw_res,
                     })
-                    break  # Um finding por URL é suficiente
-            except Exception:
-                continue
-                
+                    break # Somente 1 leak por URL está ótimo
+                    
     except Exception:
         pass
     
@@ -103,16 +105,12 @@ def test_cache_deception(client, url):
 
 def run(context: dict):
     target = context.get("target")
-    if not target:
-        raise ValueError("Target required")
-    
-    if not httpx:
-        error("httpx não instalado")
-        return []
+    if not target: raise ValueError("Target required")
+    if not httpx: return []
 
     info(
         f"\n🟦───────────────────────────────────────────────────────────🟦\n"
-        f"   🗃️  {C.BOLD}{C.CYAN}CACHE DECEPTION SCANNER{C.END}\n"
+        f"   🗃️  {C.BOLD}{C.CYAN}WEB CACHE DECEPTION (WCD) SCANNER{C.END}\n"
         f"   🎯 Alvo: {C.GREEN}{target}{C.END}\n"
         f"🟦───────────────────────────────────────────────────────────🟦\n"
     )
@@ -120,39 +118,48 @@ def run(context: dict):
     outdir = ensure_outdir(target, "cache_deception")
     results_file = outdir / "cache_deception.json"
     
-    # Carregar URLs
-    urls_file = Path("output") / target / "urls" / "urls_200.txt"
-    if not urls_file.exists():
-        urls_file = Path("output") / target / "domain" / "urls_valid.txt"
+    # Obter credenciais para realizar o Diff
+    auth_data = context.get("cookie", "")
+    auth_file = Path("output") / target / "auth_session.txt"
+    if not auth_data and auth_file.exists():
+        auth_data = auth_file.read_text(errors="ignore").strip()
+        
+    if not auth_data:
+        warn("   [!] Teste WCD skipado: Cache Deception EXIGE uma baseline Autenticada x Anônima.")
+        warn(f"   [i] Para testar, crie o arquivo '{C.YELLOW}{auth_file}{C.END}' com seu Cookie ou Header Authorization.")
+        results_file.write_text("[]")
+        return [str(results_file)]
+        
+    info("   [+] Baseline de Autenticação Carregada com sucesso!")
+    # Formatação automática inteligente do cabeçalho de Auth
+    auth_headers = {}
+    if ":" in auth_data and "Cookie" not in auth_data:
+        key, val = auth_data.split(":", 1)
+        auth_headers[key.strip()] = val.strip()
+    elif "=" in auth_data and "Bearer" not in auth_data:
+        auth_headers["Cookie"] = auth_data
+    else:
+        auth_headers["Authorization"] = auth_data
     
-    if not urls_file.exists():
-        warn("Nenhum arquivo de URLs encontrado")
-        return []
+    urls_file = Path("output") / target / "urls" / "urls_200.txt"
+    if not urls_file.exists(): urls_file = Path("output") / target / "domain" / "urls_valid.txt"
+    if not urls_file.exists(): return []
     
     all_urls = [l.strip() for l in urls_file.read_text().splitlines() if l.strip()]
-    
-    # Filtrar: somente URLs dinâmicas (sem extensões estáticas)
     static_exts = {".js", ".css", ".png", ".jpg", ".gif", ".svg", ".ico", ".woff", ".woff2"}
-    testable = []
-    for url in all_urls:
-        path = urlparse(url).path.lower()
-        if not any(path.endswith(ext) for ext in static_exts):
-            testable.append(url)
-    
-    testable = testable[:100]
+    testable = [u for u in all_urls if not any(urlparse(u).path.lower().endswith(e) for e in static_exts)][:100]
     
     if not testable:
-        info("Nenhuma URL dinâmica encontrada para testar")
+        info("   [i] Nenhuma URL dinâmica propensa a Cache Deception identificada.")
         results_file.write_text("[]")
         return [str(results_file)]
     
-    info(f"   📊 Testando {len(testable)} URLs dinâmicas")
-    
+    info(f"   📊 Disparando Teste Multi-Fase (Base >> Poison >> Leak) em {len(testable)} URLs dinâmicas...")
     all_findings = []
     
     with httpx.Client(verify=False, follow_redirects=True, timeout=15) as client:
-        with ThreadPoolExecutor(max_workers=10) as executor:
-            futures = {executor.submit(test_cache_deception, client, url): url for url in testable}
+        with ThreadPoolExecutor(max_workers=5) as executor:
+            futures = {executor.submit(test_cache_deception, client, url, auth_headers): url for url in testable}
             
             for future in as_completed(futures):
                 try:
@@ -160,15 +167,13 @@ def run(context: dict):
                     if results:
                         all_findings.extend(results)
                         for r in results:
-                            info(f"   🚨 {C.RED}Cache Deception: {r['url']}{C.END}")
-                except Exception:
-                    pass
+                            info(f"   🚨 {C.RED}Web Cache Deception Confirmado:{C.END} Dados Privados Vazaram em {r['test_url']}")
+                except Exception as e: pass
     
     results_file.write_text(json.dumps(all_findings, indent=2, ensure_ascii=False))
-    
     if all_findings:
-        success(f"🗃️ {len(all_findings)} potenciais cache deception encontrados!")
+        success(f"\n☢️  {len(all_findings)} endpoints CRÍTICOS com Web Cache Deception exportados!")
     else:
-        success("✅ Nenhum cache deception detectado")
+        success("\n✅ CDN/Edges Resilientes: Nenhum Web Cache Deception econtrado.")
     
     return [str(results_file)]
