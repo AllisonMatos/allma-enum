@@ -174,23 +174,49 @@ def run(context: dict):
         info(f"   [i] Utilizando {C.BOLD}crlfuzz{C.END} (Go) para detecção rápida e massiva...")
         crlfuzz_out = outdir / "crlfuzz_raw.txt"
         
-        cmd = [crlfuzz, "-l", str(urls_file), "-s", "-o", str(crlfuzz_out)]
-        subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        total_urls = len(all_urls)
+        chunk_size = 200
+        chunks = [all_urls[i:i + chunk_size] for i in range(0, total_urls, chunk_size)]
         
         deduped = []
-        if crlfuzz_out.exists() and crlfuzz_out.stat().st_size > 0:
-            for line in crlfuzz_out.read_text(errors="ignore").splitlines():
-                if not line.strip(): continue
-                url_found = line.replace("[VULN]", "").strip()
-                deduped.append({
-                    "url": url_found,
-                    "payload": "CRLFuzz Default",
-                    "type": "CRLF Injection via crlfuzz",
-                    "risk": "HIGH",
-                    "details": "Detecção automática via CRLFuzz",
-                })
-                info(f"   🚨 {C.RED}CRLFuzz encontrou:{C.END} {url_found}")
+        done_count = 0
+        seen_urls = set()
+        temp_file = outdir / "temp_crlf_urls.txt"
+        
+        for chunk in chunks:
+            temp_file.write_text("\n".join(chunk))
+            
+            cmd = [crlfuzz, "-l", str(temp_file), "-s", "-o", str(crlfuzz_out)]
+            # Usa -s silent pra suprimir output nativo
+            subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            
+            if crlfuzz_out.exists() and crlfuzz_out.stat().st_size > 0:
+                for line in crlfuzz_out.read_text(errors="ignore").splitlines():
+                    if not line.strip(): continue
+                    url_found = line.replace("[VULN]", "").strip()
+                    
+                    if url_found not in seen_urls:
+                        seen_urls.add(url_found)
+                        deduped.append({
+                            "url": url_found,
+                            "payload": "CRLFuzz Default",
+                            "type": "CRLF Injection via crlfuzz",
+                            "risk": "HIGH",
+                            "details": "Detecção automática via CRLFuzz",
+                        })
+                        print(" " * 80, end="\r")
+                        info(f"   🚨 {C.RED}CRLFuzz encontrou:{C.END} {url_found}")
                 
+                # Reseta para o próximo chunk
+                crlfuzz_out.unlink()
+                
+            done_count += len(chunk)
+            pct = int((done_count / total_urls) * 100) if total_urls > 0 else 100
+            print(f"   [Total: {total_urls} | Atual: {done_count}] {pct}% completo... ({len(deduped)} encontrados)", end="\r")
+        
+        print("\n") # Quebra de linha apos o progress bar
+        if temp_file.exists(): temp_file.unlink()
+        
         results_file.write_text(json.dumps(deduped, indent=2, ensure_ascii=False))
         if deduped:
             success(f"💉 {len(deduped)} CRLF Injections encontrados pelo crlfuzz!")
@@ -229,15 +255,25 @@ def run(context: dict):
                     future = executor.submit(test_crlf, client, url, payload)
                     futures[future] = url
             
+            total_tasks = len(futures)
+            done_count = 0
+            
             for future in as_completed(futures):
+                done_count += 1
+                if done_count % 5 == 0 or done_count == total_tasks:
+                    pct = int((done_count / total_tasks) * 100) if total_tasks > 0 else 100
+                    print(f"   [Total: {total_tasks} payloads | Atual: {done_count}] {pct}% completo... ({len(all_findings)} encontrados)", end="\r")
+                    
                 try:
                     results = future.result()
                     if results:
                         all_findings.extend(results)
                         url = futures[future]
+                        print(" " * 80, end="\r")
                         info(f"   🚨 {C.RED}CRLF: {url}{C.END}")
                 except Exception:
                     pass
+            print("") # Quebra de linha pro fim do chunk
     
     # Deduplicar
     seen = set()
