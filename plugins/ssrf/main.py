@@ -97,15 +97,32 @@ def run(context: dict):
             info("   [i] Interactsh detectado! Subindo servidor OAST temporal...")
             log_json = outdir / "oast_logs.json"
             
-            proc = subprocess.Popen([interact_bin, "-json", "-o", str(log_json)], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+            # Rodar sem buffer local. E capturamos stderr pra debug.
+            proc = subprocess.Popen([interact_bin, "-json", "-o", str(log_json)], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
+            
+            # Tornar o descritor de stdout non-blocking para não travar num readline() infinito
+            import os
+            import fcntl
+            if proc.stdout:
+                fd = proc.stdout.fileno()
+                fl = fcntl.fcntl(fd, fcntl.F_GETFL)
+                fcntl.fcntl(fd, fcntl.F_SETFL, fl | os.O_NONBLOCK)
+            
+            # Aguardar 3 segundos pro interactsh subir e gerar a URL
+            time.sleep(3)
             
             oast_url = None
-            for _ in range(40):
-                line = proc.stdout.readline()
-                if not line: break
+            for _ in range(50):
+                try:
+                    line = proc.stdout.readline() if proc.stdout else ""
+                except Exception:
+                    line = ""
+                    
+                if not line: 
+                    time.sleep(0.5)
+                    continue
                 
-                # Extrai ex: xxxx.oast.pro ou  xxxx.oast.me
-                # Log padrão: [INF] xxxx.oast.pro
+                # Extrai ex: xxxx.oast.pro ou xxxx.oast.me
                 match = re.search(r'([a-z0-9\-]+\.[a-z0-9\-]+\.[a-z]+)', line)
                 if match and ("oast" in match.group() or "interact" in match.group() or "pingb" in match.group()):
                     oast_url = match.group()
