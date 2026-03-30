@@ -67,6 +67,7 @@ DEPENDENCIES = {
     "25": ["1", "2", "25"],
     "26": ["1", "26"],
     "27": ["1", "2", "27"],
+    "28": [str(i) for i in range(1, 28)],  # ALL: Roda do 1 ao 27
 }
 
 
@@ -121,7 +122,8 @@ def print_menu():
         "24": ("api_fuzzer", "API Fuzzer (Kiterunner)", "🪁"),
         "25": ("ssrf", "SSRFmap e OAST", "📡"),
         "26": ("cloud", "Cloud Recon (S3/Azure/GCP)", "🌩️"),
-        "27": ("all", "Execução completa", "🚀")
+        "27": ("http_smuggling", "HTTP Request Smuggling", "🕵️"),
+        "28": ("all", "Execução completa", "🚀")
     }
 
     for k, (name, desc, emoji) in modules.items():

@@ -63,6 +63,7 @@ def execute_chain(target: str, chain: list, params: dict):
         "24": "api_fuzzer",
         "25": "ssrf",
         "26": "cloud",
+        "27": "http_smuggling",
         "99": "intelligence",
     }
 
