@@ -110,6 +110,10 @@ def execute_chain(target: str, chain: list, params: dict):
     if interactsh_bin:
         info(f"\n{C.BOLD}{C.PURPLE}[i] Iniciando Interactsh-client (OAST) em background...{C.END}")
         
+        # Garantir que o diretório base existe antes do interactsh tentar gravar logs nele!
+        outdir = Path("output") / target
+        outdir.mkdir(parents=True, exist_ok=True)
+        
         # Limpar saida antiga
         if interactsh_out.exists():
             interactsh_out.unlink()
