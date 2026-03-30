@@ -9,10 +9,9 @@ from pathlib import Path
 from collections import defaultdict
 
 from menu import C
+from plugins import ensure_outdir
 
 from ..output import info, warn, success, error
-from .utils import ensure_outdir
-
 # Regex para capturar host + porta
 pattern = re.compile(
     r"(?P<host>(?:\d{1,3}(?:\.\d{1,3}){3})|(?:[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}))\s*:\s*(?P<port>\d+)"
@@ -38,7 +37,7 @@ def run(context):
     )
 
     # Diretório de saída
-    outdir = ensure_outdir(target)
+    outdir = ensure_outdir(target, "services")
 
     # Arquivo de entrada vindo do módulo DOMAIN
     ports_raw = Path("output") / target / "domain" / "ports_raw.txt"
@@ -129,7 +128,10 @@ def run(context):
         ]
 
         info(f"   🔎 {C.CYAN}Nmap → {host}:{ports_str}{C.END}")
-        subprocess.run(cmd, capture_output=True, text=True)
+        try:
+            subprocess.run(cmd, capture_output=True, text=True, timeout=1800)
+        except subprocess.TimeoutExpired:
+            warn(f"   ⚠️ Nmap timeout (30min) atingido para {host}. Pulando...")
 
         results.append(outfile)
 

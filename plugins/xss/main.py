@@ -20,6 +20,7 @@ import hashlib
 from collections import defaultdict, deque
 
 from menu import C
+from plugins import ensure_outdir
 from ..output import info, warn, success, error
 
 # ============================================================
@@ -199,7 +200,7 @@ class AsyncHTTPClient:
                 if full_url not in seen:
                     seen.add(full_url)
                     links.append(full_url)
-            except:
+            except Exception:
                 continue
                 
         return links
@@ -220,7 +221,7 @@ class AsyncHTTPClient:
                 if full_url not in seen:
                     seen.add(full_url)
                     scripts.append(full_url)
-            except:
+            except Exception:
                 continue
                 
         return scripts
@@ -342,6 +343,10 @@ class XSSPatterns:
                 
                 # Detectar Contexto e Severidade
                 ctx_type, severity = self.detect_context(text, idx, idx + len(value))
+                
+                # Ignorar reflexões inofensivas (HTML body comum ou comentários) para reduzir Falsos Positivos
+                if severity in ["low", "info"]:
+                    continue
                 
                 findings.append(XSSFinding(
                     url="",  # Será preenchido depois
@@ -516,7 +521,8 @@ class XSSCrawler:
         
         # 4. Scan scripts externos (async)
         if result.scripts:
-            await self.analyze_external_scripts(result.scripts)
+            in_scope_scripts = [s for s in result.scripts if self.is_same_origin(s)]
+            await self.analyze_external_scripts(in_scope_scripts)
 
     async def analyze_external_scripts(self, scripts: List[str]):
         """Analisar scripts externos."""
@@ -567,8 +573,7 @@ async def run_async(context: dict):
         f"{C.BOLD}{header_color}╚══════════════════════════════════════════════════════════╝{C.END}\n"
     )
     
-    from .utils import ensure_outdir
-    outdir = ensure_outdir(target)
+    outdir = ensure_outdir(target, "xss")
     
     # ==========================================================================
     # 📥 CARREGAR URLS INICIAIS
@@ -625,7 +630,7 @@ async def run_async(context: dict):
         f"{C.BOLD}{get_color('CYAN')}├─────────────────────────────────────────────┤{C.END}\n"
         f"{C.BOLD}{get_color('CYAN')}│   🌐 Páginas analisadas: {get_color('YELLOW')}{len(crawler.visited)}{C.WHITE if hasattr(C, 'WHITE') else ''}          │{C.END}\n"
         f"{C.BOLD}{get_color('CYAN')}│   🔄 Reflexões: {get_color('YELLOW')}{len(reflections)}{C.WHITE if hasattr(C, 'WHITE') else ''}                  │{C.END}\n"
-        f"{C.BOLD}{get_color('CYAN')}│   🧬 DOM Suspeitas: {get_color('YELLOW')}{len(dom_findings)}{C.WHITE if hasattr(C, 'WHITE') else ''}               │{C.END}\n"
+        f"{C.BOLD}{get_color('CYAN')}│   🧬 DOM Sinks: {get_color('YELLOW')}{len(dom_findings)}{C.WHITE if hasattr(C, 'WHITE') else ''}               │{C.END}\n"
         f"{C.BOLD}{get_color('CYAN')}│   ⚡ Total findings: {get_color('YELLOW')}{len(crawler.findings)}{C.WHITE if hasattr(C, 'WHITE') else ''}             │{C.END}\n"
         f"{C.BOLD}{get_color('CYAN')}│   ⏱️  Tempo total: {get_color('YELLOW')}{elapsed:.1f}s{C.WHITE if hasattr(C, 'WHITE') else ''}                 │{C.END}\n"
         f"{C.BOLD}{get_color('CYAN')}└─────────────────────────────────────────────┘{C.END}\n"
@@ -639,10 +644,16 @@ async def save_reports(outdir, crawler, reflections, dom_findings):
     
     # Salvar parâmetros
     params_content = []
+    dalfox_urls = set()
     for url, result in crawler.results:
         if result and result.params:
             for param, value in result.params:
                 params_content.append(f"{url}\t{param}\t{value}")
+            dalfox_urls.add(url)
+            
+    if dalfox_urls:
+        async with aiofiles.open(outdir / "dalfox_targets.txt", 'w') as f:
+            await f.write("\n".join(dalfox_urls))
     
     if params_content:
         async with aiofiles.open(outdir / "parameters.txt", 'w') as f:
@@ -682,7 +693,7 @@ async def save_reports(outdir, crawler, reflections, dom_findings):
         f"Páginas visitadas: {len(crawler.visited)}",
         f"Total findings: {len(crawler.findings)}",
         f"Reflexões de parâmetros: {len(reflections)}",
-        f"Suspeitas DOM/JS: {len(dom_findings)}",
+        f"Sinks DOM encontrados (avaliar manualmente): {len(dom_findings)}",
         "",
     ]
     
@@ -731,7 +742,29 @@ def run(context: dict):
             asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
         
         # Executar
-        return asyncio.run(run_async(context))
+        reports = asyncio.run(run_async(context))
+        
+        # Post-processing Dalfox
+        target = context.get("target", "")
+        if target:
+            from plugins import ensure_outdir
+            from plugins.http_utils import check_tool_installed
+            import subprocess
+            outdir = ensure_outdir(target, "xss")
+            dalfox_targets = outdir / "dalfox_targets.txt"
+            
+            if dalfox_targets.exists() and check_tool_installed("dalfox"):
+                info(f"\n   🦊 {C.CYAN}Executando Dalfox (Active XSS Scan)...{C.END}")
+                dalfox_out = outdir / "dalfox_results.txt"
+                cmd = ["dalfox", "file", str(dalfox_targets), "--skip-bav", "--silence", "-w", "20", "-o", str(dalfox_out)]
+                try:
+                    subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=600)
+                    if dalfox_out.exists():
+                        success(f"   🦊 Resultados do Dalfox salvos em {dalfox_out}")
+                except subprocess.TimeoutExpired:
+                    warn("   🦊 Dalfox demorou muito e foi interrompido.")
+                    
+        return reports
     except KeyboardInterrupt:
         warn("\n⏹️ Scan interrompido pelo usuário")
         return []

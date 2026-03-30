@@ -9,6 +9,7 @@ from urllib.parse import urlparse
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from menu import C
+from plugins import ensure_outdir
 from ..output import info, success, warn, error
 from ..http_utils import format_raw_request, format_raw_response
 
@@ -31,12 +32,6 @@ BATCH_QUERY = '[{"query": "{ __typename }"}, {"query": "{ __typename }"}]'
 MUTATIONS_QUERY = '{"query": "{ __schema { mutationType { fields { name args { name type { name } } } } } }"}'
 
 SUGGESTIONS_QUERY = '{"query": "{ __typ }"}'
-
-
-def ensure_outdir(target):
-    outdir = Path("output") / target / "scanners"
-    outdir.mkdir(parents=True, exist_ok=True)
-    return outdir
 
 
 def test_endpoint(client, url):
@@ -177,7 +172,7 @@ def run(context: dict):
         f"🟪───────────────────────────────────────────────────────────🟪\n"
     )
 
-    outdir = ensure_outdir(target)
+    outdir = ensure_outdir(target, "graphql")
     results_file = outdir / "graphql.json"
     
     # Carregar URLs

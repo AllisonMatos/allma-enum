@@ -17,10 +17,9 @@ import json
 from urllib.parse import urlparse, parse_qs
 
 from menu import C
+from plugins import ensure_outdir
 
 from ..output import info, warn, success
-from .utils import ensure_outdir
-
 # ---------------------------------------------------
 # Tokenizadores simples
 # ---------------------------------------------------
@@ -65,7 +64,7 @@ def run(context: dict):
         f"🟪───────────────────────────────────────────────────────────🟪\n"
     )
 
-    outdir = ensure_outdir(target)
+    outdir = ensure_outdir(target, "wordlist")
 
     paths_file = outdir / "paths.txt"
     params_file = outdir / "params.txt"

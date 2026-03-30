@@ -14,11 +14,9 @@ from urllib.parse import urlparse, unquote
 import re
 
 from menu import C
+from plugins import ensure_outdir
 
 from ..output import info, success, warn, error
-from .utils import ensure_outdir
-
-
 # ----------------------------------------------
 # Detecta a extensão baseada na URL
 # ----------------------------------------------
@@ -100,7 +98,7 @@ def run(context: dict):
         f"🟪──────────────────────────────────────────────────────────🟪\n"
     )
 
-    outdir = ensure_outdir(target)
+    outdir = ensure_outdir(target, "files")
     input_file = Path("output") / target / "urls" / "urls_200.txt"
 
     # ======================================================

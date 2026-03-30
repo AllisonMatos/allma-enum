@@ -13,8 +13,8 @@ import time
 from urllib.parse import urljoin
 
 from menu import C
+from plugins import ensure_outdir
 from ..output import info, warn, error, success
-from .utils import ensure_outdir
 from core.utils import find_tool
 from plugins.extractors.js_analyzer import extract_js_logic
 
@@ -313,7 +313,7 @@ def run(context: dict):
         f"🟪───────────────────────────────────────────────────────────🟪\n"
     )
 
-    outdir = ensure_outdir(target)
+    outdir = ensure_outdir(target, "jsscanner")
     report_file = outdir / "jsscanner_report.txt"
     raw_file = outdir / "jsscanner_raw.txt"
 

@@ -38,7 +38,7 @@ REGEX_PATTERNS = {
     # ── Social/OAuth ─────────────────────────────────────────
     "Facebook Access Token": r"EAA[a-zA-Z0-9]+",
     "Facebook App Secret": r"(?i)facebook[_\-]?(?:app[_\-]?)?secret['\"]?\s*[:=]\s*['\"]?([a-f0-9]{32})['\"]?",
-    "Twitter Bearer Token": r"AAAA[A-Za-z0-9]{96,}",
+    "Twitter Bearer Token": r"(?<![A-Za-z0-9+/])A{22}[A-Za-z0-9%-_]{40,}(?![A-Za-z0-9+/])",
     "Twitter API Secret": r"(?i)twitter[_\s]*(?:api[_\s]*)?secret[_\s]*[:=]['\"]([a-zA-Z0-9]{35,50})['\"]",
     "LinkedIn Client Secret": r"(?i)linkedin[_\s]*(?:client[_\s]*)?secret[_\s]*[:=]['\"]([a-zA-Z0-9]{16})['\"]",
     "OAuth Client Secret": r"(?i)(?:oauth[_\s]*)?client[_\s]*secret[_\s]*[:=]['\"]([a-zA-Z0-9_\-]{16,})['\"]",
@@ -323,7 +323,8 @@ def is_media_false_positive(content: str, position: int) -> bool:
     media_indicators = [
         '.png', '.jpg', '.jpeg', '.gif', '.svg', '.ico', '.webp', '.woff', '.ttf',
         'data:image', 'base64', 'favicon', 'icon', 'binary', 'octet-stream',
-        'content-type: image', 'attachment; filename='
+        'content-type: image', 'attachment; filename=',
+        'image/png', 'image/jpeg', 'svg+xml', 'mask-icon', 'apple-touch-icon'
     ]
     
     if any(ind in nearby for ind in media_indicators):

@@ -4,16 +4,15 @@ Plugin CLOUD RECON - Detecta buckets S3/Azure/GCP via DNS e HTTP
 """
 import sys
 import dns.resolver
-import requests
+import httpx
 import concurrent.futures
 from pathlib import Path
 
 import subprocess
 from menu import C
+from plugins import ensure_outdir
 from ..output import info, success, warn, error
 from ..http_utils import check_tool_installed
-from .utils import ensure_outdir
-
 # ============================================================
 # TEMPLATES DE BUCKETS
 # ============================================================
@@ -56,9 +55,20 @@ CLOUD_PERMUTATIONS = [
 
 def generate_bucket_names(target_domain: str) -> list:
     """Gera lista de candidatos a buckets baseados no domínio"""
-    base = target_domain.split(".")[0] # ex: grupovoz de grupovoz.com.br
-    candidates = []
+    parts = target_domain.split(".")
+    # Heurística: para domínios com 3+ partes (ex: api.example.com.br),
+    # pegar o penúltimo segmento significativo como brand.
+    # Para domínios com 2 partes (example.com), pegar o primeiro.
+    if len(parts) >= 3 and parts[-1] in ("br", "uk", "au", "jp", "in", "za", "mx", "ar", "co"):
+        # ccTLD composto (com.br, co.uk, etc.)
+        base = parts[-3] if len(parts) >= 3 else parts[0]
+    elif len(parts) >= 3:
+        # Subdomínio (api.example.com) → pegar 'example'
+        base = parts[-2]
+    else:
+        base = parts[0]
     
+    candidates = []
     for fmt in CLOUD_PERMUTATIONS:
         name = fmt.format(target=base)
         candidates.append(name)
@@ -88,11 +98,11 @@ def check_bucket(name: str):
     # AWS pattern: http://<name>.s3.amazonaws.com
     aws_url = f"http://{name}.s3.amazonaws.com"
     try:
-        r = requests.head(aws_url, timeout=3)
+        r = httpx.head(aws_url, timeout=3)
         if r.status_code != 404: # 200 (Open), 403 (Auth Required) -> Both mean it exists
             status = "OPEN" if r.status_code == 200 else "PROTECTED"
             results.append({"provider": "AWS", "name": name, "status": status, "url": aws_url})
-    except:
+    except Exception:
         pass
 
     # 2. Azure Blob
@@ -101,9 +111,9 @@ def check_bucket(name: str):
     try:
         try:
              dns.resolver.resolve(f"{name}.blob.core.windows.net", 'A')
-             r = requests.head(azure_url, timeout=3)
+             r = httpx.head(azure_url, timeout=3)
              results.append({"provider": "Azure", "name": name, "status": "EXIST", "url": azure_url})
-        except:
+        except Exception:
              pass
     except:
         pass
@@ -112,11 +122,11 @@ def check_bucket(name: str):
     # GCP pattern: https://storage.googleapis.com/<name>
     gcp_url = f"https://storage.googleapis.com/{name}"
     try:
-        r = requests.head(gcp_url, timeout=3)
+        r = httpx.head(gcp_url, timeout=3)
         if r.status_code != 404:
             status = "OPEN" if r.status_code == 200 else "PROTECTED"
             results.append({"provider": "GCP", "name": name, "status": status, "url": gcp_url})
-    except:
+    except Exception:
         pass
 
     return results
@@ -133,7 +143,7 @@ def run(context: dict):
         f"🟪───────────────────────────────────────────────────────────🟪\n"
     )
     
-    outdir = ensure_outdir(target)
+    outdir = ensure_outdir(target, "cloud")
     out_file = outdir / "buckets.txt"
     
     # Gerar nomes
@@ -149,7 +159,7 @@ def run(context: dict):
             # Como o cloud roda depois, vamos assumir que podemos tentar ler se houver cache.
             # Como o cloud roda depois, vamos assumir que podemos tentar ler se houver cache.
             pass 
-        except: pass
+        except Exception: pass
 
     # ===============================
     # 🌩️ Executar Cloud_enum (se disponível)
@@ -237,24 +247,24 @@ def test_bucket_permissions(provider: str, name: str, url: str, test_write: bool
     if provider == "AWS":
         # LIST: GET /?list-type=2
         try:
-            r = requests.get(f"http://{name}.s3.amazonaws.com/?list-type=2", timeout=5)
+            r = httpx.get(f"http://{name}.s3.amazonaws.com/?list-type=2", timeout=5)
             if r.status_code == 200 and "<Contents>" in r.text:
                 permissions.append("LIST")
-        except:
+        except Exception:
             pass
 
         # READ: GET /test - tentar ler qualquer objeto
         try:
-            r = requests.get(f"http://{name}.s3.amazonaws.com/", timeout=5)
+            r = httpx.get(f"http://{name}.s3.amazonaws.com/", timeout=5)
             if r.status_code == 200:
                 permissions.append("READ")
-        except:
+        except Exception:
             pass
 
         # WRITE: PUT (SOMENTE se opt-in)
         if test_write:
             try:
-                r = requests.put(
+                r = httpx.put(
                     f"http://{name}.s3.amazonaws.com/enum-allma-permission-test.txt",
                     data="permission_test",
                     timeout=5
@@ -263,39 +273,39 @@ def test_bucket_permissions(provider: str, name: str, url: str, test_write: bool
                     permissions.append("WRITE")
                     # Limpar o arquivo de teste
                     try:
-                        requests.delete(
+                        httpx.delete(
                             f"http://{name}.s3.amazonaws.com/enum-allma-permission-test.txt",
                             timeout=5
                         )
-                    except:
+                    except Exception:
                         pass
-            except:
+            except Exception:
                 pass
 
     elif provider == "GCP":
         # LIST: GET /storage/v1/b/{name}/o
         try:
-            r = requests.get(f"https://storage.googleapis.com/storage/v1/b/{name}/o", timeout=5)
+            r = httpx.get(f"https://storage.googleapis.com/storage/v1/b/{name}/o", timeout=5)
             if r.status_code == 200:
                 permissions.append("LIST")
-        except:
+        except Exception:
             pass
 
         # READ
         try:
-            r = requests.get(f"https://storage.googleapis.com/{name}/", timeout=5)
+            r = httpx.get(f"https://storage.googleapis.com/{name}/", timeout=5)
             if r.status_code == 200:
                 permissions.append("READ")
-        except:
+        except Exception:
             pass
 
     elif provider == "Azure":
         # LIST: GET ?restype=container&comp=list
         try:
-            r = requests.get(f"{url}?restype=container&comp=list", timeout=5)
+            r = httpx.get(f"{url}?restype=container&comp=list", timeout=5)
             if r.status_code == 200 and "<Blob>" in r.text:
                 permissions.append("LIST")
-        except:
+        except Exception:
             pass
 
     return permissions

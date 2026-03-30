@@ -11,6 +11,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import base64
 from menu import C
+from plugins import ensure_outdir
 from ..output import info, success, warn, error
 
 # ============================================================
@@ -147,12 +148,6 @@ def normalize_title(title: str) -> str:
     return title
 
 
-def ensure_outdir(target: str) -> Path:
-    outdir = Path("output") / target / "admin"
-    outdir.mkdir(parents=True, exist_ok=True)
-    return outdir
-
-
 def clean_html_for_fingerprint(html: str) -> str:
     """Remove dynamic data to create a stable hash for deduplication."""
     import re
@@ -182,7 +177,11 @@ def generate_raw_http(request_or_response) -> str:
             req = resp.request
             
             # Request Row
-            req_lines = [f"{req.method} {req.url.target.decode()} HTTP/1.1"]
+            try:
+                target_path = req.url.raw_path.decode('ascii', errors='ignore')
+            except AttributeError:
+                target_path = getattr(req.url, 'path', '/')
+            req_lines = [f"{req.method} {target_path} HTTP/1.1"]
             for k, v in req.headers.items():
                 req_lines.append(f"{k}: {v}")
             req_raw = "\n".join(req_lines) + "\n\n"
@@ -223,6 +222,13 @@ def check_admin_path(client, base_url: str, path: str, baseline: dict = None) ->
             baseline_len = baseline["length"]
             # Tolerância de 5% no tamanho do conteúdo
             if abs(content_len - baseline_len) <= max(50, baseline_len * 0.05):
+                return None
+            
+            # Checagem estrutural rigorosa
+            import hashlib
+            cleaned = clean_html_for_fingerprint(content)
+            chash = hashlib.sha256(cleaned.encode('utf-8')).hexdigest()
+            if chash == baseline.get("hash"):
                 return None
 
         # Verificar se é página real (não redirect genérico para home)
@@ -350,7 +356,7 @@ def run(context: dict):
         f"🟥───────────────────────────────────────────────────────────🟥\n"
     )
 
-    outdir = ensure_outdir(target)
+    outdir = ensure_outdir(target, "admin")
 
     # Ler URLs válidas
     urls_files = [
@@ -371,8 +377,10 @@ def run(context: dict):
     base_urls = set()
     for url in valid_urls:
         parsed = urlparse(url)
-        base = f"{parsed.scheme}://{parsed.netloc}"
-        base_urls.add(base)
+        # 🛡️ Garantir que a URL base pertence ao TARGET escopo!
+        if parsed.netloc == target or parsed.netloc.endswith("." + target):
+            base = f"{parsed.scheme}://{parsed.netloc}"
+            base_urls.add(base)
 
     # Adicionar portas alternativas
     extended_bases = set(base_urls)
@@ -402,7 +410,10 @@ def run(context: dict):
                 import uuid
                 rand_path = f"/does_not_exist_{uuid.uuid4().hex[:8]}"
                 r = client.get(base_url.rstrip("/") + rand_path)
-                return base_url, {"status": r.status_code, "length": len(r.text) if r.text else 0}
+                import hashlib
+                cleaned = clean_html_for_fingerprint(r.text)
+                chash = hashlib.sha256(cleaned.encode('utf-8')).hexdigest()
+                return base_url, {"status": r.status_code, "length": len(r.text) if r.text else 0, "hash": chash}
             except Exception:
                 return base_url, None
 
@@ -490,6 +501,59 @@ def run(context: dict):
     print("")  # Newline
 
     unique_panels = found_panels
+    
+    # ---------------------------------------------------------
+    # Auto-Exploitation: GitLeaks for exposed .git directories
+    # ---------------------------------------------------------
+    import subprocess
+    git_exposures = [p["url"] for p in unique_panels if "/.git/" in p["url"] and p["status"] == 200]
+    if git_exposures:
+        info(f"\n   [!] Diretórios .git expostos detectados! Tentando clone e extração de credenciais...")
+        git_dumper = shutil.which("git-dumper")
+        gitleaks = shutil.which("gitleaks")
+        
+        if git_dumper and gitleaks:
+            for git_url in git_exposures:
+                base_git_url = git_url.split("/.git/")[0] + "/.git/"
+                repo_dir = outdir / "git_dump"
+                if repo_dir.exists():
+                    shutil.rmtree(repo_dir)
+                    
+                info(f"   [i] Baixando repositório de {base_git_url} com git-dumper...")
+                subprocess.run(
+                    [git_dumper, base_git_url, str(repo_dir)],
+                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+                )
+                
+                if repo_dir.exists():
+                    info(f"   [i] Executando GitLeaks no repositório clonado...")
+                    gitleaks_report = outdir / "gitleaks_report.json"
+                    subprocess.run(
+                        [gitleaks, "detect", "--source", str(repo_dir), "--report-path", str(gitleaks_report), "--report-format", "json"],
+                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+                    )
+                    
+                    if gitleaks_report.exists() and gitleaks_report.stat().st_size > 5:
+                        try:
+                            leaks = json.loads(gitleaks_report.read_text())
+                            if leaks:
+                                success(f"   🚨 {C.PURPLE}GitLeaks encontrou {len(leaks)} secrets expostos!{C.END}")
+                                for leak in leaks:
+                                    unique_panels.append({
+                                        "url": base_git_url,
+                                        "path": leak.get("File", ""),
+                                        "cms": "GitLeaks Exfiltration",
+                                        "has_login_form": False,
+                                        "status": "CRITICAL",
+                                        "title": f"Secret Leak: {leak.get('Description', 'Key')}",
+                                        "response_size": 0,
+                                        "content_type": "secret/gitleaks",
+                                        "content_hash": leak.get("Secret", "")
+                                    })
+                        except Exception as e:
+                            pass
+        else:
+            warn("   ⚠️ 'git-dumper' ou 'gitleaks' não instalados. Pulei o clone do repositório.")
 
     # Salvar resultados
     if unique_panels:

@@ -8,9 +8,8 @@ import subprocess
 from pathlib import Path
 
 from menu import C
+from plugins import ensure_outdir
 from ..output import info, success, warn, error
-from .utils import ensure_outdir
-
 def run_searchsploit(term: str):
     """Executa searchsploit para um termo e retorna JSON"""
     searchsploit = shutil.which("searchsploit")
@@ -39,7 +38,7 @@ def run(context: dict):
         f"🟪───────────────────────────────────────────────────────────🟪\n"
     )
 
-    outdir = ensure_outdir(target)
+    outdir = ensure_outdir(target, "cve")
     cve_file = outdir / "potential_vulns.json"
     report_file = outdir / "cve_report.txt"
 

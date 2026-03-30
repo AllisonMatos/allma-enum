@@ -60,9 +60,9 @@ def execute_chain(target: str, chain: list, params: dict):
         "21": "jwt_analyzer",
         "22": "crlf_injection",
         "23": "insecure_deserialization",
-        "23": "insecure_deserialization",
         "24": "api_fuzzer",
-        "25": "cloud",
+        "25": "ssrf",
+        "26": "cloud",
         "99": "intelligence",
     }
 
@@ -113,6 +113,8 @@ def execute_chain(target: str, chain: list, params: dict):
         # Limpar saida antiga
         if interactsh_out.exists():
             interactsh_out.unlink()
+        if oast_payload_file.exists():
+            oast_payload_file.unlink()
             
         interactsh_proc = subprocess.Popen(
             [interactsh_bin, "-json", "-o", str(interactsh_out), "-ps", "-psf", str(oast_payload_file)],
@@ -121,20 +123,25 @@ def execute_chain(target: str, chain: list, params: dict):
             text=True
         )
         
-        # Read the payload from the file when it is written (usually takes 1-3 seconds)
+        info(f"   [⏳] Aguardando conexão OAST (máx 45s)...")
         start_wait = time.time()
-        while time.time() - start_wait < 15:
+        while time.time() - start_wait < 45:
             if oast_payload_file.exists():
                 content = oast_payload_file.read_text().strip()
                 if content:
                     oast_url = content
-                    info(f"   [+] Payload OAST Ativo: {C.YELLOW}{oast_url}{C.END}")
+                    success(f"   [+] Payload OAST Ativo: {C.YELLOW}{oast_url}{C.END}")
                     break
             time.sleep(1)
+            elapsed = int(time.time() - start_wait)
+            if elapsed > 0 and elapsed % 15 == 0:
+                print(f"   ... esperando OAST ({elapsed}s)...", end="\r")
         
         if not oast_url:
-            warn("   ⚠️ Não foi possível obter a URL do interactsh a tempo.")
-
+            warn("\n   ⚠️ Interactsh não conectou em 45s. Continuando SEM OAST — testes blind terão cobertura reduzida.")
+            # Não aborta, apenas avisa. O pipeline continua normalmente.
+    else:
+        warn("   ⚠️ 'interactsh-client' não encontrado no path. Testes blind não serão realizados.")
     # ==========================================
     #  TIMING: Inicialização
     # ==========================================
@@ -259,7 +266,7 @@ def execute_chain(target: str, chain: list, params: dict):
         interactsh_proc.terminate()
         try:
             interactsh_proc.wait(timeout=5)
-        except:
+        except subprocess.TimeoutExpired:
             interactsh_proc.kill()
             
         if interactsh_out.exists():

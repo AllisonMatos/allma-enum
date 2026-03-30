@@ -5,8 +5,8 @@ import time
 from urllib.parse import urlparse
 
 from menu import C
+from plugins import ensure_outdir
 from ..output import info, success, warn, error
-from .utils import ensure_outdir
 from .subfinder import run_subfinder
 from .discovery import discover_subdomains
 from .dns_resolver import resolve_and_filter
@@ -86,14 +86,17 @@ async def analyze_url_task(client, url, semaphore):
         # But to be robust against huge JS files, we could wrap in loop.run_in_executor
         
         # === DETECT LOGIN PAGES ===
-        login_keywords = ["login", "signin", "auth", "logon", "sso"]
+        import re as _re
+        login_patterns = [
+            _re.compile(r'\b(login|signin|sign-in|logon|sso)\b', _re.I),
+        ]
         url_lower = final_url.lower()
         content_lower = content[:3000].lower()
         
         is_login = False
-        for kw in login_keywords:
-            if kw in url_lower or (
-                kw in content_lower and 
+        for pat in login_patterns:
+            if pat.search(url_lower) or (
+                pat.search(content_lower) and 
                 ("password" in content_lower or "senha" in content_lower)
             ):
                 is_login = True
@@ -177,7 +180,7 @@ def run(context):
         f"   Modo de portas: {C.YELLOW}{ports_mode}{C.END}\n"
     )
 
-    outdir = ensure_outdir(target)
+    outdir = ensure_outdir(target, "domain")
 
     subs_file = outdir / "subdomains.txt"
     ports_raw = outdir / "ports_raw.txt"

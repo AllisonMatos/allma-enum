@@ -2,6 +2,7 @@
 import sys
 
 from menu import C
+from plugins import ensure_outdir
 from .data import DOCS
 
 try:

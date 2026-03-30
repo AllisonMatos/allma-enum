@@ -12,6 +12,7 @@ from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from menu import C
+from plugins import ensure_outdir
 from ..output import info, success, warn, error
 from ..http_utils import format_raw_request, format_raw_response
 
@@ -30,12 +31,6 @@ WEAK_SECRETS = [
 ]
 
 JWT_REGEX = re.compile(r'eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]*')
-
-def ensure_outdir(target):
-    outdir = Path("output") / target / "jwt_analyzer"
-    outdir.mkdir(parents=True, exist_ok=True)
-    return outdir
-
 
 def b64_decode_jwt(segment):
     """Decode a JWT base64url segment"""
@@ -95,9 +90,25 @@ def collect_jwts(target):
     base = Path("output") / target
     jwts = {}  # token -> source
     
-    # 1) Buscar em arquivos de output
+    # 1) Buscar no json de chaves estruturadas para preservar a URL de origem
+    keys_file = base / "domain" / "extracted_keys.json"
+    if keys_file.exists():
+        try:
+            keys_data = json.loads(keys_file.read_text(errors="ignore"))
+            for k in keys_data:
+                match_val = k.get("full_match", k.get("match", ""))
+                if "eyJ" in match_val:
+                    for m in JWT_REGEX.finditer(match_val):
+                        src = k.get("source", {})
+                        if isinstance(src, dict) and src.get("url"):
+                            jwts[m.group()] = src.get("url")
+                        else:
+                            jwts[m.group()] = f"file: {keys_file.name}"
+        except Exception:
+            pass
+
+    # 1.5) Outros jsons/txts
     search_files = [
-        base / "domain" / "extracted_keys.json",
         base / "domain" / "extracted_js.json",
         base / "domain" / "extracted_routes.json",
     ]
@@ -107,7 +118,8 @@ def collect_jwts(target):
             try:
                 content = sf.read_text(errors="ignore")
                 for match in JWT_REGEX.finditer(content):
-                    jwts[match.group()] = f"file: {sf.name}"
+                    if match.group() not in jwts:
+                        jwts[match.group()] = f"file: {sf.name}"
             except Exception:
                 pass
     
@@ -250,7 +262,7 @@ def run(context: dict):
         f"🟪───────────────────────────────────────────────────────────🟪\n"
     )
 
-    outdir = ensure_outdir(target)
+    outdir = ensure_outdir(target, "jwt_analyzer")
     results_file = outdir / "jwt_results.json"
     
     # Coletar JWTs
@@ -259,7 +271,7 @@ def run(context: dict):
     
     if not jwts:
         info("Nenhum JWT encontrado nos outputs")
-        json.dump([], open(results_file, "w"))
+        results_file.write_text("[]")
         return [str(results_file)]
     
     info(f"   📊 {len(jwts)} JWTs encontrados")

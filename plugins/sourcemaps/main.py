@@ -16,6 +16,7 @@ from typing import List, Dict, Any, Tuple
 from urllib.parse import urlparse, urljoin
 
 from menu import C
+from plugins import ensure_outdir
 from ..output import info, warn, success, error
 
 CONFIG = {

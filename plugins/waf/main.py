@@ -8,6 +8,7 @@ from urllib.parse import urlparse
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from menu import C
+from plugins import ensure_outdir
 from ..output import info, success, warn, error
 
 # ============================================================
@@ -117,12 +118,6 @@ WAF_FINGERPRINTS = {
 }
 
 
-def ensure_outdir(target: str) -> Path:
-    outdir = Path("output") / target / "waf"
-    outdir.mkdir(parents=True, exist_ok=True)
-    return outdir
-
-
 def detect_waf(url: str) -> dict | None:
     """Detecta WAF em uma URL."""
     import httpx
@@ -206,7 +201,7 @@ def run(context: dict):
         f"🟪───────────────────────────────────────────────────────────🟪\n"
     )
 
-    outdir = ensure_outdir(target)
+    outdir = ensure_outdir(target, "waf")
 
     urls_file = Path("output") / target / "domain" / "urls_valid.txt"
     if not urls_file.exists():

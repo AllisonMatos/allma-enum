@@ -10,6 +10,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from urllib.parse import urlparse
 
 from menu import C
+from plugins import ensure_outdir
 from ..output import info, success, warn, error
 from ..http_utils import format_raw_request, format_raw_response
 
@@ -28,12 +29,6 @@ CACHE_HEADERS = [
     "x-cache", "cf-cache-status", "x-varnish", "age",
     "x-fastly-request-id", "x-served-by", "x-cache-hits",
 ]
-
-
-def ensure_outdir(target):
-    outdir = Path("output") / target / "scanners"
-    outdir.mkdir(parents=True, exist_ok=True)
-    return outdir
 
 
 def test_cache_deception(client, url):
@@ -70,32 +65,33 @@ def test_cache_deception(client, url):
                 
                 # Verificar se o conteúdo dinâmico foi cacheado
                 # (o conteúdo da URL com extensão é similar ao original)
+                similarity = 0
                 if has_cache and len(body_test) > 100:
-                    # Calcular similaridade simples
-                    similarity = 0
+                    import difflib
                     if len(body_orig) > 0:
-                        # Usar ratio de tamanho + buscar conteúdo específico
+                        matcher = difflib.SequenceMatcher(None, body_orig[:10000], body_test[:10000])
+                        ratio = matcher.ratio()
                         size_ratio = min(len(body_test), len(body_orig)) / max(len(body_test), len(body_orig))
-                        if size_ratio > 0.7:
-                            similarity = size_ratio
-                    
-                    if similarity > 0.7:
-                        raw_req = format_raw_request("GET", test_url, dict(resp_test.request.headers))
-                        raw_res = format_raw_response(resp_test.status_code, dict(resp_test.headers), body_test[:2000])
-                        findings.append({
-                            "url": url,
-                            "test_url": test_url,
-                            "type": "CACHE_DECEPTION",
-                            "extension": ext,
-                            "risk": "HIGH",
-                            "status": resp_test.status_code,
-                            "cache_headers": cache_info,
-                            "similarity": f"{similarity:.0%}",
-                            "details": f"Conteúdo dinâmico cacheado com extensão '{ext}' ({cache_info.strip()})",
-                            "request_raw": raw_req,
-                            "response_raw": raw_res,
-                        })
-                        break  # Um finding por URL é suficiente
+                        if ratio > 0.90 and size_ratio > 0.8:
+                            similarity = ratio
+                
+                if similarity > 0.7:
+                    raw_req = format_raw_request("GET", test_url, dict(resp_test.request.headers))
+                    raw_res = format_raw_response(resp_test.status_code, dict(resp_test.headers), body_test[:2000])
+                    findings.append({
+                        "url": url,
+                        "test_url": test_url,
+                        "type": "CACHE_DECEPTION",
+                        "extension": ext,
+                        "risk": "HIGH",
+                        "status": resp_test.status_code,
+                        "cache_headers": cache_info,
+                        "similarity": f"{similarity:.0%}",
+                        "details": f"Conteúdo dinâmico cacheado com extensão '{ext}' ({cache_info.strip()})",
+                        "request_raw": raw_req,
+                        "response_raw": raw_res,
+                    })
+                    break  # Um finding por URL é suficiente
             except Exception:
                 continue
                 
@@ -121,7 +117,7 @@ def run(context: dict):
         f"🟦───────────────────────────────────────────────────────────🟦\n"
     )
 
-    outdir = ensure_outdir(target)
+    outdir = ensure_outdir(target, "cache_deception")
     results_file = outdir / "cache_deception.json"
     
     # Carregar URLs
@@ -147,7 +143,7 @@ def run(context: dict):
     
     if not testable:
         info("Nenhuma URL dinâmica encontrada para testar")
-        json.dump([], open(results_file, "w"))
+        results_file.write_text("[]")
         return [str(results_file)]
     
     info(f"   📊 Testando {len(testable)} URLs dinâmicas")

@@ -12,6 +12,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from urllib.parse import urlparse
 
 from menu import C
+from plugins import ensure_outdir
 from ..output import info, success, warn, error
 from ..http_utils import format_raw_request, format_raw_response
 
@@ -60,12 +61,6 @@ SERIALIZATION_PATTERNS = {
         "desc": "Possível objeto Java serializado em base64",
     },
 }
-
-
-def ensure_outdir(target):
-    outdir = Path("output") / target / "insecure_deserialization"
-    outdir.mkdir(parents=True, exist_ok=True)
-    return outdir
 
 
 def check_value_for_serialization(value, source_type, source_name):
@@ -219,7 +214,7 @@ def run(context: dict):
         f"🟧───────────────────────────────────────────────────────────🟧\n"
     )
 
-    outdir = ensure_outdir(target)
+    outdir = ensure_outdir(target, "insecure_deserialization")
     results_file = outdir / "deser_results.json"
     
     urls_file = Path("output") / target / "urls" / "urls_200.txt"
@@ -234,7 +229,7 @@ def run(context: dict):
     
     if not all_urls:
         info("Nenhuma URL encontrada")
-        json.dump([], open(results_file, "w"))
+        results_file.write_text("[]")
         return [str(results_file)]
     
     info(f"   📊 Verificando {len(all_urls)} URLs para objetos serializados")

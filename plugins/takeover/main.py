@@ -9,6 +9,7 @@ from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from menu import C
+from plugins import ensure_outdir
 from ..output import info, success, warn, error
 
 # ============================================================
@@ -58,12 +59,6 @@ TAKEOVER_FINGERPRINTS = [
 ]
 
 
-def ensure_outdir(target: str) -> Path:
-    outdir = Path("output") / target / "takeover"
-    outdir.mkdir(parents=True, exist_ok=True)
-    return outdir
-
-
 def resolve_cname(subdomain: str) -> str | None:
     """Resolve CNAME de um subdomínio."""
     try:
@@ -80,7 +75,7 @@ def check_nxdomain(subdomain: str) -> bool:
     try:
         dns.resolver.resolve(subdomain, "A")
         return False
-    except dns.resolver.NXDOMAIN:
+    except (dns.resolver.NXDOMAIN, dns.resolver.NoAnswer):
         return True
     except Exception:
         return False
@@ -224,7 +219,7 @@ def run(context: dict):
         f"🟥───────────────────────────────────────────────────────────🟥\n"
     )
 
-    outdir = ensure_outdir(target)
+    outdir = ensure_outdir(target, "takeover")
 
     # Ler subdomínios
     subs_file = Path("output") / target / "domain" / "subdomains.txt"

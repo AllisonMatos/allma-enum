@@ -16,9 +16,8 @@ import time
 import asyncio
 
 from menu import C
+from plugins import ensure_outdir
 from ..output import info, warn, success, error
-from .utils import ensure_outdir
-
 CONCURRENCY_LIMIT = 10
 DELAY = 0.5
 
@@ -158,7 +157,7 @@ def run(context: dict):
         f"🟪───────────────────────────────────────────────────────────🟪\n"
     )
 
-    outdir = ensure_outdir(target)
+    outdir = ensure_outdir(target, "fingerprint")
     headers_file = outdir / "headers.txt"
     summary_file = outdir / "fingerprint_summary.txt"
     cert_file = outdir / "cert_info.txt"

@@ -8,6 +8,7 @@ from pathlib import Path
 from collections import defaultdict
 
 from menu import C
+from plugins import ensure_outdir
 from ..output import info, success, warn, error
 
 # Regex robusto para emails
@@ -30,12 +31,6 @@ IGNORE_EMAILS = {
     "your@email.com", "user@example.com", "email@example.com",
     "name@example.com", "test@test.com", "noreply@example.com",
 }
-
-
-def ensure_outdir(target: str) -> Path:
-    outdir = Path("output") / target / "emails"
-    outdir.mkdir(parents=True, exist_ok=True)
-    return outdir
 
 
 def is_valid_email(email: str) -> bool:
@@ -114,7 +109,7 @@ def run(context: dict):
         f"🟩───────────────────────────────────────────────────────────🟩\n"
     )
 
-    outdir = ensure_outdir(target)
+    outdir = ensure_outdir(target, "emails")
     base = Path("output") / target
 
     all_emails = set()

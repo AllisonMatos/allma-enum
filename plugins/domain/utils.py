@@ -3,15 +3,6 @@ import shutil
 import os
 
 
-def ensure_outdir(target: str) -> Path:
-    """
-    Cria o diretório output/<target>/domain
-    """
-    outdir = Path("output") / target / "domain"
-    outdir.mkdir(parents=True, exist_ok=True)
-    return outdir
-
-
 def require_binary(name: str) -> str:
     """
     Verifica se o binário existe no sistema.

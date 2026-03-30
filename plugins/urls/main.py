@@ -13,10 +13,10 @@ from pathlib import Path
 import subprocess
 
 from menu import C
+from plugins import ensure_outdir
 
 from ..output import info, success, warn, error
-from .utils import ensure_outdir, require_binary
-
+from .utils import require_binary
 WANT_STATUS = "200,301,302,307,308,401,403,404,405,500"
 
 
@@ -95,40 +95,56 @@ def httpx_validate(in_file: Path, out_file: Path, want_status: str = WANT_STATUS
 
 
 # ============================================================
-# Coleta Histórica (gau / waybackurls)
+# Coleta Histórica (gauplus / gau / waybackurls / waymore)
 # ============================================================
 def run_historical_discovery(target: str, out_file: Path):
     """
-    Executa gau ou waybackurls para encontrar URLs históricas.
+    Executa gauplus/gau/waybackurls e complementa com waymore se disponível.
     """
     info(f"{C.BOLD}{C.BLUE}🕰️ Iniciando descoberta de URLs históricas...{C.END}")
     
+    gauplus = shutil.which("gauplus")
     gau = shutil.which("gau")
     waybackurls = shutil.which("waybackurls")
-    tool = gau or waybackurls
+    tool = gauplus or gau or waybackurls
     
     if not tool:
-        warn("⚠️ Nem 'gau' nem 'waybackurls' encontrados. Pulando histórico.")
-        return []
+        warn("⚠️ Nenhuma ferramenta base (gauplus/gau/waybackurls) encontrada. Tentando apenas waymore se existir.")
+    else:
+        tool_name = Path(tool).name
+        info(f"   🛠️ Usando ferramenta: {C.YELLOW}{tool_name}{C.END}")
         
-    tool_name = Path(tool).name
-    info(f"   🛠️ Usando ferramenta: {C.YELLOW}{tool_name}{C.END}")
-    
-    cmd = [tool, target]
-    if "gau" in tool:
-        cmd.extend(["--threads", "10"])
-        
-    try:
-        with out_file.open("w", encoding="utf-8", errors="ignore") as fout:
-            subprocess.run(cmd, stdout=fout, stderr=subprocess.DEVNULL, timeout=300)
+        cmd = [tool, target]
+        if "gau" in tool_name:
+            cmd.extend(["--threads", "10"])
             
-        if out_file.exists() and out_file.stat().st_size > 0:
-            count = len(out_file.read_text(errors="ignore").splitlines())
-            success(f"📜 {count} URLs históricas salvas em: {C.GREEN}{out_file.name}{C.END}")
-            return [l.strip() for l in out_file.read_text(errors="ignore").splitlines() if l.strip()]
-            
-    except Exception as e:
-        error(f"Erro na coleta histórica: {e}")
+        try:
+            with out_file.open("w", encoding="utf-8", errors="ignore") as fout:
+                subprocess.run(cmd, stdout=fout, stderr=subprocess.DEVNULL, timeout=300)
+        except Exception as e:
+            error(f"Erro na coleta histórica ({tool_name}): {e}")
+
+    # Executar waymore como suplemento se existir
+    waymore = shutil.which("waymore")
+    if waymore:
+        info(f"   🛠️ Coletando extras com: {C.YELLOW}waymore{C.END}")
+        waymore_out = out_file.with_name("waymore_temp.txt")
+        cmd_wm = [waymore, "-i", target, "-mode", "U", "-oU", str(waymore_out)]
+        try:
+            subprocess.run(cmd_wm, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=600)
+            if waymore_out.exists() and waymore_out.stat().st_size > 0:
+                with out_file.open("a", encoding="utf-8", errors="ignore") as fout:
+                    fout.write("\n" + waymore_out.read_text(errors="ignore"))
+                waymore_out.unlink(missing_ok=True)
+        except Exception as e:
+            error(f"Erro no waymore: {e}")
+
+    # Limpar duplicatas e retornar
+    if out_file.exists() and out_file.stat().st_size > 0:
+        urls = sorted(set([l.strip() for l in out_file.read_text(errors="ignore").splitlines() if l.strip()]))
+        out_file.write_text("\n".join(urls) + "\n", encoding="utf-8")
+        success(f"📜 {len(urls)} URLs históricas consolidadas salvas em: {C.GREEN}{out_file.name}{C.END}")
+        return urls
         
     return []
 
@@ -173,6 +189,45 @@ def run_katana_discovery(target: str, out_file: Path):
             
     return []
 
+# ============================================================
+# Coleta Parametrizada (ParamSpider)
+# ============================================================
+def run_paramspider_discovery(target: str, out_file: Path):
+    """Executa ParamSpider para descobrir URLs ricas em parâmetros."""
+    info(f"{C.BOLD}{C.BLUE}🕷️ Iniciando descoberta de parâmetros com ParamSpider...{C.END}")
+    paramspider = shutil.which("paramspider") or shutil.which("ParamSpider")
+    if not paramspider:
+        warn("⚠️ 'paramspider' não encontrado. Pulando descoberta.")
+        return []
+        
+    cmd = [paramspider, "-d", target]
+    
+    try:
+        # A maioria das versões do paramspider redireciona a saída padrão ou possui flag -o
+        # Vamos rodar no dirtório temp e salvar saída bruta
+        with out_file.open("w", encoding="utf-8", errors="ignore") as fout:
+            subprocess.run(cmd, stdout=fout, stderr=subprocess.DEVNULL, timeout=600)
+    except subprocess.TimeoutExpired:
+        warn(f"   [!] ParamSpider atingiu o timeout. Processando o que foi encontrado...")
+    except Exception as e:
+        error(f"Erro inesperado no ParamSpider: {e}")
+        
+    # Verificar caminhos comuns de output do paramspider que podem não ter ido pro stdout
+    results_file = Path("results") / f"{target}.txt"
+    if results_file.exists() and results_file.stat().st_size > 0:
+        with out_file.open("a", encoding="utf-8") as fout:
+            fout.write("\n" + results_file.read_text(errors="ignore"))
+        results_file.unlink(missing_ok=True)
+        
+    if out_file.exists() and out_file.stat().st_size > 0:
+        found = [l.strip() for l in out_file.read_text(errors="ignore").splitlines() if l.strip() and "http" in l]
+        # Rewrite limpo
+        out_file.write_text("\n".join(found))
+        success(f"   🕷️  {len(found)} URLs com parâmetros recuperadas.")
+        return found
+            
+    return []
+
 
 # ============================================================
 # MAIN
@@ -193,7 +248,7 @@ def run(context: dict):
         f"🟪───────────────────────────────────────────────────────────🟪\n"
     )
 
-    outdir = ensure_outdir(target)
+    outdir = ensure_outdir(target, "urls")
     url_completas = outdir / "url_completas.txt"
     urls_200 = outdir / "urls_200.txt"
 
@@ -407,6 +462,9 @@ def run(context: dict):
     katana_file = outdir / "katana_urls_raw.txt"
     run_katana_discovery(target, katana_file)
     
+    paramspider_file = outdir / "paramspider_urls_raw.txt"
+    run_paramspider_discovery(target, paramspider_file)
+    
     # Merge files
     all_raw_urls = []
     
@@ -418,6 +476,9 @@ def run(context: dict):
          
     if katana_file.exists():
          all_raw_urls.extend(katana_file.read_text(errors="ignore").splitlines())
+
+    if paramspider_file.exists():
+         all_raw_urls.extend(paramspider_file.read_text(errors="ignore").splitlines())
 
     if not all_raw_urls:
          warn("⚠️ Nenhuma URL encontrada (urlfinder + histórico).")
@@ -432,7 +493,7 @@ def run(context: dict):
     info(f"{C.BOLD}{C.BLUE}🧹 Deduplicando URLs encontradas...{C.END}")
 
     lines = [
-        l.strip()
+        l.strip().rstrip("/")
         for l in url_completas.read_text(errors="ignore").splitlines()
         if l.strip()
     ]
@@ -448,6 +509,65 @@ def run(context: dict):
     info(f"{C.BOLD}{C.BLUE}🔍 Validando URLs com HTTPX...{C.END}")
 
     valid_urls = httpx_validate(url_completas, urls_200)
+
+    # ============================================================
+    # ETAPA 5 — GF Patterns & Qsreplace Routing
+    # ============================================================
+    info(f"{C.BOLD}{C.BLUE}🔀 Roteando parâmetros vulneráveis (gf & qsreplace)...{C.END}")
+    
+    gf = shutil.which("gf")
+    qsreplace = shutil.which("qsreplace")
+    
+    if gf and qsreplace:
+        gf_patterns = ["xss", "ssrf", "sqli", "lfi", "redirect"]
+        gf_dir = outdir / "patterns"
+        gf_dir.mkdir(exist_ok=True)
+        
+        for pattern in gf_patterns:
+            pattern_file = gf_dir / f"{pattern}_urls.txt"
+            
+            # Execute gf com pipe seguro (sem shell=True)
+            try:
+                with open(urls_200, "r") as infile:
+                    proc_gf = subprocess.run(
+                        [gf, pattern], stdin=infile,
+                        capture_output=True, text=True, timeout=120
+                    )
+                if proc_gf.stdout.strip():
+                    pattern_file.write_text(proc_gf.stdout)
+                else:
+                    continue
+            except Exception:
+                continue
+            
+            if pattern_file.exists() and pattern_file.stat().st_size > 0:
+                payload_file = gf_dir / f"{pattern}_ready.txt"
+                
+                if pattern == "xss":
+                    payload = '\\"\\><script>alert(1)</script>'
+                elif pattern == "ssrf":
+                    payload = "http://169.254.169.254/latest/meta-data/"
+                elif pattern in ["sqli", "lfi"]:
+                    payload = "FUZZ"
+                else:
+                    payload = "http://evil.com"
+                    
+                # qsreplace com pipe seguro
+                try:
+                    with open(pattern_file, "r") as infile:
+                        proc_qs = subprocess.run(
+                            [qsreplace, payload], stdin=infile,
+                            capture_output=True, text=True, timeout=120
+                        )
+                    if proc_qs.stdout.strip():
+                        payload_file.write_text(proc_qs.stdout)
+                        count = len(proc_qs.stdout.strip().splitlines())
+                        if count > 0:
+                            success(f"   🎯 {count} URLs criadas para {pattern.upper()} ({payload_file.name})")
+                except Exception:
+                    continue
+    else:
+        warn("⚠️ 'gf' ou 'qsreplace' não encontrados. Pulando roteamento (instale via go install).")
 
     # ============================================================
     # 🎉 FINALIZAÇÃO

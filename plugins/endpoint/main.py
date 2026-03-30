@@ -11,9 +11,8 @@ from urllib.parse import urljoin
 import asyncio
 
 from menu import C
+from plugins import ensure_outdir
 from ..output import info, warn, success, error
-from .utils import ensure_outdir
-
 # === PATTERNS PARA EXTRAÇÃO ===
 PATTERNS = [
     r'["\'](/api/[A-Za-z0-9_\-\/\.?=&%]+)["\']',
@@ -115,7 +114,7 @@ def run(context: dict):
     )
 
     # Criar diretórios
-    outdir = ensure_outdir(target)
+    outdir = ensure_outdir(target, "endpoint")
     endpoints_file = outdir / "endpoints.txt"
     graphql_file = outdir / "graphql.txt"
     raw_file = outdir / "raw_endpoints.json"

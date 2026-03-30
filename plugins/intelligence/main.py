@@ -7,6 +7,7 @@ from collections import defaultdict
 from typing import List, Dict, Any
 
 from menu import C
+from plugins import ensure_outdir
 from ..output import info, warn, success, error
 
 # ====================================================================
@@ -68,6 +69,10 @@ ATTACK_WEIGHTS = {
     "git_exposed": 6,
     "takeover_vulnerable": 7,
     "open_admin_no_auth": 8,
+    "crlf_vulnerable": 5,
+    "cache_deception_vulnerable": 7,
+    "insecure_headers": 2,
+    "deserialization_vulnerable": 8,
 }
 
 # Patterns to detect dev/staging/internal hosts
@@ -156,6 +161,59 @@ KnowledgeBase = {
     "Apache": [
         {"tip": "Teste .htaccess bypass e mod_status", "payload": "GET /server-status\nGET /.htaccess\nGET /server-info", "category": "info_disclosure"},
     ],
+    "Flask": [
+        {"tip": "SSTI (Server-Side Template Injection) via Jinja2", "payload": "{{7*7}}\n{{config.items()}}", "category": "rce"},
+        {"tip": "Session Forging", "payload": "Se a secret_key for vazada, forje o cookie de sessão via flask-unsign", "category": "auth_bypass"},
+    ],
+    "Django": [
+        {"tip": "Django Debug Mode Enabled", "payload": "Forçar um erro 404/500 acesse rota inválida para obter config settings completas", "category": "info_disclosure"},
+        {"tip": "Django Admin URL Discovery", "payload": "GET /admin/\nGET /django-admin/", "category": "admin_panel"},
+    ],
+    "Laravel": [
+        {"tip": "Laravel Debug Mode (Ignition/Whoops)", "payload": "Gere uma exception para expor environment variables (APP_KEY, DB_PASSWORD)", "category": "info_disclosure"},
+        {"tip": "CVE-2021-3129 Ignition RCE", "payload": "Explorar o log file clearing via phar:// deserialization", "category": "rce"},
+    ],
+    "Ruby on Rails": [
+        {"tip": "Secret Token Leak", "payload": "Buscar secret_key_base exposta e testar RCE via Cookie Deserialization (CVE-2015-3226)", "category": "rce"},
+        {"tip": "Rails Mass Assignment", "payload": "Testar parâmetros como user[admin]=1", "category": "privesc"},
+    ],
+    "Express": [
+        {"tip": "Express Body-Parser Pollution", "payload": "Passar arrays `user[]=admin` em vez de strings", "category": "injection"},
+    ],
+    "Next.js": [
+        {"tip": "Next.js Pre-rendering data leak", "payload": "Inspecionar arquivos _next/data/**/*.json em busca de credenciais embutidas do getStaticProps", "category": "info_disclosure"},
+    ],
+    "Vue.js": [
+        {"tip": "SSTI/Vue Template Injection", "payload": "{{_vue.constructor.super.options.template}}", "category": "xss"},
+    ],
+    "Angular": [
+        {"tip": "AngularJS Template Injection", "payload": "{{constructor.constructor('alert(1)')()}}", "category": "xss"},
+    ],
+    "Tomcat": [
+        {"tip": "Tomcat Manager Default Creds", "payload": "GET /manager/html\ntomcat:tomcat\nboth:tomcat", "category": "bruteforce"},
+        {"tip": "RCE via WAR Upload", "payload": "Se autenticado no manager, suba uma webshell em formato .war", "category": "rce"},
+    ],
+    "IIS": [
+        {"tip": "IIS Short Name Enumeration", "payload": "GET /~1****.ext/ - enumere o path para descobrir secrets", "category": "enum"},
+        {"tip": "Execute ASP/ASPX via path confusion", "payload": "test.aspx;.jpg", "category": "rce"},
+    ],
+    "Docker": [
+        {"tip": "Docker API Socket Aberto", "payload": "GET /v1.24/containers/json HTTP/1.1", "category": "rce"},
+        {"tip": "Privilege Escalation em containers", "payload": "Procurar capabilities '--privileged' para realizar escape pro host", "category": "privesc"},
+    ],
+    "Kubernetes": [
+        {"tip": "Kubelet API Aberta", "payload": "GET /pods - Sem autenticação na porta 10250", "category": "rce"},
+        {"tip": "Extração de Service Account Tokens", "payload": "Ler /var/run/secrets/kubernetes.io/serviceaccount/token", "category": "privesc"},
+    ],
+    "Redis": [
+        {"tip": "Redis sem Autenticação", "payload": "redis-cli -h TARGET - port 6379\nCONFIG SET dir /root/.ssh\nCONFIG SET dbfilename authorized_keys", "category": "rce"},
+    ],
+    "Elasticsearch": [
+        {"tip": "Cluster Aberto (sem auth)", "payload": "GET /_cat/indices\nGET /_search\nGET /_cluster/health", "category": "info_disclosure"},
+    ],
+    "MongoDB": [
+        {"tip": "NoSQL Injection via JSON Params", "payload": "POST {\"username\": {\"$ne\": null}, \"password\": {\"$ne\": null}}", "category": "auth_bypass"},
+    ],
 }
 
 
@@ -190,6 +248,10 @@ class IntelligenceEngine:
         self.params_data = self._load_json("domain/katana_params_all.json") or {}
         self.endpoints_data = self._load_json("endpoint/raw_endpoints.json") or []
         self.extracted_routes = self._load_json("domain/extracted_routes.json") or []
+        self.crlf_data = self._load_json("crlf_injection/crlf_results.json") or []
+        self.cache_deception_data = self._load_json("cache_deception/cache_deception_results.json") or []
+        self.headers_data = self._load_json("headers/headers_results.json") or []
+        self.deserialization_data = self._load_json("insecure_deserialization/deserialization_results.json") or []
         
         # Load subdomains
         subs_file = self.base_dir / "domain" / "subdomains.txt"
@@ -333,6 +395,36 @@ class IntelligenceEngine:
                 priority_data[sub]["score"] += ATTACK_WEIGHTS["takeover_vulnerable"]
                 priority_data[sub]["factors"].append(f"Subdomain Takeover CONFIRMED ({tk.get('service')})")
                 priority_data[sub]["tags"].append("TAKEOVER")
+                
+        # CRLF Injection
+        for crlf in self.crlf_data:
+            host = urlparse(crlf.get("url", "")).netloc
+            priority_data[host]["score"] += ATTACK_WEIGHTS["crlf_vulnerable"]
+            priority_data[host]["factors"].append(f"CRLF Injection Susceptible")
+            priority_data[host]["tags"].append("CRLF")
+
+        # Cache Deception
+        for cache in self.cache_deception_data:
+            if cache.get("vulnerable"):
+                host = urlparse(cache.get("url", "")).netloc
+                priority_data[host]["score"] += ATTACK_WEIGHTS["cache_deception_vulnerable"]
+                priority_data[host]["factors"].append(f"Web Cache Deception Vulnerable: {cache.get('url')}")
+                priority_data[host]["tags"].append("CACHE_DECEPTION")
+
+        # Insecure Headers
+        for h in self.headers_data:
+            host = urlparse(h.get("url", "")).netloc
+            if h.get("issues"):
+                priority_data[host]["score"] += ATTACK_WEIGHTS["insecure_headers"]
+                priority_data[host]["factors"].append(f"Missing security headers detected")
+                priority_data[host]["tags"].append("HEADERS")
+
+        # Insecure Deserialization
+        for deser in self.deserialization_data:
+            host = urlparse(deser.get("url", "")).netloc
+            priority_data[host]["score"] += ATTACK_WEIGHTS["deserialization_vulnerable"]
+            priority_data[host]["factors"].append(f"Insecure Deserialization Susceptible: {deser.get('payload_type')}")
+            priority_data[host]["tags"].append("DESERIALIZATION")
         
         # Build final sorted list
         result = []
@@ -378,11 +470,11 @@ class IntelligenceEngine:
         for panel in self.admin_panels:
             if panel.get("status") == 200 and not panel.get("has_login_form"):
                 quick_wins.append({
-                    "type": "Admin Panel sem Autenticação",
-                    "severity": "CRITICAL",
+                    "type": "Admin Panel Aberto (Sem Auth Detectado)",
+                    "severity": "HIGH",
                     "url": panel.get("url", ""),
-                    "detail": f"Painel aberto: {panel.get('title', 'N/A')}",
-                    "action": "Acesse diretamente — sem login necessário!",
+                    "detail": f"Painel exposto: {panel.get('title', 'N/A')}",
+                    "action": "Acesse e verifique se permite operações administrativas sem login.",
                     "icon": "👑"
                 })
         
@@ -400,12 +492,12 @@ class IntelligenceEngine:
         
         # Git exposed
         for panel in self.admin_panels:
-            if "/.git/" in panel.get("path", ""):
+            if "/.git/" in panel.get("path", "") and panel.get("status") == 200:
                 quick_wins.append({
                     "type": "Git Repository Exposto",
                     "severity": "CRITICAL",
                     "url": panel.get("url", ""),
-                    "detail": "Repositório Git acessível publicamente",
+                    "detail": "Repositório Git acessível (200 OK)",
                     "action": "Use git-dumper para extrair código-fonte completo",
                     "icon": "🕰️"
                 })
@@ -443,6 +535,40 @@ class IntelligenceEngine:
                     "action": "Execute introspection query para mapear toda a API",
                     "icon": "🧬"
                 })
+                
+        # CRLF Injection
+        for crlf in self.crlf_data:
+            quick_wins.append({
+                "type": "CRLF Injection (Header Splitting)",
+                "severity": "MEDIUM",
+                "url": crlf.get("url", ""),
+                "detail": f"Injeção bem sucedida: {crlf.get('payload', '')}",
+                "action": "Teste de escalonamento para XSS ou Cache Poisoning",
+                "icon": "🎭"
+            })
+            
+        # Cache Deception
+        for cache in self.cache_deception_data:
+            if cache.get("vulnerable"):
+                quick_wins.append({
+                    "type": "Web Cache Deception",
+                    "severity": "HIGH",
+                    "url": cache.get("url", ""),
+                    "detail": "Resposta dinâmica sendo indexada em cache CDN",
+                    "action": "Verifique vazamento de informações de sessão em navegação real",
+                    "icon": "👻"
+                })
+                
+        # Insecure Deserialization
+        for deser in self.deserialization_data:
+            quick_wins.append({
+                "type": "Insecure Deserialization Potencial",
+                "severity": "CRITICAL",
+                "url": deser.get("url", ""),
+                "detail": f"Anomalia detectada com objeto: {deser.get('payload_type', '')}",
+                "action": "Escalone para Execução de Comandos (RCE) via ysoserial, etc",
+                "icon": "💣"
+            })
         
         # Sort by severity
         severity_order = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3}

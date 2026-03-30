@@ -22,18 +22,28 @@ REQUIRED_TOOLS = [
     "subfinder",
     "katana",
     "gospider",
-    "httpx", # Project discovery httpx
+    "httpx",
     "searchsploit",
     "kr",
     "trufflehog",
     "cloud_enum",
     "interactsh-client",
+    "gf",
+    "qsreplace",
 ]
 
 # Ferramentas opcionais (melhoram cobertura mas não são obrigatórias)
 OPTIONAL_TOOLS = [
+    "crlfuzz",
+    "corsy",
+    "ssrfmap",
+    "gitleaks",
+    "git-dumper",
+    "dalfox",
     "gau",
+    "gauplus",
     "waybackurls",
+    "waymore",
     "haktrails",
     "masscan",
 ]

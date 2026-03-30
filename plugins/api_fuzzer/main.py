@@ -9,13 +9,9 @@ import subprocess
 from pathlib import Path
 
 from menu import C
+from plugins import ensure_outdir
 from ..output import info, success, warn, error
 from ..http_utils import check_tool_installed
-
-def ensure_outdir(target):
-    outdir = Path("output") / target / "api_fuzzer"
-    outdir.mkdir(parents=True, exist_ok=True)
-    return outdir
 
 def run(context: dict):
     target = context.get("target")
@@ -32,11 +28,11 @@ def run(context: dict):
     if not check_tool_installed("kr"):
         warn("Kiterunner ('kr') não está instalado ou configurado no PATH. Pulando fuzzing de API.")
         # Retorna arquivo vazio
-        out = ensure_outdir(target)
+        out = ensure_outdir(target, "api_fuzzer")
         Path(out / "kiterunner_results.json").write_text("[]")
         return [str(out / "kiterunner_results.json")]
 
-    outdir = ensure_outdir(target)
+    outdir = ensure_outdir(target, "api_fuzzer")
     results_file = outdir / "kiterunner_results.json"
 
     # Procurar URLs/Hosts para testar
@@ -107,7 +103,7 @@ def run(context: dict):
                          "words": d.get("Words"),
                          "lines": d.get("Lines")
                      })
-                 except: pass
+                 except Exception: pass
                  
         except subprocess.TimeoutExpired:
              warn(f"   [!] Timeout ao fuzzer (Kiterunner limite de 90s atingido)")

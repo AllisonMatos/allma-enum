@@ -8,6 +8,7 @@ from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from menu import C
+from plugins import ensure_outdir
 from ..output import info, success, warn, error
 from ..http_utils import format_http_request, format_http_response
 
@@ -18,12 +19,6 @@ EVIL_ORIGINS = [
     "https://attacker.com",
     "null",
 ]
-
-
-def ensure_outdir(target: str) -> Path:
-    outdir = Path("output") / target / "cors"
-    outdir.mkdir(parents=True, exist_ok=True)
-    return outdir
 
 
 def check_cors(url: str, target: str) -> dict | None:
@@ -128,6 +123,31 @@ def check_cors(url: str, target: str) -> dict | None:
                 except Exception:
                     pass
 
+            # 4) Preflight OPTIONS — testar métodos perigosos permitidos
+            for origin in EVIL_ORIGINS[:1]:  # Apenas o primeiro origin para reduzir requests
+                try:
+                    resp = client.options(url, headers={
+                        "Origin": origin,
+                        "Access-Control-Request-Method": "PUT",
+                        "Access-Control-Request-Headers": "X-Custom-Header",
+                        "User-Agent": "Mozilla/5.0"
+                    })
+                    acam = resp.headers.get("access-control-allow-methods", "")
+                    acao = resp.headers.get("access-control-allow-origin", "")
+                    if acam and any(m in acam.upper() for m in ["PUT", "DELETE", "PATCH"]):
+                        results.append({
+                            "url": url,
+                            "tested_origin": origin,
+                            "acao": acao,
+                            "credentials": resp.headers.get("access-control-allow-credentials", "").lower() == "true",
+                            "severity": "high",
+                            "issue": f"Dangerous methods allowed via preflight: {acam}",
+                            "response_raw": format_http_response(resp),
+                            "request_raw": format_http_request(resp.request)
+                        })
+                except Exception:
+                    pass
+
     except Exception:
         pass
 
@@ -147,7 +167,7 @@ def run(context: dict):
         f"🟧───────────────────────────────────────────────────────────🟧\n"
     )
 
-    outdir = ensure_outdir(target)
+    outdir = ensure_outdir(target, "cors")
 
     # Ler URLs válidas
     urls_file = Path("output") / target / "domain" / "urls_valid.txt"
@@ -169,8 +189,32 @@ def run(context: dict):
             unique_urls.append(base)
 
     info(f"   📋 Testando CORS em {len(unique_urls)} hosts únicos...")
+    
+    # ---------------------------------------------------------
+    # Execução do Corsy (Especialista em Misconfigurations)
+    # ---------------------------------------------------------
+    import shutil
+    import subprocess
+    corsy = shutil.which("corsy")
+    if corsy:
+        info(f"   [i] Executando {C.BOLD}Corsy{C.END} em background para edge-cases complexos...")
+        corsy_out = outdir / "corsy_output.txt"
+        
+        # Cria arquivo temp com hosts unicos para o corsy
+        temp_hosts = outdir / "corsy_targets.txt"
+        temp_hosts.write_text("\n".join(unique_urls))
+        
+        cmd = f"{corsy} -i {temp_hosts} > {corsy_out}"
+        subprocess.run(cmd, shell=True, stderr=subprocess.DEVNULL)
+        
+        if corsy_out.exists() and corsy_out.stat().st_size > 0:
+            success(f"   🚨 Corsy finalizado! Log salvo em: {corsy_out}")
+            
+        temp_hosts.unlink(missing_ok=True)
+    else:
+        warn("   [!] 'corsy' não encontrado. Rodando apenas testes Python Nativos.")
 
-    # Executar em paralelo
+    # Executar em paralelo (Engine Nativa para JSON)
     all_findings = []
 
     with ThreadPoolExecutor(max_workers=15) as executor:

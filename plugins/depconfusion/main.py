@@ -8,6 +8,7 @@ from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from menu import C
+from plugins import ensure_outdir
 from ..output import info, success, warn, error
 
 # Módulos built-in do Node.js (não devem ser verificados no npm)
@@ -54,12 +55,6 @@ IMPORT_PATTERNS = [
 ]
 
 
-def ensure_outdir(target: str) -> Path:
-    outdir = Path("output") / target / "depconfusion"
-    outdir.mkdir(parents=True, exist_ok=True)
-    return outdir
-
-
 def extract_packages_from_content(content: str, source: str) -> list:
     """Extrai nomes de pacotes de conteúdo JavaScript."""
     packages = []
@@ -68,6 +63,14 @@ def extract_packages_from_content(content: str, source: str) -> list:
     for pattern in IMPORT_PATTERNS:
         for match in pattern.finditer(content):
             pkg_name = match.group(1)
+
+            # Ignorar aliases de bundlers e paths absolutos
+            if pkg_name.startswith("@/") or pkg_name.startswith("~/") or pkg_name.startswith("/"):
+                continue
+            
+            # Ignorar arquivos locais com extensões (mesmo que importados globalmente)
+            if pkg_name.endswith((".js", ".ts", ".jsx", ".tsx", ".vue", ".json", ".css", ".scss", ".less")):
+                continue
 
             # Normalizar: pegar apenas o pacote (não subpaths)
             # @scope/name/subpath → @scope/name
@@ -163,7 +166,7 @@ def run(context: dict):
         f"🟨───────────────────────────────────────────────────────────🟨\n"
     )
 
-    outdir = ensure_outdir(target)
+    outdir = ensure_outdir(target, "depconfusion")
 
     # Fontes de JS
     # 1. extracted_js.json (URLs de JS encontrados)

@@ -1,13 +1,7 @@
 import os
 import re
 from datetime import datetime
-
-class Color:
-    BLUE = "\033[94m"
-    GREEN = "\033[92m"
-    YELLOW = "\033[93m"
-    RED = "\033[91m"
-    END = "\033[0m"
+from core.colors import C as Color
 
 ANSI_ESCAPE = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
 

@@ -8,6 +8,7 @@ from urllib.parse import urlparse
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from menu import C
+from plugins import ensure_outdir
 from ..output import info, success, warn, error
 from ..http_utils import format_http_request, format_http_response
 
@@ -58,12 +59,6 @@ SECURITY_HEADERS = {
         "weight": 5,
     },
 }
-
-
-def ensure_outdir(target: str) -> Path:
-    outdir = Path("output") / target / "headers"
-    outdir.mkdir(parents=True, exist_ok=True)
-    return outdir
 
 
 def calculate_grade(score: int) -> str:
@@ -163,7 +158,7 @@ def run(context: dict):
         f"🟦───────────────────────────────────────────────────────────🟦\n"
     )
 
-    outdir = ensure_outdir(target)
+    outdir = ensure_outdir(target, "headers")
 
     urls_file = Path("output") / target / "domain" / "urls_valid.txt"
     if not urls_file.exists():

@@ -257,6 +257,16 @@ def index():
     return render_template("index.html", targets=targets)
 
 
+@app.route("/api/targets")
+def get_targets():
+    """Return JSON list of all imported targets."""
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("SELECT target FROM report_meta ORDER BY target ASC")
+    targets = [row["target"] for row in cur.fetchall()]
+    return jsonify(targets)
+
+
 @app.route("/report/<target>")
 def view_report(target):
     """Serve the report shell for a target (dashboard + empty sections)."""

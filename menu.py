@@ -2,27 +2,7 @@
 import sys
 import time
 from core import runner
-
-
-class C:
-    # Cores
-    BLUE = "\033[94m"
-    CYAN = "\033[96m"
-    GREEN = "\033[92m"
-    YELLOW = "\033[93m"
-    ORANGE = "\033[38;5;214m"
-    RED = "\033[91m"
-    PURPLE = "\033[95m"
-    GRAY = "\033[90m"
-    END = "\033[0m"
-    BOLD = "\033[1m"
-    UNDERLINE = "\033[4m"
-
-    # Fundos
-    BG_BLUE = "\033[44m"
-    BG_GREEN = "\033[42m"
-    BG_RED = "\033[41m"
-    BG_YELLOW = "\033[43m"
+from core.colors import C  # Centralizado em core/colors.py
 
 
 # --------- MÓDULOS ---------
@@ -51,8 +31,9 @@ MODULES = {
     "22": "crlf_injection",
     "23": "insecure_deserialization",
     "24": "api_fuzzer",
-    "25": "cloud",
-    "26": "all",
+    "25": "ssrf",
+    "26": "cloud",
+    "27": "all",
 }
 
 # --------- DEPENDÊNCIAS ---------
@@ -82,8 +63,9 @@ DEPENDENCIES = {
     "22": ["1", "2", "22"],
     "23": ["1", "2", "23"],
     "24": ["1", "2", "7", "24"],
-    "25": ["1", "25"],
-    "26": [str(x) for x in range(1, 26)],
+    "25": ["1", "2", "25"],
+    "26": ["1", "26"],
+    "27": [str(x) for x in range(1, 27)],
 }
 
 
@@ -136,8 +118,9 @@ def print_menu():
         "22": ("crlf_injection", "CRLF Injection Scanner", "💉"),
         "23": ("insecure_deser", "Insecure Deserialization", "🧬"),
         "24": ("api_fuzzer", "API Fuzzer (Kiterunner)", "🪁"),
-        "25": ("cloud", "Cloud Recon (S3/Azure/GCP)", "🌩️"),
-        "26": ("all", "Execução completa", "🚀")
+        "25": ("ssrf", "SSRFmap e OAST", "📡"),
+        "26": ("cloud", "Cloud Recon (S3/Azure/GCP)", "🌩️"),
+        "27": ("all", "Execução completa", "🚀")
     }
 
     for k, (name, desc, emoji) in modules.items():

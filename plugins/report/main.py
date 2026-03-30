@@ -1,3 +1,4 @@
+from plugins import ensure_outdir
 #!/usr/bin/env python3
 """
 Report Generator - SPA Dark Mode
@@ -60,12 +61,6 @@ def find_file(base: Path, *relative_paths) -> Path:
             return full_path
     # Retorna o primeiro path para manter compatibilidade com mensagens de erro
     return base / relative_paths[0] if relative_paths else base
-
-
-def ensure_outdir(target: str) -> Path:
-    outdir = Path("output") / target / "report"
-    outdir.mkdir(parents=True, exist_ok=True)
-    return outdir
 
 
 # ------------------------------------------------------------
@@ -1839,7 +1834,7 @@ def build_urls_content(subdomains: Dict, target: str) -> str:
         return '<div class="empty-state"><p>No URLs found</p></div>'
         
     all_urls = sorted(all_urls, key=lambda x: (x["host"], 0 if x["type"] == "validated" else 1, x["url"]))
-    json_data = json.dumps(all_urls)
+    json_data = json.dumps(all_urls).replace("</", "<\\/")
     
     return f'''
     <div class="card open" style="margin-top:20px;">
@@ -2366,7 +2361,7 @@ def build_forms_content(target: str) -> str:
         ''')
     
     import json
-    json_data = json.dumps(html_parts)
+    json_data = json.dumps(html_parts).replace("</", "<\\/")
     return f'''
     <div id="forms_container"></div>
     <script>
@@ -2436,8 +2431,8 @@ def build_params_content(target: str) -> str:
     normal_list = [{"param": p, "urls": urls} for p, urls in sorted(normal.items())]
     
     import json
-    dang_json = json.dumps(dangerous_list)
-    norm_json = json.dumps(normal_list)
+    dang_json = json.dumps(dangerous_list).replace("</", "<\\/")
+    norm_json = json.dumps(normal_list).replace("</", "<\\/")
     
     if dangerous:
         html_parts.append(f'''
@@ -2844,7 +2839,7 @@ def build_headers_content(target: str) -> str:
             </td>
             <td style="vertical-align:top;">
                 <a href="{html.escape(item.get("url", ""))}" target="_blank" style="font-weight:600; font-size:13px; color:var(--text-primary);">{html.escape(item.get("url", ""))}</a>
-                <div style="font-size:11px; color:var(--text-secondary); margin-top:2px;">Status: {item.get("status")}</div>
+                <div style="font-size:11px; color:var(--text-secondary); margin-top:2px;">Status: <span class="tag tag-medium">{item.get("status")}</span></div>
                 {warnings_html}
             </td>
             <td style="vertical-align:top;">
@@ -2974,7 +2969,7 @@ def build_waf_content(target: str) -> str:
         <tr>
             <td><span class="tag tag-port">{html.escape(item.get("primary_waf", ""))}</span></td>
             <td><a href="{html.escape(item.get("url", ""))}" target="_blank">{html.escape(item.get("url", ""))}</a></td>
-            <td>{item.get("status")}</td>
+            <td><span class="tag tag-medium">{item.get("status", "N/A")}</span></td>
             <td style="font-size:11px; color:var(--text-secondary);">{html.escape(match_str)}{range_str}</td>
         </tr>
         '''
@@ -3698,18 +3693,18 @@ def build_sourcemaps_content(target: str) -> str:
         </div>
         <div class="card-content">
             <div style="padding:15px; background:rgba(137,87,229,0.1); border:1px solid rgba(137,87,229,0.3); border-radius:6px; margin-bottom:15px;">
-                <h4 style="color:var(--accent-purple); margin-bottom:8px; font-size:14px; font-weight:600;">Source Maps Exposure</h4>
+                <h4 style="color:var(--accent-purple); margin-bottom:8px; font-size:14px; font-weight:600;">Exposição de Source Maps</h4>
                 <p style="font-size:13px; color:var(--text-secondary); line-height:1.5;">
-                    <strong>Source Maps (<code>.map</code>)</strong> are files that associate minified/compiled Javascript code back to its original unminified source code. They are typically used for debugging purposes.
+                    <strong>Source Maps (<code>.map</code>)</strong> são arquivos que associam o código Javascript minificado/compilado de volta ao seu código-fonte original não minificado. São usados tipicamente para fins de depuração.
                     <br><br>
-                    <strong>Impact:</strong> When deployed to production, source maps expose the <strong>entire original source code</strong> of your frontend application to anyone. This makes it trivial for attackers to reverse-engineer business logic, find hidden developer comments, API paths, and highly sensitive hardcoded secrets.
+                    <strong>Impacto:</strong> Quando implementados em produção, os source maps expõem <strong>todo o código-fonte original</strong> da sua aplicação frontend a qualquer indivíduo. Isso torna trivial para atacantes aplicar engenharia reversa na lógica de negócios, descobrir comentários ocultos de desenvolvedores, caminhos de APIs e segredos confidenciais hardcoded.
                     <br><br>
-                    <strong>What was found:</strong> The analyzer unpacked the exposed source maps below and ran regex patterns against the original, unminified source code. The <strong>Context</strong> column shows the exact HTTP snippet/source code line from the unpacked map where the secret or unauthenticated endpoint was isolated.
+                    <strong>O que foi encontrado:</strong> O analisador desempacotou os source maps expostos listados abaixo e executou padrões de Regex no código fonte original desminificado. A coluna <strong>Contexto</strong> mostra exatamente o fragmento ou linha de código extraído do source map original onde uma chave/segredo ou endpoint desautenticado foi isolado.
                 </p>
             </div>
             <div class="table-wrapper">
                 <table>
-                    <thead><tr><th>Type</th><th>Source File & Map</th><th>Match</th><th>Context</th></tr></thead>
+                    <thead><tr><th>Tipo</th><th>Arquivo Fonte & Map</th><th>Encontrado</th><th>Contexto</th></tr></thead>
                     <tbody>{rows}</tbody>
                 </table>
             </div>
@@ -3911,7 +3906,7 @@ def run(context: Dict[str, Any]) -> List[str]:
     
     info("Generating report (SPA Dark Mode)...")
     
-    outdir = ensure_outdir(target)
+    outdir = ensure_outdir(target, "report")
     html_file = outdir / "report.html"
     
     # Calculate statistics

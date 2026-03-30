@@ -3,15 +3,7 @@ import time
 import os
 import sys
 
-# Cores para o terminal
-class C:
-    BLUE = "\033[94m"
-    CYAN = "\033[96m"
-    GREEN = "\033[92m"
-    YELLOW = "\033[93m"
-    RED = "\033[91m"
-    BOLD = "\033[1m"
-    END = "\033[0m"
+from core.colors import C  # Centralizado em core/colors.py
 
 def get_net_io():
     """Lê bytes de RX/TX do /proc/net/dev"""
