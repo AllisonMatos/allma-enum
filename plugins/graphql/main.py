@@ -43,13 +43,28 @@ def test_endpoint(client, url):
         "User-Agent": DEFAULT_USER_AGENT,
     }
     
+    import urllib.parse
+    
     # 1) Introspection
     try:
+        # Tenta POST primeiro
         resp = client.post(url, content=INTROSPECTION_QUERY, headers=headers, timeout=15)
         body = resp.text
+        method_used = "POST"
         
+        # Fallback para GET se POST falhar em detectar
+        if resp.status_code in (405, 403, 400, 401) or "__schema" not in body:
+            req_url = f"{url}?query={urllib.parse.quote('{ __schema { types { name fields { name } } } }')}"
+            resp = client.get(req_url, headers={"User-Agent": DEFAULT_USER_AGENT}, timeout=15)
+            body = resp.text
+            method_used = "GET"
+
         if resp.status_code == 200 and "__schema" in body:
-            raw_req = format_raw_request("POST", url, dict(resp.request.headers), INTROSPECTION_QUERY)
+            if method_used == "POST":
+                raw_req = format_raw_request("POST", url, dict(resp.request.headers), INTROSPECTION_QUERY)
+            else:
+                raw_req = format_raw_request("GET", req_url, dict(resp.request.headers))
+                
             raw_res = format_raw_response(resp.status_code, dict(resp.headers), body[:3000])
             
             # Contar types
@@ -67,7 +82,7 @@ def test_endpoint(client, url):
                 "length": len(body),
                 "introspection": True,
                 "types_count": types_count,
-                "details": f"Introspection habilitada — {types_count} types expostos",
+                "details": f"Introspection habilitada via {method_used} — {types_count} types expostos",
                 "request_raw": raw_req,
                 "response_raw": raw_res,
             })
@@ -75,6 +90,7 @@ def test_endpoint(client, url):
         pass
     
     # 2) Batch Queries (DoS potential)
+    # Batch Queries geralmente funcionam apenas no POST em formato JSON List
     try:
         resp = client.post(url, content=BATCH_QUERY, headers=headers, timeout=15)
         body = resp.text
@@ -103,7 +119,15 @@ def test_endpoint(client, url):
     try:
         resp = client.post(url, content=MUTATIONS_QUERY, headers=headers, timeout=15)
         body = resp.text
+        method_used = "POST"
         
+        # Mutações no geral dependem de POST, mas testamos GET também caso o dev tenha feito algo aberrante
+        if resp.status_code in (405, 403, 400) or "mutationType" not in body:
+            req_url = f"{url}?query={urllib.parse.quote('{ __schema { mutationType { fields { name args { name type { name } } } } } }')}"
+            resp = client.get(req_url, headers={"User-Agent": DEFAULT_USER_AGENT}, timeout=15)
+            body = resp.text
+            method_used = "GET"
+            
         if resp.status_code == 200 and "mutationType" in body:
             try:
                 data = resp.json()
@@ -117,7 +141,11 @@ def test_endpoint(client, url):
                     ]
                     if dangerous_mutations:
                         names = [m["name"] for m in dangerous_mutations[:10]]
-                        raw_req = format_raw_request("POST", url, dict(resp.request.headers), MUTATIONS_QUERY)
+                        if method_used == "POST":
+                            raw_req = format_raw_request("POST", url, dict(resp.request.headers), MUTATIONS_QUERY)
+                        else:
+                            raw_req = format_raw_request("GET", req_url, dict(resp.request.headers))
+                            
                         raw_res = format_raw_response(resp.status_code, dict(resp.headers), body[:3000])
                         findings.append({
                             "url": url,
@@ -125,7 +153,7 @@ def test_endpoint(client, url):
                             "risk": "HIGH",
                             "status": resp.status_code,
                             "mutations": names,
-                            "details": f"Mutations perigosas expostas: {', '.join(names)}",
+                            "details": f"Mutations perigosas expostas via {method_used}: {', '.join(names)}",
                             "request_raw": raw_req,
                             "response_raw": raw_res,
                         })
@@ -138,16 +166,27 @@ def test_endpoint(client, url):
     try:
         resp = client.post(url, content=SUGGESTIONS_QUERY, headers=headers, timeout=10)
         body = resp.text
+        method_used = "POST"
         
+        if "Did you mean" not in body and "suggestions" not in body.lower():
+            req_url = f"{url}?query={urllib.parse.quote('{ __typ }')}"
+            resp = client.get(req_url, headers={"User-Agent": DEFAULT_USER_AGENT}, timeout=10)
+            body = resp.text
+            method_used = "GET"
+            
         if "Did you mean" in body or "suggestions" in body.lower():
-            raw_req = format_raw_request("POST", url, dict(resp.request.headers), SUGGESTIONS_QUERY)
+            if method_used == "POST":
+                raw_req = format_raw_request("POST", url, dict(resp.request.headers), SUGGESTIONS_QUERY)
+            else:
+                raw_req = format_raw_request("GET", req_url, dict(resp.request.headers))
+                
             raw_res = format_raw_response(resp.status_code, dict(resp.headers), body[:2000])
             findings.append({
                 "url": url,
                 "type": "FIELD_SUGGESTIONS_ENABLED",
                 "risk": "LOW",
                 "status": resp.status_code,
-                "details": "Field suggestions habilitadas — permite enumeração de campos",
+                "details": f"Field suggestions habilitadas via {method_used} — permite enumeração de campos",
                 "request_raw": raw_req,
                 "response_raw": raw_res,
             })
