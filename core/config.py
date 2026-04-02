@@ -20,6 +20,7 @@ DEFAULT_USER_AGENT = (
 # Default: 0.6s (mais stealth conforme V10). Use 0.0 para velocidade máxima, 1.0+ para WAFs agressivos.
 # Pode ser sobrescrito pelo prompt do menu na hora da execução.
 REQUEST_DELAY = 0.6
+DEFAULT_DELAY = 0.6
 
 # Limites de URLs por scan
 MAX_URLS_PER_SCAN = 150

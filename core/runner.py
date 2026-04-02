@@ -198,7 +198,7 @@ def execute_chain(target: str, chain: list, params: dict, deep: bool = False, st
             # ⏱️ TIMESTAMP: Início do plugin
             plugin_start = time.time()
             
-            module.run(plugin_context)
+            result = module.run(plugin_context)
             
             # ⏱️ TIMESTAMP: Fim do plugin
             plugin_end = time.time()
@@ -225,8 +225,21 @@ def execute_chain(target: str, chain: list, params: dict, deep: bool = False, st
             continue
 
     # ==========================================
-    #  INTELLIGENCE & REPORT — RODA POR ÚLTIMO
+    #  ENRICHMENT & INTELLIGENCE
     # ==========================================
+    # Coletar todos os resultados JSON de todos os plugins para enriquecimento
+    all_results = {}
+    out_base = Path("output") / target
+    for p_dir in out_base.iterdir():
+        if p_dir.is_dir():
+            res_file = next(p_dir.glob("*_results.json"), None)
+            if res_file:
+                try:
+                    all_results[p_dir.name] = json.loads(res_file.read_text())
+                except: pass
+
+    enrich_report_data(target, all_results)
+
     info("[i] Executando Intelligence Engine...")
     
     intel_step_id = "99"
@@ -314,6 +327,45 @@ def execute_chain(target: str, chain: list, params: dict, deep: bool = False, st
     _save_timing_report(target, plugin_timings, total_duration)
     
     info("[✔] Pipeline completo.")
+
+import json
+def enrich_report_data(target: str, results: dict):
+    """
+    Junta dados brutos (Raw HTTP), interações OAST e timings para o report final.
+    Garante que o modal 'Burp' tenha dados populados.
+    """
+    out_dir = Path("output") / target
+    enriched_file = out_dir / "enriched_data.json"
+    
+    # Carregar OAST
+    oast_data = []
+    oast_file = out_dir / "intelligence" / "oast_interactions.json"
+    if oast_file.exists():
+        try:
+            oast_data = json.loads(oast_file.read_text())
+        except: pass
+
+    data = {
+        "target": target,
+        "timestamp": datetime.now().isoformat(),
+        "findings_with_raw": [],
+        "oast": oast_data,
+        "summary": {
+            "total_plugins": len(results),
+            "total_findings": sum(len(v) if isinstance(v, list) else 1 for v in results.values())
+        }
+    }
+
+    # Extrair achados que possuem request_raw ou response_raw
+    for plugin, findings in results.items():
+        if isinstance(findings, list):
+            for f in findings:
+                if isinstance(f, dict) and ("request_raw" in f or "response_raw" in f):
+                    f["plugin"] = plugin
+                    data["findings_with_raw"].append(f)
+
+    enriched_file.write_text(json.dumps(data, indent=2))
+    info(f"   [+] Dados enriquecidos salvos em {enriched_file} ({len(data['findings_with_raw'])} raw findings)")
 
 
 def _save_timing_report(target: str, timings: list, total_duration: float):
