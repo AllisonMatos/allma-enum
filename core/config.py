@@ -17,9 +17,9 @@ DEFAULT_USER_AGENT = (
 )
 
 # Atraso (Delay) em segundos entre as requisições paralelas nos plugins.
-# Default: 0.3s (seguro contra WAFs). Use 0.0 para velocidade máxima, 0.5-1.0 para WAFs agressivos.
+# Default: 0.6s (mais stealth conforme V10). Use 0.0 para velocidade máxima, 1.0+ para WAFs agressivos.
 # Pode ser sobrescrito pelo prompt do menu na hora da execução.
-REQUEST_DELAY = 0.3
+REQUEST_DELAY = 0.6
 
 # Limites de URLs por scan
 MAX_URLS_PER_SCAN = 150

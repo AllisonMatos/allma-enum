@@ -279,6 +279,11 @@ def main():
         if not closed_scope_list:
             print(f"{C.RED}❌ Nenhum subdomínio fornecido. Usando descoberta padrão...{C.END}")
 
+    # Seleção de Modo Deep/Stealth
+    print(f"\n{C.BOLD}{C.CYAN}🎯 OPÇÕES DE PERFORMANCE (V10){C.END}")
+    deep_scan = input(f"{C.BOLD}{C.BLUE}Habilitar --deep (varredura profunda)? [s/N]: {C.END}").strip().lower() in ["s", "sim", "y", "yes"]
+    stealth_mode = input(f"{C.BOLD}{C.BLUE}Habilitar --stealth (mais silencioso/lento)? [s/N]: {C.END}").strip().lower() in ["s", "sim", "y", "yes"]
+
     # chain — "28" é meta-módulo (all), não deve entrar na chain de execução
     chain = list(dict.fromkeys(DEPENDENCIES[choice] + [choice]))
     chain = [c for c in chain if c != "28"]
@@ -303,7 +308,7 @@ def main():
     if confirm in ["", "s", "sim", "y", "yes"]:
         print(f"{C.GREEN}\n🎬 Iniciando...\n{C.END}")
         time.sleep(1)
-        runner.execute_chain(target, chain, params)
+        runner.execute_chain(target, chain, params, deep=deep_scan, stealth=stealth_mode)
         print(f"{C.GREEN}{C.BOLD}✔ Concluído!{C.END}")
     else:
         print(f"{C.YELLOW}Operação cancelada.{C.END}")

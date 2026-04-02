@@ -35,7 +35,7 @@ def format_duration(seconds: float) -> str:
 
 
 # --------- EXECUÇÃO EM CADEIA ---------
-def execute_chain(target: str, chain: list, params: dict):
+def execute_chain(target: str, chain: list, params: dict, deep: bool = False, stealth: bool = False):
     PLUGIN_MAP = {
         "1": "domain",
         "2": "urls",
@@ -189,6 +189,8 @@ def execute_chain(target: str, chain: list, params: dict):
 
         plugin_context = {
             "target": target,
+            "deep": deep,
+            "stealth": stealth,
             **params.get(name, {})
         }
 
