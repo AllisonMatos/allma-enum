@@ -294,6 +294,40 @@ def calculate_stats(target: str) -> Dict:
             stats["git_exposed_count"] = len(json.loads(git_file.read_text()))
         except: pass
 
+    # =============================================
+    # V10.3: Contadores para plugins V10.2
+    # =============================================
+    v10_2_plugins = {
+        "ssrf_count": ("ssrf", "ssrf_results.json"),
+        "ssti_count": ("ssti", "ssti_results.json"),
+        "xxe_count": ("xxe", "xxe_results.json"),
+        "open_redirect_count": ("open_redirect", "open_redirect_results.json"),
+        "host_injection_count": ("host_header_injection", "host_injection_results.json"),
+        "proto_pollution_count": ("prototype_pollution", "prototype_pollution_results.json"),
+        "oauth_count": ("oauth_misconfig", "oauth_misconfig_results.json"),
+        "file_upload_count": ("file_upload", "file_upload_results.json"),
+        "google_dorks_count": ("google_dorks", "dorks_results.json"),
+        "api_versioning_count": ("api_versioning", "api_versioning_results.json"),
+    }
+    
+    for stat_key, (plugin_dir, json_name) in v10_2_plugins.items():
+        plugin_file = base / plugin_dir / json_name
+        if plugin_file.exists():
+            try:
+                data = json.loads(plugin_file.read_text(errors="ignore"))
+                stats[stat_key] = len(data) if isinstance(data, list) else 1
+            except: pass
+    
+    # Email Security (dict, não lista)
+    email_file = base / "email_security" / "email_security_results.json"
+    if email_file.exists():
+        try:
+            data = json.loads(email_file.read_text(errors="ignore"))
+            # Contar issues com risco alto ou crítico
+            risks = [data.get(k, {}).get("risk", "INFO") for k in ["spf", "dmarc", "dkim", "bimi", "mta_sts", "tls_rpt"] if isinstance(data.get(k), dict)]
+            stats["email_security_count"] = sum(1 for r in risks if r in ("HIGH", "CRITICAL", "MEDIUM"))
+        except: pass
+
     return stats
 
 
@@ -3044,12 +3078,28 @@ def build_security_content(target: str) -> str:
                 html_parts.append(f'''
                 <div class="card" style="border-left: 3px solid var(--accent-red);">
                     <div class="card-header">
-                        <span class="card-title">🔥 XSS Vulnerabilities (Passive Scan)</span>
+                        <span class="card-title">🔥 Passive XSS Vulnerabilities</span>
                     </div>
                     <div class="card-content" style="display:block;">
                         <pre>{formatted_content}</pre>
                     </div>
                 </div>''')
+
+    # Dalfox Active Scan (V10.2 integration)
+    dalfox_out = base / "xss" / "dalfox_results.txt"
+    if dalfox_out.exists():
+        content = dalfox_out.read_text(errors="ignore").strip()
+        if content:
+            formatted_content = html.escape(content)
+            html_parts.append(f'''
+            <div class="card" style="border-left: 3px solid #f85149; margin-top: 15px;">
+                <div class="card-header">
+                    <span class="card-title">🦊 Dalfox Active XSS Scan</span>
+                </div>
+                <div class="card-content" style="display:block;">
+                    <pre>{formatted_content}</pre>
+                </div>
+            </div>''')
 
     # -------------------------------------------------------------------------
     # 2. CORS Misconfigurations
@@ -3065,6 +3115,12 @@ def build_security_content(target: str) -> str:
     html_parts.append(build_open_redirect_content(target))
     html_parts.append(build_ssrf_content(target))
     html_parts.append(build_cache_deception_content(target))
+    
+    # 5. Hidden Plugins Prioritized (JWT, Kiterunner, Insecure Deserialization, GraphQL)
+    html_parts.append(build_jwt_content(target))
+    html_parts.append(build_kiterunner_content(target))
+    html_parts.append(build_deser_content(target))
+    html_parts.append(build_graphql_content(target))
 
     # Clean up empty strings
     html_parts = [p for p in html_parts if p]
@@ -3078,6 +3134,45 @@ def build_security_content(target: str) -> str:
 # ------------------------------------------------------------
 # New Builders (CORS, Takeover, Headers, WAF, Emails)
 # ------------------------------------------------------------
+def build_kiterunner_content(target: str) -> str:
+    path = Path("output") / target / "api_fuzzer" / "kiterunner_results.json"
+    data = read_json_file(path)
+    if not data:
+        return ""
+    
+    rows = ""
+    for item in data:
+        status = item.get("status", 0)
+        status_color = "var(--accent-green)" if 200 <= status < 300 else "var(--accent-orange)" if 300 <= status < 400 else "var(--accent-red)"
+        
+        rows += f'''
+        <tr>
+            <td><strong style="color:var(--accent-purple)">{html.escape(item.get("method", "GET"))}</strong></td>
+            <td><code>{html.escape(item.get("url", ""))}</code></td>
+            <td><span class="tag" style="background:{status_color}; color:#fff">{status}</span></td>
+            <td style="font-size:12px;">{item.get("words", 0)} words, {item.get("lines", 0)} lines</td>
+        </tr>
+        '''
+        
+    return f'''
+    <div class="card open" style="border-left: 4px solid var(--accent-purple); margin-top: 15px;">
+        <div class="card-header">
+            <span class="card-title">🪁 Kiterunner (API Fuzzer) Hidden Endpoints</span>
+            <span class="card-badge tag-high">{len(data)} routes</span>
+        </div>
+        <div class="card-content" style="display:block;">
+            <p style="font-size:13px; color:var(--text-secondary); margin-bottom:10px;">
+                Estas rotas de API não estavam visíveis nos crawlers ou links, mas foram descobertas via Fuzzing intensivo do Kiterunner.
+            </p>
+            <div class="table-wrapper">
+                <table>
+                    <thead><tr><th>Method</th><th>Endpoint URL</th><th>Status</th><th>Response Length</th></tr></thead>
+                    <tbody>{rows}</tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    '''
 def build_cors_content(target: str) -> str:
     path = Path("output") / target / "cors" / "cors_results.json"
     data = read_json_file(path)
@@ -3138,6 +3233,29 @@ def build_cors_content(target: str) -> str:
         </div>
     </div>
     '''
+
+    # Corsy Output Integration (V10.2)
+    corsy_file = Path("output") / target / "cors" / "corsy_output.txt"
+    if corsy_file.exists():
+        content = corsy_file.read_text(errors="ignore").strip()
+        if content:
+            # Strip ANSI escape codes
+            import re
+            ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
+            clean_content = ansi_escape.sub('', content)
+            
+            output += f'''
+            <div class="card" style="border-left: 3px solid #bf8700; margin-top: 15px;">
+                <div class="card-header">
+                    <span class="card-title">🌪️ Corsy Active Findings</span>
+                </div>
+                <div class="card-content" style="display:block;">
+                    <pre>{html.escape(clean_content)}</pre>
+                </div>
+            </div>
+            '''
+    
+    return output
 
 
 def build_headers_content(target: str) -> str:

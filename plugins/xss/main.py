@@ -368,10 +368,26 @@ class XSSPatterns:
         for pattern in self.dom_patterns:
             matches = pattern.finditer(text)
             for match in matches:
+                # Obter uma prévia do contexto real 
+                idx = match.start()
+                start = max(0, idx - 40)
+                end = min(len(text), idx + 60)
+                context_preview = text[start:end].replace('\n', ' ').strip()
+                
+                # Ignorar FPs básicos (atribuição vazia ou inofensiva)
+                lower_ctx = context_preview.lower()
+                safe_patterns = [
+                    'innerhtml=""', "innerhtml=''", 'innerhtml = ""', "innerhtml = ''",
+                    "location.href='/'", 'location.href="/"', "location='/'", 'location="/"',
+                    "location.href = '/'", 'location.href = "/"', "location = '/'", 'location = "/"'
+                ]
+                if any(safe in lower_ctx for safe in safe_patterns):
+                    continue
+                    
                 findings.append(XSSFinding(
                     url="",
                     pattern=pattern.pattern,
-                    context=match.group(),
+                    context=context_preview,
                     severity="low"
                 ))
                 
@@ -384,10 +400,15 @@ class XSSPatterns:
         for pattern in self.js_patterns:
             matches = pattern.finditer(js_code)
             for match in matches:
+                idx = match.start()
+                start = max(0, idx - 40)
+                end = min(len(js_code), idx + 60)
+                context_preview = js_code[start:end].replace('\n', ' ').strip()
+                
                 findings.append(XSSFinding(
                     url="",
                     pattern=pattern.pattern,
-                    context=match.group(),
+                    context=context_preview,
                     severity="medium"
                 ))
                 

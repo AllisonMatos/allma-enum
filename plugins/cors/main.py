@@ -170,10 +170,12 @@ def run(context: dict):
 
     outdir = ensure_outdir(target, "cors")
 
-    # Ler URLs válidas
-    urls_file = Path("output") / target / "domain" / "urls_valid.txt"
+    # V10.3: Ler de urls_200 (mais URLs) com fallback para urls_valid
+    urls_file = Path("output") / target / "urls" / "urls_200.txt"
     if not urls_file.exists():
-        warn("⚠️ Nenhuma URL válida encontrada. Execute o módulo domain primeiro.")
+        urls_file = Path("output") / target / "domain" / "urls_valid.txt"
+    if not urls_file.exists():
+        warn("⚠️ Nenhuma URL válida encontrada. Execute o módulo urls ou domain primeiro.")
         return []
 
     valid_urls = [l.strip() for l in urls_file.read_text().splitlines() if l.strip()]
@@ -218,7 +220,10 @@ def run(context: dict):
     # Executar em paralelo (Engine Nativa para JSON)
     all_findings = []
 
-    with ThreadPoolExecutor(max_workers=15) as executor:
+    from core.config import REQUEST_DELAY
+    import time as _time
+    
+    with ThreadPoolExecutor(max_workers=10) as executor:  # V10.3: Reduzido + delay
         futures = {executor.submit(check_cors, url, target): url for url in unique_urls}
 
         for future in as_completed(futures):

@@ -124,17 +124,24 @@ def run(context: dict):
     return [str(cve_file)]
 
 
+# V10.3: Cache global para evitar re-consultar NVD para a mesma tech
+_nvd_cache = {}
+
 def query_nvd(tech_name: str, version: str) -> list:
-    """Consulta a API pública do NVD/NIST para CVEs."""
+    """Consulta a API pública do NVD/NIST para CVEs. V10.3: Com cache."""
     import httpx
     import time
+
+    cache_key = f"{tech_name.lower()}|{version.lower()}"
+    if cache_key in _nvd_cache:
+        return _nvd_cache[cache_key]
 
     results = []
     keyword = f"{tech_name} {version}"
     url = f"https://services.nvd.nist.gov/rest/json/cves/2.0?keywordSearch={keyword}&resultsPerPage=10"
 
     try:
-        time.sleep(1)  # Rate limiting obrigatório do NVD (6 req/min sem API key)
+        time.sleep(0.7)  # V10.3: Rate limiting otimizado (agressivo era 1s)
         with httpx.Client(timeout=15, verify=True) as client:
             resp = client.get(url, headers={"User-Agent": "Enum-Allma/1.0 Security Scanner"})
             if resp.status_code == 200:
@@ -167,5 +174,6 @@ def query_nvd(tech_name: str, version: str) -> list:
     except Exception:
         pass
 
+    _nvd_cache[cache_key] = results  # V10.3: Cachear resultado
     return results
 

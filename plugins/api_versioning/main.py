@@ -32,7 +32,8 @@ def _probe_versions(base_url: str) -> list:
         try:
             with httpx.Client(timeout=DEFAULT_TIMEOUT, verify=False, follow_redirects=True) as client:
                 resp = client.get(test_url, headers={"User-Agent": DEFAULT_USER_AGENT})
-                if resp.status_code < 404:
+                # Evitar 403 (WAF block common FP), 404, e outros erros 5xx
+                if resp.status_code < 400 or resp.status_code == 401:
                     results.append({
                         "url": test_url,
                         "version": vpath.strip("/"),

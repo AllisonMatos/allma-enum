@@ -191,6 +191,7 @@ def execute_chain(target: str, chain: list, params: dict, deep: bool = False, st
             "target": target,
             "deep": deep,
             "stealth": stealth,
+            "oast_url": oast_url,  # V10.2: Propagar OAST para todos os plugins
             **params.get(name, {})
         }
 

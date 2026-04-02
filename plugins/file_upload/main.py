@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-Insecure File Upload Hints — Detecta endpoints de upload e verifica aceitação.
+Insecure File Upload (V10.2 Precision) — Detecta endpoints de upload e tenta upload real
+para verificar execução. Testa .php, .html, .svg com payloads XSS/RCE.
 """
 import json
 import time
@@ -22,6 +23,38 @@ UPLOAD_PATTERNS = [
 ]
 
 DANGEROUS_EXTENSIONS = [".php", ".jsp", ".asp", ".aspx", ".exe", ".sh", ".py", ".pl", ".cgi", ".svg", ".html"]
+
+# V10.2: Payloads reais de upload com XSS/RCE markers
+UPLOAD_TEST_FILES = [
+    {
+        "filename": "allma_test.php",
+        "content": b"<?php echo 'allma_rce_test_v10_2'; ?>",
+        "mime": "application/x-php",
+        "marker": "allma_rce_test_v10_2",
+        "risk_if_exec": "CRITICAL",
+    },
+    {
+        "filename": "allma_test.html",
+        "content": b"<html><body><script>document.write('allma_xss_test_v10_2')</script></body></html>",
+        "mime": "text/html",
+        "marker": "allma_xss_test_v10_2",
+        "risk_if_exec": "HIGH",
+    },
+    {
+        "filename": "allma_test.svg",
+        "content": b'<svg xmlns="http://www.w3.org/2000/svg"><script>alert("allma_svg_xss_v10_2")</script></svg>',
+        "mime": "image/svg+xml",
+        "marker": "allma_svg_xss_v10_2",
+        "risk_if_exec": "HIGH",
+    },
+    {
+        "filename": "allma_test.txt",
+        "content": b"allma_upload_test_v10_2",
+        "mime": "text/plain",
+        "marker": "allma_upload_test_v10_2",
+        "risk_if_exec": "LOW",
+    },
+]
 
 
 def _test_upload_endpoint(url: str) -> dict | None:
@@ -66,15 +99,87 @@ def _test_upload_endpoint(url: str) -> dict | None:
     return None
 
 
+def _test_real_upload(url: str) -> list:
+    """V10.2: Tenta upload real de arquivos maliciosos e verifica execução."""
+    findings = []
+    
+    for test_file in UPLOAD_TEST_FILES:
+        time.sleep(REQUEST_DELAY)
+        try:
+            with httpx.Client(timeout=DEFAULT_TIMEOUT, verify=False) as client:
+                # Upload do arquivo
+                resp = client.post(
+                    url,
+                    files={"file": (test_file["filename"], test_file["content"], test_file["mime"])},
+                    headers={"User-Agent": DEFAULT_USER_AGENT}
+                )
+                
+                if resp.status_code not in (200, 201, 202):
+                    continue
+                
+                body = resp.text
+                uploaded_url = None
+                
+                # Tentar extrair URL do arquivo uploadado do response
+                # Heurística: procurar path ou URL no response body
+                import re as _re
+                url_matches = _re.findall(r'(?:https?://[^\s"\'<>]+|/[^\s"\'<>]*' + _re.escape(test_file["filename"]) + r')', body)
+                if url_matches:
+                    uploaded_url = url_matches[0]
+                    if not uploaded_url.startswith("http"):
+                        parsed = urlparse(url)
+                        uploaded_url = f"{parsed.scheme}://{parsed.netloc}{uploaded_url}"
+                
+                details = f"Upload de '{test_file['filename']}' aceito (status {resp.status_code})"
+                risk = "HIGH"
+                executed = False
+                
+                # V10.2: Tentar acessar o arquivo uploadado para verificar execução
+                if uploaded_url:
+                    time.sleep(REQUEST_DELAY)
+                    try:
+                        exec_resp = client.get(uploaded_url, headers={"User-Agent": DEFAULT_USER_AGENT})
+                        if test_file["marker"] in exec_resp.text:
+                            executed = True
+                            risk = test_file["risk_if_exec"]
+                            details += f" | EXECUÇÃO CONFIRMADA: Marker '{test_file['marker']}' encontrado em {uploaded_url}"
+                        elif exec_resp.status_code == 200:
+                            details += f" | Arquivo acessível em {uploaded_url} (sem execução de código detectada)"
+                    except Exception:
+                        pass
+                
+                findings.append({
+                    "url": url,
+                    "type": "FILE_UPLOAD",
+                    "risk": risk,
+                    "filename": test_file["filename"],
+                    "mime_type": test_file["mime"],
+                    "upload_status": resp.status_code,
+                    "executed": executed,
+                    "uploaded_url": uploaded_url,
+                    "details": details,
+                    "request_raw": format_http_request(resp.request),
+                    "response_raw": format_http_response(resp),
+                })
+                
+                if executed:
+                    break  # Se execução confirmada, não precisa testar mais
+                    
+        except Exception:
+            pass
+    return findings
+
+
 def run(context: dict):
     target = context.get("target")
+    deep = context.get("deep", False)
     if not target:
         raise ValueError("Target required")
 
     info(
         f"\n🟧───────────────────────────────────────────────────────────🟧\n"
-        f"   📤 {C.BOLD}{C.CYAN}INSECURE FILE UPLOAD SCANNER{C.END}\n"
-        f"   🎯 Alvo: {C.GREEN}{target}{C.END}\n"
+        f"   📤 {C.BOLD}{C.CYAN}INSECURE FILE UPLOAD SCANNER (V10.2 PRECISION){C.END}\n"
+        f"   🎯 Alvo: {C.GREEN}{target}{C.END} | Deep: {deep}\n"
         f"🟧───────────────────────────────────────────────────────────🟧\n"
     )
 
@@ -107,6 +212,7 @@ def run(context: dict):
 
     results = []
 
+    # Fase 1: Detecção básica (existente)
     with ThreadPoolExecutor(max_workers=5) as executor:
         futures = {executor.submit(_test_upload_endpoint, url): url for url in candidates}
         for future in as_completed(futures):
@@ -118,6 +224,27 @@ def run(context: dict):
                     info(f"   {color}[{result['risk']}]{C.END} {result['url']}")
             except Exception:
                 pass
+
+    # V10.2 Fase 2: Upload real com payloads maliciosos (somente em deep mode ou em endpoints que aceitaram upload)
+    upload_accepting = [r["url"] for r in results if r.get("status") in (200, 201, 202)]
+    if upload_accepting or deep:
+        test_urls = upload_accepting if upload_accepting else candidates[:10]
+        info(f"   🔎 [V10.2] Testando upload real de arquivos maliciosos em {len(test_urls)} endpoints...")
+        
+        with ThreadPoolExecutor(max_workers=3) as executor:
+            futures = {executor.submit(_test_real_upload, url): url for url in test_urls}
+            for future in as_completed(futures):
+                try:
+                    res = future.result()
+                    if res:
+                        results.extend(res)
+                        for f in res:
+                            if f.get("executed"):
+                                info(f"   🔴 {C.RED}[{f['risk']}]{C.END} 🚨 EXECUÇÃO CONFIRMADA: {f['filename']} em {f['url']}")
+                            else:
+                                info(f"   🟡 {C.YELLOW}[{f['risk']}]{C.END} Upload aceito: {f['filename']} em {f['url']}")
+                except Exception:
+                    pass
 
     output_file = outdir / "file_upload_results.json"
     output_file.write_text(json.dumps(results, indent=2, ensure_ascii=False))

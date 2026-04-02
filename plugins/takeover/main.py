@@ -168,9 +168,15 @@ def verify_service_available(cname: str, service: str, subdomain: str) -> dict:
     return verification
 
 
-def check_subdomain(subdomain: str) -> dict | None:
-    """Verifica se um subdomínio é vulnerável a takeover."""
+def check_subdomain(subdomain: str, known_cnames: dict = None) -> dict | None:
+    """Verifica se um subdomínio é vulnerável a takeover.
+    V10.3: Usa known_cnames como fallback quando resolução live falha."""
     cname = resolve_cname(subdomain)
+    
+    # V10.3: Fallback para CNAMEs pré-resolvidos se resolução live falhar
+    if not cname and known_cnames:
+        cname = known_cnames.get(subdomain)
+    
     if not cname:
         return None
 
@@ -250,7 +256,7 @@ def run(context: dict):
     vulnerable = []
 
     with ThreadPoolExecutor(max_workers=10) as executor:
-        futures = {executor.submit(check_subdomain, sub): sub for sub in subdomains}
+        futures = {executor.submit(check_subdomain, sub, known_cnames): sub for sub in subdomains}
 
         done = 0
         for future in as_completed(futures):

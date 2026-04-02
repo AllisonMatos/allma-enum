@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """
-Host Header Injection (V10.1 Surgical) — Detecta manipulação do cabeçalho Host.
+Host Header Injection (V10.3 Precision) — Detecta manipulação do cabeçalho Host.
 Filtra portas de painel e exige reflexão + status 2xx/3xx.
+Inclui cache poisoning detection e payloads CRLF avançados.
+V10.3: httpx.Client reuse, port=None handling, dedup.
 """
 import json
 import time
@@ -17,14 +19,20 @@ from ..output import info, success, warn, error
 from ..http_utils import format_http_request, format_http_response
 
 # Portas de painel administrativas (Blacklist cirúrgica V10.1)
-PANEL_PORTS = ["2082", "2083", "2086", "2087", "8080", "8443"]
+PANEL_PORTS = {2082, 2083, 2086, 2087, 8080, 8443}
 
 EVIL_DOMAIN = "evil-enum-allma.com"
 
-def _test_host_injection(url: str) -> list:
-    """Testa Host Header Injection com payloads cirúrgicos."""
+# Headers indicativos de cache (V10.2 — Cache Poisoning Detection)
+CACHE_HIT_HEADERS = ["x-cache", "x-cache-status", "cf-cache-status", "age", "x-varnish"]
+
+def _test_host_injection(client: httpx.Client, url: str) -> list:
+    """Testa Host Header Injection com payloads cirúrgicos. Reutiliza sessão."""
     parsed = urlparse(url)
-    if parsed.port and str(parsed.port) in PANEL_PORTS:
+    
+    # V10.3: Tratar port=None graciosamente (portas padrão 80/443 retornam None)
+    port = parsed.port
+    if port is not None and port in PANEL_PORTS:
         return []
 
     findings = []
@@ -38,41 +46,60 @@ def _test_host_injection(url: str) -> list:
         {"Forwarded": f"for=127.0.0.1;host={EVIL_DOMAIN}"},
     ]
 
+    # V10.2: Payloads adicionais para cache poisoning e bypass
+    payloads_v10_2 = [
+        {"X-Original-URL": f"/{EVIL_DOMAIN}"},                # X-Original-URL override
+        {"X-Forwarded-Scheme": "nothttps", "Host": EVIL_DOMAIN},  # Cache key via scheme
+        {"X-Forwarded-For": "127.0.0.1", "X-Forwarded-Host": EVIL_DOMAIN},  # Combo forward
+        {"X-Rewrite-URL": f"/{EVIL_DOMAIN}"},                 # URL rewrite
+    ]
+    payloads.extend(payloads_v10_2)
+
     for headers in payloads:
         time.sleep(REQUEST_DELAY)
         try:
-            with httpx.Client(timeout=DEFAULT_TIMEOUT, verify=False, follow_redirects=False) as client:
-                resp = client.get(url, headers={**headers, "User-Agent": DEFAULT_USER_AGENT})
-                
-                # Validação Cirúrgica V10.1: Reflexão + Status 200/3xx
-                # (Ignora 4xx/5xx pois podem ser erro genérico do cPanel/Plesk)
-                if resp.status_code >= 400:
-                    continue
+            resp = client.get(url, headers={**headers, "User-Agent": DEFAULT_USER_AGENT})
+            
+            # Validação Cirúrgica V10.1: Reflexão + Status 200/3xx
+            if resp.status_code >= 400:
+                continue
 
-                location = resp.headers.get("location", "").lower()
-                body = resp.text.lower()
-                
-                is_vuln = False
-                details = ""
-                
-                if EVIL_DOMAIN in location:
-                    is_vuln = True
-                    details = f"Domínio injetado refletido no header 'Location' ({resp.status_code})"
-                elif EVIL_DOMAIN in body:
-                    is_vuln = True
-                    details = f"Domínio injetado refletido no corpo da resposta ({resp.status_code})"
+            location = resp.headers.get("location", "").lower()
+            body = resp.text.lower()
+            
+            is_vuln = False
+            details = ""
+            
+            if EVIL_DOMAIN in location:
+                is_vuln = True
+                details = f"Domínio injetado refletido no header 'Location' ({resp.status_code})"
+            elif EVIL_DOMAIN in body:
+                is_vuln = True
+                details = f"Domínio injetado refletido no corpo da resposta ({resp.status_code})"
 
-                if is_vuln:
-                    findings.append({
-                        "url": url,
-                        "type": "HOST_HEADER_INJECTION",
-                        "risk": "HIGH" if resp.status_code < 400 else "MEDIUM",
-                        "details": details,
-                        "payload": str(headers),
-                        "request_raw": format_http_request(resp.request),
-                        "response_raw": format_http_response(resp),
-                    })
-                    break # Evita duplicar se múltiplos headers funcionarem
+            # V10.2: Detectar cache poisoning
+            cache_poisoned = False
+            if is_vuln:
+                for ch in CACHE_HIT_HEADERS:
+                    cache_val = resp.headers.get(ch, "").lower()
+                    if cache_val and ("hit" in cache_val or (ch == "age" and cache_val.isdigit() and int(cache_val) > 0)):
+                        cache_poisoned = True
+                        details += f" | Cache Poisoning detectado ({ch}: {cache_val})"
+                        break
+
+            if is_vuln:
+                risk = "CRITICAL" if cache_poisoned else ("HIGH" if resp.status_code < 400 else "MEDIUM")
+                findings.append({
+                    "url": url,
+                    "type": "HOST_HEADER_INJECTION",
+                    "risk": risk,
+                    "details": details,
+                    "payload": str(headers),
+                    "cache_poisoned": cache_poisoned,
+                    "request_raw": format_http_request(resp.request),
+                    "response_raw": format_http_response(resp),
+                })
+                break # Evita duplicar se múltiplos headers funcionarem
         except Exception:
             pass
     return findings
@@ -83,28 +110,45 @@ def run(context: dict):
     if not target:
         raise ValueError("Target required")
 
-    info(f"🧪 {C.BOLD}{C.CYAN}HOST HEADER SCANNER (V10.1 SURGICAL){C.END}")
+    info(f"🧪 {C.BOLD}{C.CYAN}HOST HEADER SCANNER (V10.3 PRECISION){C.END}")
     outdir = ensure_outdir(target, "host_header_injection")
 
     urls_file = Path("output") / target / "urls" / "urls_200.txt"
     candidates = []
     if urls_file.exists():
-        candidates = urls_file.read_text().splitlines()
+        candidates = [l.strip() for l in urls_file.read_text().splitlines() if l.strip()]
     
-    candidates = list(set(candidates))[:80]
+    # V10.3: Dedup URLs normalizadas
+    seen = set()
+    deduped = []
+    for url in candidates:
+        key = url.rstrip("/")
+        if key not in seen:
+            seen.add(key)
+            deduped.append(url)
+    
+    candidates = deduped[:80]
     max_workers = 5 if stealth else 15
     
     results = []
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        futures = {executor.submit(_test_host_injection, url): url for url in candidates}
-        for future in as_completed(futures):
-            res = future.result()
-            if res:
-                results.extend(res)
-                for f in res:
-                    info(f"   🔴 {C.RED}[{f['risk']}]{C.END} Host Injection em {f['url']}")
+    
+    # V10.3: Uma única sessão httpx para todos os testes
+    with httpx.Client(timeout=DEFAULT_TIMEOUT, verify=False, follow_redirects=False) as client:
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = {executor.submit(_test_host_injection, client, url): url for url in candidates}
+            for future in as_completed(futures):
+                res = future.result()
+                if res:
+                    results.extend(res)
+                    for f in res:
+                        info(f"   🔴 {C.RED}[{f['risk']}]{C.END} Host Injection em {f['url']}")
 
     output_file = outdir / "host_injection_results.json"
     output_file.write_text(json.dumps(results, indent=2))
+    
+    # V10.3: Salvar summary
+    summary = {"urls_tested": len(candidates), "findings": len(results), "status": "COMPLETED"}
+    (outdir / "scan_summary.json").write_text(json.dumps(summary, indent=2))
+    
     success(f"   📂 Resultados salvos em {output_file}")
     return results

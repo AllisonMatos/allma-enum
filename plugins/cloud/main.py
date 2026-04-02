@@ -150,17 +150,39 @@ def run(context: dict):
     # Gerar nomes
     bucket_names = generate_bucket_names(target)
     
-    # Tentar extrair buckets de arquivos JS se existirem
+    # V10.3: Extrair buckets de arquivos JS reais
     js_urls_file = Path("output") / target / "urls" / "js_files.txt"
+    js_analysis_file = Path("output") / target / "jsscanner" / "js_analysis.json"
+    
+    # Método 1: Extrair de URLs de JS (nomes de buckets no path)
     if js_urls_file.exists():
-        info(f"{C.BLUE}🔍 Extraindo buckets de arquivos JS conhecidos...{C.END}")
+        info(f"{C.BLUE}🔍 Extraindo buckets de URLs de JS conhecidos...{C.END}")
         try:
-            # Por enquanto, apenas o nome do bucket se estiver na URL, 
-            # ou podemos ler o conteúdo dos arquivos baixados se o jsscanner os salvou.
-            # Como o cloud roda depois, vamos assumir que podemos tentar ler se houver cache.
-            # Como o cloud roda depois, vamos assumir que podemos tentar ler se houver cache.
-            pass 
-        except Exception: pass
+            js_urls_content = js_urls_file.read_text(errors="ignore")
+            js_buckets = extract_buckets_from_js(js_urls_content)
+            if js_buckets:
+                info(f"   [+] {len(js_buckets)} nomes de buckets extraídos de URLs de JS")
+                bucket_names.extend(js_buckets)
+        except Exception:
+            pass
+    
+    # Método 2: Extrair do conteúdo JS analisado pelo jsscanner
+    if js_analysis_file.exists():
+        info(f"{C.BLUE}🔍 Extraindo buckets do conteúdo JS analisado...{C.END}")
+        try:
+            import json as _json
+            js_data = _json.loads(js_analysis_file.read_text(errors="ignore"))
+            for js_url, js_content in js_data.items():
+                content_str = str(js_content) if not isinstance(js_content, str) else js_content
+                js_buckets = extract_buckets_from_js(content_str)
+                if js_buckets:
+                    info(f"   [+] {len(js_buckets)} buckets extraídos de {js_url[:80]}")
+                    bucket_names.extend(js_buckets)
+        except Exception:
+            pass
+    
+    # Dedup bucket names após todas as fontes
+    bucket_names = list(set(bucket_names))
 
     # ===============================
     # 🌩️ Executar Cloud_enum (se disponível)
