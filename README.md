@@ -1,145 +1,101 @@
-# Enum-Allma ⚡
+# Enum-Allma V10.1 Pro Surgical ⚡
 
-> **Ferramenta Profissional de Enumeração e Reconhecimento**
-> *Enumeration, Reconnaissance, and Deep Analysis Tool*
+> **Ferramenta Profissional de Enumeração e Reconhecimento — Edição de Alta Precisão**
+> *Professional Enumeration, Reconnaissance, and Surgical Security Analysis Tool*
 
-Allma-Enum é uma suíte completa para pentest e bug bounty, focada em automação de reconhecimento, descoberta de ativos, análise de vulnerabilidades e geração de relatórios profissionais dinâmicos.
+Allma-Enum é uma suíte completa para pentest e bug bounty, focada em automação de reconhecimento, descoberta de ativos e análise de vulnerabilidades com **precisão cirúrgica** (zero falsos positivos).
 
-![Banner](https://img.shields.io/badge/Status-Active-success)
+![Banner](https://img.shields.io/badge/Version-V10.1%20Pro-red)
+![Status](https://img.shields.io/badge/Status-Surgical-success)
 ![Python](https://img.shields.io/badge/Python-3.9+-blue)
 
-## 🚀 Funcionalidades (Features)
+## 🚀 Novidades da V10.1 Pro Surgical
 
-### 🌐 Reconhecimento de Domínio & Crawling
-- **Multi-source Discovery**: Enumeração passiva e ativa com `Subfinder`, `crt.sh`, `haktrails`, `gau` e `waybackurls`.
-- **🆕 Katana Crawler**: Motor de crawling Headless (Chromium) da ProjectDiscovery para renderização de JS e discovery profundo.
-- **Portas**: Scan rápido com `Naabu` (Top 100, 1000 ou Full) com rate limiting configurável.
-- **DNS Resolver**: Resolução DNS concorrente com detecção de wildcard e filtragem de CDN.
-- **Fingerprinting**: Identificação de tecnologias e serviços com Wappalyzer-like detection.
-- **Forms & Params**: Extração automática de formulários e parâmetros GET/POST para análise.
-- **JS Discovery**: Busca profunda por URLs dentro de arquivos JS e scripts inline.
+A versão **V10.1 Pro** introduz um novo padrão de qualidade em ferramentas de bug bounty, focando em evidências reais e bypass de proteções modernas:
 
-### 🔍 Análise de Segurança Avançada
-- **🆕 Attack Engine (Inteligência)**: Motor de priorização de ataques que pontua ativos vulneráveis.
-- **🆕 OAST (Blind Bugs)**: Integração com `Interactsh` para detecção de vulnerabilidades "blind" (XSS, SSRF, CRLF) via Out-of-Band testing.
-- **🆕 Secret Finder (TruffleHog)**: Busca robusta por segredos usando entropia de Shannon e regex (reemplaza scanners básicos).
-- **🆕 API Security (Kiterunner)**: Fuzzing de rotas de API moderno (`kr scan`) para descoberta de endpoints ocultos.
-- **🆕 Cloud Recon (Cloud_enum)**: Descoberta de ativos em nuvem (S3, Azure Blobs, GCP Buckets) vinculados ao domínio alvo.
-- **JWT Analyzer**: Desmonta, verifica algoritmos fracos (None, HS256) e quebra tokens JWT.
-- **GraphQL Introspection**: Descobre mutations ocultas em APIs GraphQL.
-- **🗺️ Source Maps**: Extrai o código-fonte original desempacotando arquivos `.map`.
-- **🧬 Insecure Deserialization**: Rastreia assinaturas conhecidas de dados serializados.
-- **🎭 XSS Scanner**: Busca passiva por reflexões e sinks perigosos de Cross-Site Scripting.
-- **💉 CRLF Injection**: Busca reativa contra divisões de pacotes (HTTP Response Splitting).
-
-### 🔑 Admin Panel Discovery
-- **80+ paths comuns** testados (/admin, /wp-admin, /actuator, etc.).
-- **Bypass de 403**: Técnicas semi-ativas e headers customizados para burlar restrições de acesso.
-
-### ☁️ Cloud Security
-- **Takeover detection**: Verificação de subdomínios órfãos apontando para serviços de nuvem (AWS, Azure, Vercel, etc.).
-
-### 📦 Dependency Confusion
-- **Package Extraction**: Extrai nomes de pacotes em arquivos JS e compara na internet.
-- **Risk Classification**: Pacotes não encontrados = HIGH risk (potencial supply chain attack).
-
-### 📊 Relatório e Web App Server
-O novo painel é servido por **FastAPI** e **SQLite (In-memory)**. Ele permite gestão robusta dos relatórios de forma local.
-- **Dashboard Web Dinâmico**: Interface completa gerida em React/HTML moderno.
-- **Interactive Reports**: Agora com busca de subdomínios, cliques de navegação e explicações técnicas para vulnerabilidades.
-- Pressione `View HTTP` para ver as provas das requisições brutas em tempo real!
+- **📄 XXE Pro**: Payloads Error-based e OAST com filtros automáticos contra Cloudflare e WAFs (403/405/429 bypass).
+- **🏠 Host Header Surgical**: Blacklist inteligente de portas de painéis administrativos e detecção de Cache Poisoning/CRLF.
+- **🔀 Open Redirect Double-Check**: Validação secundária automática que confirma o redirecionamento externo real antes de reportar.
+- **🧬 Prototype Pollution Pro**: Detecção de sinks em lodash/Object.defineProperty com prova de conceito (Object overwrite) automática.
+- **🛡️ Stealth & Depth**: Flags `--stealth` (delay de 0.6s/slow scan) e `--deep` (análise exaustiva de POST e APIs) integradas globalmente.
+- **📊 Enriched Reporting**: Modal **Burp-style** reestruturado para exibir 100% do tráfego RAW (Request/Response) capturado em todos os achados.
 
 ---
 
-## 🛠️ Instalação
+## 🚀 Funcionalidades Principais (Core Features)
 
-### Pré-requisitos
+### 🌐 Reconhecimento & Crawling
+- **Multi-source Discovery**: Enumeração passiva e ativa consolidada (`Subfinder`, `crt.sh`, `haktrails`, `Katana`).
+- **Headless Crawling**: Motor Katana para renderização de SPAs (React/Vue/Angular) e descoberta de rotas ocultas.
+- **Port Scanning**: Integração com Naabu para scans rápidos com rate-limit inteligente.
+- **Fingerprinting**: Identificação profunda de stack tecnológica e versões de pacotes.
+
+### 🔍 Análise de Segurança Cirúrgica
+- **OAST (Blind Bugs)**: Integração centralizada com `Interactsh` para vulnerabilidades Out-of-Band.
+- **Secret Finder**: Busca por API Keys e segredos em arquivos JS usando TruffleHog e Regex customizados.
+- **API Security**: Fuzzing de rotas Kiterunner para descoberta de endpoints de API não documentados.
+- **Cloud Recon**: Mapeamento de Buckets S3, Azure Blobs e GCP vinculados ao alvo.
+- **JWT & GraphQL**: Suite completa para análise de tokens e introspecção de APIs modernas.
+- **🗺️ Source Maps**: Reconstrução de código-fonte original a partir de arquivos `.map`.
+
+---
+
+## 🛠️ Instalação & Setup
+
+### pré-requisitos
 - Python 3.9+
-- Go (para ferramentas externas)
-
-### Setup
+- Go 1.19+
 
 ```bash
-# Clone o repositório
+# Clone e Setup
 git clone https://github.com/AllisonMatos/allma-enum.git
 cd allma-enum
-
-# Instale as dependências Python
 pip install -r requirements.txt
-
-# Configure a string de acesso para o WebApp no .env da pasta core/webapp/
-# (MONGODB_URI, JWT_SECRET)
-
-# Verifique o ambiente (opcional, legacy script)
-python3 check_install.py
 ```
 
 ---
 
-## 💻 Uso
+## 💻 Uso Profissional
 
-### 1. Iniciar o Scanner do Terminal
+### Modo Interativo
 ```bash
 python3 menu.py
 ```
 
-### Módulos Disponíveis
-| ID | Módulo | Descrição |
-|----|--------|-----------|
-| 1 | **domain** | Enumeração de subdomínios e portas |
-| 2 | **urls** | Descoberta e validação de URLs (Wayback + Live) |
-| 3 | **services** | Probing de serviços e banners Nmap |
-| 4 | **files** | Busca e filtragem por arquivos sensíveis |
-| 5 | **jsscanner** | Análise estática profunda de JavaScript |
-| 6 | **fingerprint** | Identificação de Tech Stack e Frameworks |
-| 7 | **endpoint** | Mapeamento de Endpoints e rotas de API |
-| 8 | **wordlist** | Geração de wordlists baseadas no alvo |
-| 9 | **xss** | Scan passivo de vulnerabilidade XSS |
-| 10 | **sourcemaps** | Extração de código e secrets vindo de Source Maps |
-| 11 | **cve** | Correlação com banco de dados CVE |
-| 12 | **admin** | Busca por painéis administrativos e bypass |
-| 13 | **depconfusion** | Supply Chain Attack Detection via pacotes órfãos |
-| 14 | **cors** | Misconfigurações e injeções de CORS |
-| 15 | **takeover** | Subdomain Takeover Scanner (Cloud Services) |
-| 16 | **headers** | Análise de Security Headers e notas de segurança |
-| 17 | **waf** | Identificação de Firewalls Cloud protegendo origens |
-| 18 | **emails** | Harvesting passivo de e-mails corporativos |
-| 19 | **graphql** | GraphQL Introspection & Mutation Scanner |
-| 20 | **cache_deception** | Web Cache Deception Detector |
-| 21 | **jwt_analyzer** | Decode, brute-force e análise de fraquezas em tokens JWT |
-| 22 | **crlf_injection** | CRLF Injection (com OAST) |
-| 23 | **insecure_deser** | Insecure Deserialization Scanner |
-| 24 | **api_fuzzer** | API Fuzzer (Kiterunner) |
-| 25 | **cloud** | Cloud Recon (S3/Azure/GCP) |
-| 26 | **all** | **Executa o fluxo completo inteligente (1 a 25)** |
+### Flags de Performance (V10.1)
+- `--stealth`: Ativa o modo silencioso (delay global de 0.6s inter-threads).
+- `--deep`: Ativa o modo intensivo (fuzzing em parâmetros POST e rotas profundas).
+
+| ID | Módulo | Foco Principal |
+|----|--------|----------------|
+| 1-3 | **Discovery** | Domínios, IPs, Portas e Serviços |
+| 5-7 | **Analysis** | JS Scanning, Tecnologias e API Mapping |
+| 9-23 | **Vulnerabilities** | XSS, XXE, SSTI, Prototype Pollution, JWT, CORS, OAuth |
+| 26 | **ALL-IN-ONE** | Fluxo completo automatizado com motor de inteligência |
+
+---
+
+## 📊 Relatórios & WebApp
+O relatório interativo (`report.html`) e o Dashboard FastAPI oferecem:
+- **Timeline de Ataque**: Visualização sequencial da execução dos plugins.
+- **Burp-style Modal**: Clique em `View HTTP` para ver as provas base64 reais.
+- **Expert Details**: Explicações técnicas e recomendações de mitigação para cada descoberta.
 
 ---
 
 ## 📂 Estrutura de Saída
-
 ```
-output/example.com/
-├── report/           # Relatório HTML SPA moderno do site-alvo individual
-├── domain/           # Subdomínios, DNS, IPs e Portas
-├── urls/             # URLs descobertas e validadas
-├── intelligence/     # Análise de risco/Engine de Impacto Score
-├── jsscanner/        # Extrações de chaves e rotas JS
-├── sourcemaps/       # Código fonte reconstruído de maps e credenciais neles
-├── admin/            # Painéis de controle encontrados
-├── depconfusion/     # Pacotes NPM vazados
-└── wordlist/         # Dicionários gerados para brute force dinâmico
-```
-
----
-
-## 📋 Dependências Python
-`requirements.txt` com as principais bibliotecas atualizadas:
-```
-httpx, requests, beautifulsoup4, lxml, FastAPI, uvicorn, PyMongo, python-jose, passlib[argon2], pydantic
+output/alvo.com/
+├── report/           # Relatório HTML Moderno
+├── enriched_data.json # Dados consolidados V10.1 Pro
+├── intelligence/     # Logs de OAST e Impact Score
+├── urls/             # Endpoints validados e classificados
+└── wordlist/         # Dicionários customizados gerados no scan
 ```
 
 ---
 
 ## ⚠️ Disclaimer
+Uso exclusivo para fins de segurança defensiva, programas de Bug Bounty autorizados e Pentests profissionais. O autor não se responsabiliza pelo uso indevido da ferramenta.
 
-Esta ferramenta é destinada exclusivamente para uso em **pentests profissionais autorizados** e **programas de bug bounty**. A responsabilidade por qualquer uso externo recai interinamente sob o aval e consciência do seu operador.
+**Enum-Allma V10.1 Pro Surgical: Precisão Total Garantida. 🛡️**
