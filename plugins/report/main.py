@@ -92,7 +92,8 @@ def calculate_stats(target: str) -> Dict:
         "hidden_params_count": 0,
         "logic_flaws_count": 0,
         "git_exposed_count": 0,
-        "cors_count": 0
+        "cors_count": 0,
+        "wordlist_count": 0
     }
     
     # Count ports
@@ -140,10 +141,21 @@ def calculate_stats(target: str) -> Dict:
     endpoints_file = base / "endpoint" / "endpoints.txt"
     if endpoints_file.exists() and stats["endpoints_count"] == 0:
         stats["endpoints_count"] += len([l for l in endpoints_file.read_text(errors="ignore").splitlines() if l.strip()])
+        
+    kiterunner_json = base / "api_fuzzer" / "kiterunner_results.json"
+    if kiterunner_json.exists():
+        try:
+            kdata = json.loads(kiterunner_json.read_text(errors="ignore"))
+            stats["endpoints_count"] += len(kdata)
+        except: pass
     
-    graphql_file = base / "endpoint" / "graphql.txt"
-    if graphql_file.exists():
-        stats["endpoints_count"] += len([l for l in graphql_file.read_text(errors="ignore").splitlines() if l.strip()])
+    # GraphQL
+    graphql_json = base / "graphql" / "graphql.json"
+    if graphql_json.exists():
+        try:
+            gql_data = json.loads(graphql_json.read_text(errors="ignore"))
+            stats["graphql_count"] = len(gql_data)
+        except: pass
 
     # XSS
     xss_file = base / "xss" / "final_report.txt"
@@ -268,6 +280,12 @@ def calculate_stats(target: str) -> Dict:
         try:
             stats["logic_flaws_count"] = len(json.loads(logic_flaws_file.read_text()))
         except: pass
+
+    # Wordlists
+    wordlist_file = base / "wordlist" / "combined.txt"
+    if wordlist_file.exists():
+        stats["wordlist_count"] = len([l for l in wordlist_file.read_text(errors="ignore").splitlines() if l.strip()])
+
 
     # Git Time Machine
     git_file = base / "domain" / "git_exposed.json"
@@ -1060,6 +1078,61 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             <div class="nav-icon">🚨</div>
             <div class="nav-label" style="color:#ff7b72">Blind Bugs <span class="count">{stats_oast}</span></div>
         </button>
+
+        <button class="nav-btn" data-section="wordlist_sec">
+            <div class="nav-icon">🗂️</div>
+            <div class="nav-label">Wordlists <span class="count">{stats_wordlist}</span></div>
+        </button>
+
+        <button class="nav-btn" data-section="open_redirect_sec">
+            <div class="nav-icon">🔀</div>
+            <div class="nav-label">Open Redir <span class="count">{stats_open_redirect}</span></div>
+        </button>
+
+        <button class="nav-btn" data-section="host_inj_sec">
+            <div class="nav-icon">🏠</div>
+            <div class="nav-label">Host Inj <span class="count">{stats_host_injection}</span></div>
+        </button>
+
+        <button class="nav-btn" data-section="ssti_sec">
+            <div class="nav-icon">🧪</div>
+            <div class="nav-label">SSTI <span class="count">{stats_ssti}</span></div>
+        </button>
+
+        <button class="nav-btn" data-section="xxe_sec">
+            <div class="nav-icon">📄</div>
+            <div class="nav-label">XXE <span class="count">{stats_xxe}</span></div>
+        </button>
+
+        <button class="nav-btn" data-section="proto_sec">
+            <div class="nav-icon">🧬</div>
+            <div class="nav-label">Proto Poll <span class="count">{stats_proto_pollution}</span></div>
+        </button>
+
+        <button class="nav-btn" data-section="oauth_sec">
+            <div class="nav-icon">🔐</div>
+            <div class="nav-label">OAuth <span class="count">{stats_oauth}</span></div>
+        </button>
+
+        <button class="nav-btn" data-section="api_ver_sec">
+            <div class="nav-icon">🔢</div>
+            <div class="nav-label">API Ver <span class="count">{stats_api_versioning}</span></div>
+        </button>
+
+        <button class="nav-btn" data-section="file_upload_sec">
+            <div class="nav-icon">📤</div>
+            <div class="nav-label">Upload <span class="count">{stats_file_upload}</span></div>
+        </button>
+
+        <button class="nav-btn" data-section="email_sec">
+            <div class="nav-icon">📧</div>
+            <div class="nav-label">Email Sec</div>
+        </button>
+
+        <button class="nav-btn" data-section="dorks_sec">
+            <div class="nav-icon">🔍</div>
+            <div class="nav-label">Dorks <span class="count">{stats_google_dorks}</span></div>
+        </button>
     </nav>
     
     <div class="content-wrapper">
@@ -1173,7 +1246,18 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             <section class="section" id="smuggling_sec">{smuggling_content}</section>
             <section class="section" id="deser_sec">{deser_content}</section>
             <section class="section" id="oast_sec">{oast_content}</section>
+            <section class="section" id="wordlist_sec">{wordlist_content}</section>
             <section class="section" id="quickwins_attack">{quickwins_attack_content}</section>
+            <section class="section" id="open_redirect_sec">{open_redirect_content}</section>
+            <section class="section" id="host_inj_sec">{host_injection_content}</section>
+            <section class="section" id="ssti_sec">{ssti_content}</section>
+            <section class="section" id="xxe_sec">{xxe_content}</section>
+            <section class="section" id="proto_sec">{proto_pollution_content}</section>
+            <section class="section" id="oauth_sec">{oauth_content}</section>
+            <section class="section" id="api_ver_sec">{api_versioning_content}</section>
+            <section class="section" id="file_upload_sec">{file_upload_content}</section>
+            <section class="section" id="email_sec">{email_security_content}</section>
+            <section class="section" id="dorks_sec">{google_dorks_content}</section>
             
              <footer style="text-align:center; color:var(--text-muted); font-size:12px; margin-top:40px; padding-bottom:20px;">
                 Generated by Enum-Allma | {date} {time}
@@ -1446,18 +1530,26 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 # ------------------------------------------------------------
 
 def build_graphql_content(target: str) -> str:
-    path = Path("output") / target / "scanners" / "graphql.json"
+    path = Path("output") / target / "graphql" / "graphql.json"
     data = read_json_file(path)
     if not data: return '<div class="empty-state"><p>No GraphQL instances found.</p></div>'
     
     rows = ""
     for item in data:
+        # Extrair Request Body Style Burp
+        req_b64 = base64.b64encode((item.get("request_raw") or "").encode("utf-8")).decode("utf-8")
+        res_b64 = base64.b64encode((item.get("response_raw") or "").encode("utf-8")).decode("utf-8")
+        row_id = f"gql_{uuid.uuid4().hex[:8]}"
+        burp_script = f'<script>BURP_DATA["{row_id}"] = {{ "url": "{html.escape(item.get("url", ""))}", "req": "{req_b64}", "res": "{res_b64}" }};</script>'
+        button_html = f'<button class="burp-btn" onclick="openBurp(\'{row_id}\')">View HTTP</button>{burp_script}' if req_b64 else '-'
+
         rows += f'''
         <tr>
             <td><a href="{html.escape(item.get("url", ""))}" target="_blank">{html.escape(item.get("url", ""))}</a></td>
             <td><span class="tag tag-medium">{item.get("status")}</span></td>
             <td><strong>{item.get("length")}</strong></td>
             <td>{"<span class='tag tag-high'>Introspection Enabled</span>" if item.get("introspection") else "-"}</td>
+            <td style="text-align:right;">{button_html}</td>
         </tr>
         '''
     return f'''
@@ -1469,7 +1561,7 @@ def build_graphql_content(target: str) -> str:
         <div class="card-content" style="display:block;">
             <div class="table-wrapper">
                 <table>
-                    <thead><tr><th>URL</th><th>Status</th><th>Length</th><th>Features</th></tr></thead>
+                    <thead><tr><th>URL</th><th>Status</th><th>Length</th><th>Features</th><th>PoC</th></tr></thead>
                     <tbody>{rows}</tbody>
                 </table>
             </div>
@@ -1593,7 +1685,168 @@ def _build_generic_security_card(target: str, file_path: str, title: str, icon: 
     '''
 
 def build_open_redirect_content(target: str) -> str:
-    return _build_generic_security_card(target, "scanners/open_redirect.json", "Open Redirect Vulnerabilities", "🔀", "--accent-orange")
+    # Primeiro tentar a pasta nova, depois a pré-existente
+    data = read_json_file(Path("output") / target / "open_redirect" / "open_redirect_results.json")
+    if not data:
+        data = read_json_file(Path("output") / target / "scanners" / "open_redirect.json")
+    summary = read_json_file(Path("output") / target / "open_redirect" / "scan_summary.json") or {}
+    if not data:
+        s = summary.get("status", "NOT_RUN")
+        detail = f"Testados {summary.get('urls_checked', 0)} URLs com {summary.get('tests_run', 0)} requests." if summary else ""
+        return f'<div class="empty-state"><p>✅ Nenhum Open Redirect encontrado. {detail}</p></div>'
+    return _build_generic_security_card_from_data(data, "Open Redirect Vulnerabilities", "🔀", "--accent-orange")
+
+def build_host_injection_content(target: str) -> str:
+    data = read_json_file(Path("output") / target / "host_header_injection" / "host_injection_results.json")
+    summary = read_json_file(Path("output") / target / "host_header_injection" / "scan_summary.json") or {}
+    if not data:
+        detail = f"Testados {summary.get('hosts_checked', 0)} hosts com {summary.get('tests_run', 0)} requests." if summary else ""
+        return f'<div class="empty-state"><p>✅ Nenhum Host Header Injection encontrado. {detail}</p></div>'
+    return _build_generic_security_card_from_data(data, "Host Header Injection", "🏠", "--accent-red")
+
+def build_ssti_content(target: str) -> str:
+    data = read_json_file(Path("output") / target / "ssti" / "ssti_results.json")
+    summary = read_json_file(Path("output") / target / "ssti" / "scan_summary.json") or {}
+    if not data:
+        detail = f"Testados {summary.get('urls_checked', 0)} parâmetros com {summary.get('tests_run', 0)} requests." if summary else ""
+        return f'<div class="empty-state"><p>✅ Nenhum SSTI encontrado. {detail}</p></div>'
+    return _build_generic_security_card_from_data(data, "SSTI (Template Injection)", "🧪", "--accent-red")
+
+def build_xxe_content(target: str) -> str:
+    data = read_json_file(Path("output") / target / "xxe" / "xxe_results.json")
+    summary = read_json_file(Path("output") / target / "xxe" / "scan_summary.json") or {}
+    if not data:
+        detail = f"Testados {summary.get('endpoints_checked', 0)} endpoints." if summary else ""
+        return f'<div class="empty-state"><p>✅ Nenhum XXE encontrado. {detail}</p></div>'
+    return _build_generic_security_card_from_data(data, "XXE (XML External Entity)", "📄", "--accent-red")
+
+def build_proto_pollution_content(target: str) -> str:
+    data = read_json_file(Path("output") / target / "prototype_pollution" / "prototype_pollution_results.json")
+    summary = read_json_file(Path("output") / target / "prototype_pollution" / "scan_summary.json") or {}
+    if not data:
+        detail = f"Testados {summary.get('tests_run', 0)} requests. {summary.get('js_sinks', 0)} sinks JS analisados." if summary else ""
+        return f'<div class="empty-state"><p>✅ Nenhum Prototype Pollution encontrado. {detail}</p></div>'
+    return _build_generic_security_card_from_data(data, "Prototype Pollution", "🧬", "--accent-purple")
+
+def build_oauth_content(target: str) -> str:
+    data = read_json_file(Path("output") / target / "oauth_misconfig" / "oauth_misconfig_results.json")
+    summary = read_json_file(Path("output") / target / "oauth_misconfig" / "scan_summary.json") or {}
+    if not data:
+        detail = f"Testados {summary.get('oauth_endpoints', 0)} endpoints OAuth." if summary else ""
+        return f'<div class="empty-state"><p>✅ Nenhuma misconfiguraçao OAuth encontrada. {detail}</p></div>'
+    return _build_generic_security_card_from_data(data, "OAuth Misconfiguration", "🔐", "--accent-orange")
+
+def build_file_upload_content(target: str) -> str:
+    data = read_json_file(Path("output") / target / "file_upload" / "file_upload_results.json")
+    summary = read_json_file(Path("output") / target / "file_upload" / "scan_summary.json") or {}
+    if not data:
+        detail = f"Testados {summary.get('tests_run', 0)} endpoints de upload." if summary else ""
+        return f'<div class="empty-state"><p>✅ Nenhum upload inseguro encontrado. {detail}</p></div>'
+    return _build_generic_security_card_from_data(data, "Insecure File Upload", "📤", "--accent-orange")
+
+def build_api_versioning_content(target: str) -> str:
+    data = read_json_file(Path("output") / target / "api_versioning" / "api_versioning_results.json")
+    if not data:
+        return '<div class="empty-state"><p>✅ Nenhuma versão de API detectada.</p></div>'
+    rows = ""
+    for item in data:
+        risk = item.get("risk", "INFO")
+        risk_class = f"tag-{risk.lower()}" if risk != "INFO" else "tag-low"
+        req_b64 = base64.b64encode((item.get("request_raw") or "").encode("utf-8")).decode("utf-8")
+        res_b64 = base64.b64encode((item.get("response_raw") or "").encode("utf-8")).decode("utf-8")
+        row_id = f"apiv_{uuid.uuid4().hex[:8]}"
+        burp_script = f'<script>BURP_DATA["{row_id}"] = {{ "url": "{html.escape(item.get("url", ""))}", "req": "{req_b64}", "res": "{res_b64}" }};</script>'
+        button_html = f'<button class="burp-btn" onclick="openBurp(\'{row_id}\')">View HTTP</button>{burp_script}' if req_b64 else '-'
+        rows += f'''
+        <tr>
+            <td><a href="{html.escape(item.get("url", ""))}" target="_blank">{html.escape(item.get("url", ""))}</a></td>
+            <td><span class="tag {risk_class}">{item.get("version", "")}</span></td>
+            <td>{item.get("status", "")}</td>
+            <td>{item.get("length", "")}</td>
+            <td>{html.escape(item.get("details", ""))}</td>
+            <td style="text-align:right;">{button_html}</td>
+        </tr>'''
+    return f'''
+    <div class="card open" style="border-left: 4px solid var(--accent-blue);">
+        <div class="card-header"><span class="card-title">🔢 API Versioning</span><span class="card-badge">{len(data)} versions</span></div>
+        <div class="card-content" style="display:block;"><div class="table-wrapper"><table>
+            <thead><tr><th>URL</th><th>Version</th><th>Status</th><th>Length</th><th>Details</th><th>PoC</th></tr></thead>
+            <tbody>{rows}</tbody>
+        </table></div></div>
+    </div>'''
+
+def build_email_security_content(target: str) -> str:
+    data = read_json_file(Path("output") / target / "email_security" / "email_security_results.json")
+    if not data:
+        return '<div class="empty-state"><p>✅ Análise de email security não executada.</p></div>'
+    spf = data.get("spf", {})
+    dmarc = data.get("dmarc", {})
+    dkim = data.get("dkim", {})
+    def _risk_tag(r):
+        cls = {"CRITICAL": "tag-critical", "HIGH": "tag-high", "MEDIUM": "tag-medium", "LOW": "tag-low"}.get(r, "tag-info")
+        return f'<span class="tag {cls}">{r}</span>'
+    return f'''
+    <div class="card open" style="border-left: 4px solid var(--accent-blue);">
+        <div class="card-header"><span class="card-title">📧 Email Security (SPF/DMARC/DKIM)</span>
+        <span class="card-badge">{"🔴 SPOOFABLE" if data.get("spoofable") else "✅ OK"}</span></div>
+        <div class="card-content" style="display:block;"><div class="table-wrapper"><table>
+            <thead><tr><th>Check</th><th>Status</th><th>Risk</th><th>Details</th><th>Record</th></tr></thead>
+            <tbody>
+                <tr><td><strong>SPF</strong></td><td>{"✅ Present" if spf.get("present") else "❌ Missing"}</td><td>{_risk_tag(spf.get("risk", ""))}</td><td>{html.escape(spf.get("issue", ""))}</td><td style="font-size:11px;max-width:300px;overflow:auto;">{html.escape(str(spf.get("record") or "-"))}</td></tr>
+                <tr><td><strong>DMARC</strong></td><td>{"✅ Present" if dmarc.get("present") else "❌ Missing"}</td><td>{_risk_tag(dmarc.get("risk", ""))}</td><td>{html.escape(dmarc.get("issue", ""))}</td><td style="font-size:11px;max-width:300px;overflow:auto;">{html.escape(str(dmarc.get("record") or "-"))}</td></tr>
+                <tr><td><strong>DKIM</strong></td><td>{"✅ Present" if dkim.get("present") else "❌ Missing"}</td><td>{_risk_tag(dkim.get("risk", ""))}</td><td>{html.escape(dkim.get("issue", ""))}</td><td style="font-size:11px;">-</td></tr>
+            </tbody>
+        </table></div></div>
+    </div>'''
+
+def build_google_dorks_content(target: str) -> str:
+    data = read_json_file(Path("output") / target / "google_dorks" / "dorks_results.json")
+    if not data:
+        return '<div class="empty-state"><p>Google Dorks não gerados.</p></div>'
+    rows = ""
+    for item in data:
+        rows += f'''<tr>
+            <td><strong>{html.escape(item.get("category", ""))}</strong></td>
+            <td style="font-size:12px;">{html.escape(item.get("query", ""))}</td>
+            <td><a href="{html.escape(item.get("google_url", ""))}" target="_blank" class="burp-btn">Abrir no Google</a></td>
+        </tr>'''
+    return f'''
+    <div class="card open" style="border-left: 4px solid var(--accent-green);">
+        <div class="card-header"><span class="card-title">🔍 Google Dorks</span><span class="card-badge">{len(data)} dorks</span></div>
+        <div class="card-content" style="display:block;"><div class="table-wrapper"><table>
+            <thead><tr><th>Categoria</th><th>Query</th><th>Link</th></tr></thead>
+            <tbody>{rows}</tbody>
+        </table></div></div>
+    </div>'''
+
+def _build_generic_security_card_from_data(data: list, title: str, icon: str, border_color: str) -> str:
+    """Constrói um card genérico de segurança a partir de dados já carregados."""
+    if not data:
+        return ''
+    rows = ""
+    for item in data:
+        risk = item.get("risk", "LOW")
+        risk_class = f"tag-{risk.lower()}"
+        req_b64 = base64.b64encode((item.get("request_raw") or "").encode("utf-8")).decode("utf-8")
+        res_b64 = base64.b64encode((item.get("response_raw") or "").encode("utf-8")).decode("utf-8")
+        row_id = f"sec_{uuid.uuid4().hex[:8]}"
+        burp_script = f'<script>BURP_DATA["{row_id}"] = {{ "url": "{html.escape(item.get("url", ""))}", "req": "{req_b64}", "res": "{res_b64}" }};</script>'
+        button_html = f'<button class="burp-btn" onclick="openBurp(\'{row_id}\')">View HTTP</button>{burp_script}' if req_b64 else '-'
+        rows += f'''<tr>
+            <td><span class="tag {risk_class}">{risk}</span></td>
+            <td><strong>{html.escape(item.get("type", ""))}</strong></td>
+            <td><a href="{html.escape(item.get("url", ""))}" target="_blank">{html.escape(item.get("url", "")[:80])}</a></td>
+            <td style="font-size:12px;">{html.escape(item.get("details", ""))}</td>
+            <td style="text-align:right;">{button_html}</td>
+        </tr>'''
+    return f'''
+    <div class="card open" style="border-left: 4px solid var({border_color});">
+        <div class="card-header"><span class="card-title">{icon} {title}</span><span class="card-badge">{len(data)} items</span></div>
+        <div class="card-content" style="display:block;"><div class="table-wrapper"><table>
+            <thead><tr><th>Risk</th><th>Type</th><th>URL</th><th>Details</th><th>PoC</th></tr></thead>
+            <tbody>{rows}</tbody>
+        </table></div></div>
+    </div>'''
 
 def build_ssrf_content(target: str) -> str:
     return _build_generic_security_card(target, "scanners/ssrf.json", "Server-Side Request Forgery", "🎯", "--accent-red")
@@ -2094,11 +2347,30 @@ def build_keys_content(target: str) -> str:
 def build_files_content(target: str) -> str:
     base = Path("output") / target
     files_content = read_file_raw(base / "files" / "files_by_extension.txt")
+    sensitive_files = read_json_file(base / "files" / "sensitive_files.json") or []
     
-    if not files_content.strip():
+    if not files_content.strip() and not sensitive_files:
         return '<div class="empty-state"><p>No files categorized</p></div>'
+        
+    sensitive_html = ""
+    if sensitive_files:
+        items = "".join(f'<li><a href="{html.escape(f)}" target="_blank" style="color:var(--accent-red);">{html.escape(f)}</a></li>' for f in sensitive_files)
+        sensitive_html = f'''
+        <div class="card open" style="border-left: 4px solid var(--accent-red); margin-bottom: 20px;">
+            <div class="card-header">
+                <span class="card-title">🚨 Sensitive Files Found (.git, .env, backups)</span>
+                <span class="card-badge tag-critical">{len(sensitive_files)} files</span>
+            </div>
+            <div class="card-content" style="display:block;">
+                <ul style="list-style-type:none; padding:10px;">
+                    {items}
+                </ul>
+            </div>
+        </div>
+        '''
     
     return f'''
+    {sensitive_html}
     <div class="card open">
         <div class="card-header">
             <span class="card-title">Files by Extension</span>
@@ -2171,21 +2443,48 @@ def build_routes_content(target: str) -> str:
         if gql_file.exists():
             graphql = [l.strip() for l in gql_file.read_text(errors="ignore").splitlines() if l.strip()]
     
-    if not routes_data and not raw_endpoints and not graphql:
+    def is_in_scope(url_str: str, target_domain: str) -> bool:
+        if url_str.startswith('/'): return True
+        try:
+            from urllib.parse import urlparse
+            host = urlparse(url_str).netloc.split(':')[0].lower()
+            if not host: return True
+            return target_domain in host
+        except:
+            return False
+
+    kiterunner_data = []
+    kiterunner_json = base / "api_fuzzer" / "kiterunner_results.json"
+    if kiterunner_json.exists():
+        try:
+            kit_raw = read_json_file(kiterunner_json) or []
+            for item in kit_raw:
+                u = item.get("url", "")
+                if u and is_in_scope(u, target):
+                    kiterunner_data.append(item)
+        except: pass
+
+    if not routes_data and not raw_endpoints and not graphql and not kiterunner_data:
         return '<div class="empty-state"><p>No API routes or endpoints found</p></div>'
         
     flat_routes = []
     for r in routes_data:
+        url_val = r.get("url", "")
+        # Filtragem de escopo rígida
+        if not is_in_scope(url_val, target): continue
+        
         flat_routes.append({
             "subdomain": r.get("subdomain", "Unknown"),
             "method": r.get("method", "GET"),
             "path": r.get("path", ""),
-            "url": r.get("url", "#"),
+            "url": url_val,
             "source": r.get("source", "")
         })
         
     # Add raw endpoints as well if they don't overlap completely
-    for ep in raw_endpoints:
+    # Transform valid raw eps to flat_routes
+    valid_raw_eps = [ep for ep in raw_endpoints if is_in_scope(ep, target)]
+    for ep in valid_raw_eps:
         if not any(r["path"] == ep or r["url"] == ep for r in flat_routes):
             flat_routes.append({
                 "subdomain": "Unknown",
@@ -2194,6 +2493,27 @@ def build_routes_content(target: str) -> str:
                 "url": ep,
                 "source": "raw"
             })
+            
+    # Add Kiterunner endpoints
+    for item in kiterunner_data:
+        u = item.get("url", "")
+        if not any(r["path"] == u or r["url"] == u for r in flat_routes):
+            subd = "Unknown"
+            try: 
+                from urllib.parse import urlparse
+                subd = urlparse(u).netloc.split(':')[0]
+            except: pass
+            
+            flat_routes.append({
+                "subdomain": subd,
+                "method": item.get("method", "GET"),
+                "path": u,
+                "url": u,
+                "source": "kiterunner"
+            })
+            
+    # Filtrar o GQL tambem
+    graphql = [g for g in graphql if is_in_scope(g, target)]
             
     flat_routes = sorted(flat_routes, key=lambda x: (x["subdomain"], x["path"]))
     
@@ -2254,11 +2574,24 @@ def build_js_content(target: str) -> str:
     if not js_data:
         return '<div class="empty-state"><p>No JS files found</p></div>'
         
+    def is_in_scope(url_str: str, target_domain: str) -> bool:
+        if url_str.startswith('/'): return True
+        try:
+            from urllib.parse import urlparse
+            host = urlparse(url_str).netloc.split(':')[0].lower()
+            if not host: return True
+            return target_domain in host
+        except:
+            return False
+
     flat_js = []
     for j in js_data:
+        url_val = j.get("url", "")
+        if not is_in_scope(url_val, target): continue
+        
         flat_js.append({
             "subdomain": j.get("subdomain", "Unknown"),
-            "url": j.get("url", ""),
+            "url": url_val,
             "type": j.get("type", "external"),
             "size": j.get("size", 0)
         })
@@ -2405,7 +2738,21 @@ def build_params_content(target: str) -> str:
         return '<div class="empty-state"><p>No parameters discovered. Run a scan with Katana to detect params.</p></div>'
     
     # Ler JSON com param → [URLs]
-    params_data = read_json_file(params_file)
+    params_data = read_json_file(params_file) or {}
+    
+    # Adicionar hidden params da extração passiva
+    hidden_params_file = base / "paramfuzz" / "hidden_params.json"
+    hidden_params_data = read_json_file(hidden_params_file) or []
+    
+    # Mesclar hidden params no dicionário principal
+    for hp in hidden_params_data:
+        param_name = hp.get("param") or hp.get("name")
+        url_context = hp.get("url") or hp.get("context", "Extracted passively")
+        if param_name:
+            if param_name not in params_data:
+                params_data[param_name] = []
+            if url_context not in params_data[param_name]:
+                params_data[param_name].append(url_context)
     
     if not params_data:
         return '<div class="empty-state"><p>No parameters found</p></div>'
@@ -2860,9 +3207,34 @@ def build_headers_content(target: str) -> str:
         </tr>
         '''
     
-    avg_score = sum(d.get("score", 0) for d in data) / len(data)
+    avg_score = sum(d.get("score", 0) for d in data) / len(data) if data else 0
+    
+    # 🕷️ Django Debug Mode Alerts
+    django_debug_file = Path("output") / target / "fingerprint" / "django_debug_alerts.txt"
+    django_html = ""
+    if django_debug_file.exists():
+        django_hosts = [l.strip() for l in django_debug_file.read_text(errors="ignore").splitlines() if l.strip()]
+        if django_hosts:
+            items = "".join([f'<li><a href="http://{h}" target="_blank" style="color:#ff7b72;">{h}</a></li>' for h in django_hosts])
+            django_html = f'''
+            <div class="card open" style="border-left: 4px solid var(--accent-red); margin-bottom: 20px;">
+                <div class="card-header">
+                    <span class="card-title">🚨 HIGH RISK: Django Debug Mode Enabled</span>
+                    <span class="card-badge tag-critical">{len(django_hosts)} hosts</span>
+                </div>
+                <div class="card-content" style="display:block;">
+                    <p style="font-size:13px; color:var(--text-secondary); margin-bottom:10px;">
+                        The following hosts have Django Debug Mode enabled, exposing sensitive configuration, code pathways, and environment variables via forced 404/500 errors.
+                    </p>
+                    <ul style="list-style-type:none; padding:10px;">
+                        {items}
+                    </ul>
+                </div>
+            </div>
+            '''
 
     return f'''
+    {django_html}
     <div class="card">
         <div class="card-header">
             <span class="card-title">🛡️ Security Headers Analysis</span>
@@ -3179,19 +3551,40 @@ def build_js_routes_content(target: str) -> str:
     data = read_json_file(path)
     if not data: return '<div class="empty-state"><p>No API/JS routes found.</p></div>'
     
+    def is_in_scope(url_str: str, target_domain: str) -> bool:
+        if url_str.startswith('/'): return True
+        try:
+            from urllib.parse import urlparse
+            host = urlparse(url_str).netloc.split(':')[0].lower()
+            if not host: return True
+            return target_domain in host
+        except:
+            return False
+
     html_content = ""
     for item in data:
         source = item.get("source", "")
+        # Ignora se o arquivo JS origem estiver debulhando rotas externas
+        if source and not is_in_scope(source, target):
+            continue
+            
         routes = item.get("routes", [])
         params = item.get("parameters", [])
         
+        # Filtra rotas caso existam URLs absolutas de outros dominios mixadas
+        routes = [r for r in routes if is_in_scope(r, target) or r.startswith('/')]
+        
+        # Se não tiver mais rotas nem params úteis, ignora
+        if not routes and not params:
+            continue
+            
         routes_html = "".join([f'<li><code style="color:var(--accent-green);">{html.escape(r)}</code></li>' for r in routes])
         params_html = "".join([f'<li><code style="color:var(--accent-purple);">{html.escape(p)}</code></li>' for p in params])
         
         html_content += f'''
         <div class="card open">
             <div class="card-header">
-                <span class="card-title">📜 {html.escape(source)}</span>
+                <span class="card-title">📜 <a href="{html.escape(source)}" target="_blank" style="color:inherit;text-decoration:none;">{html.escape(source[:70] + '...' if len(source) > 70 else source)}</a></span>
                 <span class="card-badge">{len(routes)} routes, {len(params)} params</span>
             </div>
             <div class="card-content" style="display:flex; gap: 20px;">
@@ -3206,6 +3599,10 @@ def build_js_routes_content(target: str) -> str:
             </div>
         </div>
         '''
+        
+    if not html_content:
+        return '<div class="empty-state"><p>No relevant in-scope API/JS routes found.</p></div>'
+        
     return html_content
 
 def build_swagger_content(target: str) -> str:
@@ -3899,6 +4296,73 @@ def build_knowledge_tips_content(target: str) -> str:
         '''
     return cards
 
+def build_wordlist_content(target: str) -> str:
+    path = Path("output") / target / "wordlist" / "combined.txt"
+    if not path.exists():
+        return '<div class="empty-state"><p>No extracted wordlists found.</p></div>'
+        
+    lines = [l.strip() for l in path.read_text(errors="ignore").splitlines() if l.strip()]
+    if not lines:
+        return '<div class="empty-state"><p>No extracted wordlists found.</p></div>'
+        
+    json_data = json.dumps([{"word": w} for w in lines])
+    
+    return f'''
+    <div class="card open">
+        <div class="card-header">
+            <span class="card-title">🗂️ Extracted Wordlist</span>
+            <span class="card-badge">{{len(lines)}} words</span>
+        </div>
+        <div class="card-content">
+            <div style="margin-bottom:15px; padding:12px; background:rgba(46,160,67,0.1); border:1px solid rgba(46,160,67,0.3); border-radius:6px;">
+                <p style="font-size:13px; color:var(--text-secondary); margin:0; line-height: 1.5;">
+                    Estas palavras foram passivamente extraídas do alvo (arquivos JS, parâmetros, diretórios). Elas são exclusivas do contexto da aplicação, perfeitas para <strong>Fuzzing focado</strong>.
+                </p>
+                <div style="margin-top:10px;">
+                    <a href="output/{target}/wordlist/combined.txt" target="_blank" style="display:inline-block; padding:6px 10px; background:var(--bg-tertiary); border-radius:4px; border:1px solid var(--border-color); color:var(--accent-blue); text-decoration:none; font-size:12px; font-weight: bold;">📄 Baixar dicionário (combined.txt)</a>
+                </div>
+            </div>
+            
+            <div id="wordlists_container"></div>
+            
+            <script>
+            (function() {{
+                const data = {json_data};
+                const cols = ["word"];
+                const renderFn = function(row) {{
+                    return `
+                        <tr>
+                            <td style="font-family:monospace; color:var(--accent-orange); font-size:13px;">${{row.word}}</td>
+                        </tr>
+                    `;
+                }};
+                
+                document.addEventListener('DOMContentLoaded', function() {{
+                    const tableContainer = document.getElementById("wordlists_container");
+                    if(tableContainer) {{
+                        tableContainer.innerHTML = `
+                            <div class="table-wrapper">
+                                <table>
+                                    <thead><tr><th>Extracted Word</th></tr></thead>
+                                    <tbody id="wordlists_container_tbody"></tbody>
+                                </table>
+                            </div>
+                        `;
+                    }}
+                    
+                    const initInterval = setInterval(() => {{
+                        if (typeof initPaginatedTable === "function") {{
+                            clearInterval(initInterval);
+                            initPaginatedTable("wordlists_container", data, cols, renderFn, 200);
+                        }}
+                    }}, 100);
+                }});
+            }})();
+            </script>
+        </div>
+    </div>
+    '''
+
 def run(context: Dict[str, Any]) -> List[str]:
     target = context.get("target")
     if not target:
@@ -4007,6 +4471,28 @@ def run(context: Dict[str, Any]) -> List[str]:
         "stats_quickwins": len(read_json_file(Path("output") / target / "intelligence" / "quick_wins.json") or []),
         "stats_oast": len(read_file_lines(Path("output") / target / "interactsh.json")),
         "oast_content": build_oast_content(target),
+        "stats_wordlist": stats.get("wordlist_count", 0),
+        "wordlist_content": build_wordlist_content(target),
+        # V9: Novos módulos de segurança
+        "open_redirect_content": build_open_redirect_content(target),
+        "stats_open_redirect": len(read_json_file(Path("output") / target / "open_redirect" / "open_redirect_results.json") or []),
+        "host_injection_content": build_host_injection_content(target),
+        "stats_host_injection": len(read_json_file(Path("output") / target / "host_header_injection" / "host_injection_results.json") or []),
+        "ssti_content": build_ssti_content(target),
+        "stats_ssti": len(read_json_file(Path("output") / target / "ssti" / "ssti_results.json") or []),
+        "xxe_content": build_xxe_content(target),
+        "stats_xxe": len(read_json_file(Path("output") / target / "xxe" / "xxe_results.json") or []),
+        "proto_pollution_content": build_proto_pollution_content(target),
+        "stats_proto_pollution": len(read_json_file(Path("output") / target / "prototype_pollution" / "prototype_pollution_results.json") or []),
+        "oauth_content": build_oauth_content(target),
+        "stats_oauth": len(read_json_file(Path("output") / target / "oauth_misconfig" / "oauth_misconfig_results.json") or []),
+        "api_versioning_content": build_api_versioning_content(target),
+        "stats_api_versioning": len(read_json_file(Path("output") / target / "api_versioning" / "api_versioning_results.json") or []),
+        "file_upload_content": build_file_upload_content(target),
+        "stats_file_upload": len(read_json_file(Path("output") / target / "file_upload" / "file_upload_results.json") or []),
+        "email_security_content": build_email_security_content(target),
+        "google_dorks_content": build_google_dorks_content(target),
+        "stats_google_dorks": len(read_json_file(Path("output") / target / "google_dorks" / "dorks_results.json") or []),
     }
     
 

@@ -34,7 +34,19 @@ MODULES = {
     "25": "ssrf",
     "26": "cloud",
     "27": "http_smuggling",
-    "28": "all",
+    "28": "open_redirect",
+    "29": "host_header_inj",
+    "30": "ssti",
+    "31": "xxe",
+    "32": "proto_pollution",
+    "33": "oauth_misconfig",
+    "34": "api_versioning",
+    "35": "file_upload",
+    "36": "email_security",
+    "37": "google_dorks",
+    "38": "dangling_dns",
+    "39": "cve_nvd",
+    "40": "all",
 }
 
 # --------- DEPENDÊNCIAS ---------
@@ -67,7 +79,19 @@ DEPENDENCIES = {
     "25": ["1", "2", "25"],
     "26": ["1", "26"],
     "27": ["1", "2", "27"],
-    "28": [str(i) for i in range(1, 28)],  # ALL: Roda do 1 ao 27
+    "28": ["1", "2", "28"],
+    "29": ["1", "29"],
+    "30": ["1", "2", "30"],
+    "31": ["1", "2", "31"],
+    "32": ["1", "2", "5", "32"],
+    "33": ["1", "2", "33"],
+    "34": ["1", "2", "7", "34"],
+    "35": ["1", "2", "35"],
+    "36": ["1", "36"],
+    "37": ["1", "2", "37"],
+    "38": ["1", "2", "38"],
+    "39": ["1", "39"],
+    "40": [str(i) for i in range(1, 40)],  # ALL: Roda do 1 ao 39
 }
 
 
@@ -123,7 +147,19 @@ def print_menu():
         "25": ("ssrf", "SSRFmap e OAST", "📡"),
         "26": ("cloud", "Cloud Recon (S3/Azure/GCP)", "🌩️"),
         "27": ("http_smuggling", "HTTP Request Smuggling", "🕵️"),
-        "28": ("all", "Execução completa", "🚀")
+        "28": ("open_redirect", "Open Redirect Detection", "🔀"),
+        "29": ("host_header_inj", "Host Header Injection", "🏠"),
+        "30": ("ssti", "SSTI (Template Injection)", "🧪"),
+        "31": ("xxe", "XXE (XML External Entity)", "📄"),
+        "32": ("proto_pollution", "Prototype Pollution", "🧬"),
+        "33": ("oauth_misconfig", "OAuth Misconfiguration", "🔐"),
+        "34": ("api_versioning", "API Versioning Recon", "🔢"),
+        "35": ("file_upload", "Insecure File Upload", "📤"),
+        "36": ("email_security", "SPF/DMARC/DKIM Check", "📧"),
+        "37": ("google_dorks", "Google Dorks Generator", "🔍"),
+        "38": ("dangling_dns", "Dangling DNS Check", "🌐"),
+        "39": ("cve_nvd", "CVE via NVD/NIST", "🛡️"),
+        "40": ("all", "Execução completa", "🚀")
     }
 
     for k, (name, desc, emoji) in modules.items():

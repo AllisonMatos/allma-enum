@@ -16,9 +16,10 @@ DEFAULT_USER_AGENT = (
     "Chrome/120.0.0.0 Safari/537.36"
 )
 
-# Atraso (Delay) em segundos entre as requisições paralelas nos plugins. 
-# Mude para 0.1, 0.5 ou 1.0 se o WAF estiver te banindo.
-REQUEST_DELAY = 0.0
+# Atraso (Delay) em segundos entre as requisições paralelas nos plugins.
+# Default: 0.3s (seguro contra WAFs). Use 0.0 para velocidade máxima, 0.5-1.0 para WAFs agressivos.
+# Pode ser sobrescrito pelo prompt do menu na hora da execução.
+REQUEST_DELAY = 0.3
 
 # Limites de URLs por scan
 MAX_URLS_PER_SCAN = 150

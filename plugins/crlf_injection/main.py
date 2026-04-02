@@ -161,7 +161,36 @@ def run(context: dict):
         warn("Nenhum arquivo de URLs encontrado")
         return []
     
-    all_urls = [l.strip() for l in urls_file.read_text().splitlines() if l.strip()]
+    raw_urls = [l.strip() for l in urls_file.read_text().splitlines() if l.strip()]
+    
+    # -----------------------------------------------------
+    # Deduplicação Agressiva (CRLF não precisa de 50k URLs) 
+    # -----------------------------------------------------
+    unique_signatures = set()
+    all_urls = []
+    
+    for u in raw_urls:
+        try:
+            parsed = urlparse(u)
+            host = parsed.netloc
+            path = parsed.path
+            
+            # Signature: host + primeiros 2 diretorios + chaves de parametros
+            path_parts = [p for p in path.split('/') if p][:2]
+            params = tuple(sorted(parse_qs(parsed.query).keys()))
+            sig = (host, tuple(path_parts), params)
+            
+            if sig not in unique_signatures:
+                unique_signatures.add(sig)
+                all_urls.append(u)
+                
+                # Cap global de 3000 URLs pra evitar lentidão absurda
+                if len(all_urls) >= 3000:
+                    break
+        except:
+            pass
+            
+    info(f"   [i] URLs reduzidas via deduplicação agressiva: {len(raw_urls)} -> {len(all_urls)}")
     
     # -----------------------------------------------------
     # Execução do crlfuzz (Rápido e Preciso em Go)
@@ -188,7 +217,11 @@ def run(context: dict):
             
             cmd = [crlfuzz, "-l", str(temp_file), "-s", "-o", str(crlfuzz_out)]
             # Usa -s silent pra suprimir output nativo
-            subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            try:
+                subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=45)
+            except subprocess.TimeoutExpired:
+                # Servidor engasgou a conexão do crlfuzz (comun em bloqueios stealth)
+                pass
             
             if crlfuzz_out.exists() and crlfuzz_out.stat().st_size > 0:
                 for line in crlfuzz_out.read_text(errors="ignore").splitlines():

@@ -83,13 +83,18 @@ def run(context: dict):
             info(f"   🔎 Buscando exploits para: {C.YELLOW}{search_term}{C.END}")
             exploits = run_searchsploit(search_term)
             
-            if exploits:
+            # Consultar NVD/NIST API
+            nvd_results = query_nvd(name, version)
+            
+            if exploits or nvd_results:
                 vulns_found[cache_key] = {
                     "tech": name,
                     "version": version,
-                    "exploits": exploits
+                    "exploits": exploits,
+                    "nvd_cves": nvd_results,
                 }
-                info(f"      🚨 {C.RED}{len(exploits)} exploits encontrados!{C.END}")
+                total = len(exploits) + len(nvd_results)
+                info(f"      🚨 {C.RED}{total} vulnerabilidades encontradas!{C.END} (ExploitDB: {len(exploits)}, NVD: {len(nvd_results)})")
 
     # Salvar resultados
     if vulns_found:
@@ -100,11 +105,67 @@ def run(context: dict):
             for key, data in vulns_found.items():
                 f.write(f"=== {data['tech']} {data['version'] or ''} ===\n")
                 for exploit in data['exploits']:
-                    f.write(f"- [{exploit.get('Title')}] (Path: {exploit.get('Path')})\n")
+                    f.write(f"- [ExploitDB] {exploit.get('Title')} (Path: {exploit.get('Path')})\n")
+                for cve in data.get('nvd_cves', []):
+                    f.write(f"- [NVD] {cve['id']} (CVSS: {cve.get('cvss', 'N/A')}) — {cve.get('description', '')[:120]}\n")
                 f.write("\n")
                 
         success(f"💣 Vulnerabilidades potenciais salvas em {cve_file}")
     else:
         success("✅ Nenhuma vulnerabilidade conhecida correlacionada automaticamente.")
 
+    summary = {
+        "techs_checked": len([t for d in tech_data.values() if "technologies" in d for t in d["technologies"]]),
+        "findings": len(vulns_found),
+        "status": "COMPLETED"
+    }
+    (outdir / "scan_summary.json").write_text(json.dumps(summary, indent=2))
+
     return [str(cve_file)]
+
+
+def query_nvd(tech_name: str, version: str) -> list:
+    """Consulta a API pública do NVD/NIST para CVEs."""
+    import httpx
+    import time
+
+    results = []
+    keyword = f"{tech_name} {version}"
+    url = f"https://services.nvd.nist.gov/rest/json/cves/2.0?keywordSearch={keyword}&resultsPerPage=10"
+
+    try:
+        time.sleep(1)  # Rate limiting obrigatório do NVD (6 req/min sem API key)
+        with httpx.Client(timeout=15, verify=True) as client:
+            resp = client.get(url, headers={"User-Agent": "Enum-Allma/1.0 Security Scanner"})
+            if resp.status_code == 200:
+                data = resp.json()
+                for vuln in data.get("vulnerabilities", [])[:5]:
+                    cve = vuln.get("cve", {})
+                    cve_id = cve.get("id", "")
+
+                    # Extrair CVSS
+                    cvss = "N/A"
+                    metrics = cve.get("metrics", {})
+                    if "cvssMetricV31" in metrics:
+                        cvss = metrics["cvssMetricV31"][0].get("cvssData", {}).get("baseScore", "N/A")
+                    elif "cvssMetricV2" in metrics:
+                        cvss = metrics["cvssMetricV2"][0].get("cvssData", {}).get("baseScore", "N/A")
+
+                    # Extrair descrição
+                    desc = ""
+                    for d in cve.get("descriptions", []):
+                        if d.get("lang") == "en":
+                            desc = d.get("value", "")
+                            break
+
+                    results.append({
+                        "id": cve_id,
+                        "cvss": cvss,
+                        "description": desc[:300],
+                        "source": "NVD/NIST",
+                    })
+    except Exception:
+        pass
+
+    return results
+

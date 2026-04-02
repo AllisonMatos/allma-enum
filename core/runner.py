@@ -64,6 +64,18 @@ def execute_chain(target: str, chain: list, params: dict):
         "25": "ssrf",
         "26": "cloud",
         "27": "http_smuggling",
+        "28": "open_redirect",
+        "29": "host_header_injection",
+        "30": "ssti",
+        "31": "xxe",
+        "32": "prototype_pollution",
+        "33": "oauth_misconfig",
+        "34": "api_versioning",
+        "35": "file_upload",
+        "36": "email_security",
+        "37": "google_dorks",
+        "38": "takeover",       # Dangling DNS reusa o módulo takeover
+        "39": "cve",            # NVD reusa o módulo cve (agora com NVD integrado)
         "99": "intelligence",
     }
 
@@ -282,6 +294,13 @@ def execute_chain(target: str, chain: list, params: dict):
                     info(f"   {line[:150]}...")
             else:
                 info("   Nenhuma interação OAST detectada.")
+            
+            # Centralizar OAST no intelligence para o report consumir
+            intel_dir = Path("output") / target / "intelligence"
+            intel_dir.mkdir(parents=True, exist_ok=True)
+            import shutil as _sh
+            _sh.copy2(str(interactsh_out), str(intel_dir / "oast_interactions.json"))
+            info(f"   📂 OAST copiado para {intel_dir / 'oast_interactions.json'}")
 
     # ==========================================
     #  TIMING: Finalização e geração do arquivo

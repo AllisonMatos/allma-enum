@@ -67,7 +67,13 @@ def import_target(target: str):
         build_vuln_patterns_content, build_knowledge_tips_content,
         build_surfacemap_content, build_attack_priority_content,
         build_jwt_content, build_crlf_content, build_smuggling_content,
-        build_deser_content, build_oast_content
+        build_deser_content, build_oast_content,
+        build_open_redirect_content, build_host_injection_content,
+        build_ssti_content, build_xxe_content, build_proto_pollution_content,
+        build_oauth_content, build_file_upload_content,
+        build_api_versioning_content, build_email_security_content,
+        build_google_dorks_content, build_ssrf_content,
+        build_cache_deception_content
     )
 
     print(f"  [+] Importing: {target}")
@@ -162,7 +168,19 @@ def import_target(target: str):
         "stats_smuggling": len(read_json_file(Path("output") / target / "http_smuggling" / "smuggling_results.json") or []),
         "stats_deser": len(read_json_file(Path("output") / target / "insecure_deserialization" / "deser_results.json") or []),
         "stats_quickwins": len(read_json_file(Path("output") / target / "intelligence" / "quick_wins.json") or []),
-        "stats_oast": len(read_file_lines(Path("output") / target / "interactsh.json")),
+        "stats_oast": len(read_file_lines(Path("output") / target / "interactsh.json") or read_json_file(Path("output") / target / "intelligence" / "oast_interactions.json") or []),
+        "stats_open_redirect": len(read_json_file(Path("output") / target / "open_redirect" / "open_redirect_results.json") or []),
+        "stats_host_injection": len(read_json_file(Path("output") / target / "host_header_injection" / "host_injection_results.json") or []),
+        "stats_ssti": len(read_json_file(Path("output") / target / "ssti" / "ssti_results.json") or []),
+        "stats_xxe": len(read_json_file(Path("output") / target / "xxe" / "xxe_results.json") or []),
+        "stats_proto": len(read_json_file(Path("output") / target / "prototype_pollution" / "prototype_pollution_results.json") or []),
+        "stats_oauth": len(read_json_file(Path("output") / target / "oauth_misconfig" / "oauth_misconfig_results.json") or []),
+        "stats_file_upload": len(read_json_file(Path("output") / target / "file_upload" / "file_upload_results.json") or []),
+        "stats_api_versioning": len(read_json_file(Path("output") / target / "api_versioning" / "api_versioning_results.json") or []),
+        "stats_email_sec": 1 if (Path("output") / target / "email_security" / "email_security_results.json").exists() else 0,
+        "stats_google_dorks": len(read_json_file(Path("output") / target / "google_dorks" / "google_dorks_results.json") or []),
+        "stats_ssrf": len(read_json_file(Path("output") / target / "ssrf" / "ssrf_results.json") or []),
+        "stats_cache_deception": len(read_json_file(Path("output") / target / "cache_deception" / "cache_deception_results.json") or []),
     }
 
     # Build all section content
@@ -196,8 +214,20 @@ def import_target(target: str):
         "smuggling_sec": build_smuggling_content(target),
         "deser_sec": build_deser_content(target),
         "quickwins_attack": build_quick_wins_content(target),
-                "knowledge_tips": build_knowledge_tips_content(target),
+        "knowledge_tips": build_knowledge_tips_content(target),
         "oast_sec": build_oast_content(target),
+        "open_redirect": build_open_redirect_content(target),
+        "host_injection": build_host_injection_content(target),
+        "ssti_sec": build_ssti_content(target),
+        "xxe_sec": build_xxe_content(target),
+        "proto_pollution": build_proto_pollution_content(target),
+        "oauth_sec": build_oauth_content(target),
+        "file_upload": build_file_upload_content(target),
+        "api_versioning": build_api_versioning_content(target),
+        "email_security": build_email_security_content(target),
+        "google_dorks": build_google_dorks_content(target),
+        "ssrf_sec": build_ssrf_content(target),
+        "cache_deception": build_cache_deception_content(target),
     }
 
     # Save to in-memory DB

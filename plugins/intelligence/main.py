@@ -73,6 +73,17 @@ ATTACK_WEIGHTS = {
     "cache_deception_vulnerable": 7,
     "insecure_headers": 2,
     "deserialization_vulnerable": 8,
+    # V9 Module Weights
+    "open_redirect_vulnerable": 5,
+    "host_injection_vulnerable": 6,
+    "ssti_vulnerable": 9,
+    "xxe_vulnerable": 8,
+    "prototype_pollution_vulnerable": 7,
+    "oauth_misconfig_vulnerable": 7,
+    "api_versioning_exposed": 4,
+    "file_upload_vulnerable": 8,
+    "email_security_flaw": 3,
+    "sensitive_files_exposed": 7,
 }
 
 # Patterns to detect dev/staging/internal hosts
@@ -239,7 +250,7 @@ class IntelligenceEngine:
         # Load cross-reference data
         self.admin_panels = self._load_json("admin/admin_panels.json") or []
         self.swagger_docs = self._load_json("domain/swagger_docs.json") or []
-        self.graphql_data = self._load_json("scanners/graphql.json") or []
+        self.graphql_data = self._load_json("graphql/graphql.json") or []
         self.jwt_data = self._load_json("jwt_analyzer/jwt_results.json") or []
         self.keys_data = self._load_json("domain/extracted_keys.json") or []
         self.cors_data = self._load_json("cors/cors_results.json") or []
@@ -253,6 +264,17 @@ class IntelligenceEngine:
         self.headers_data = self._load_json("headers/headers_results.json") or []
         self.deserialization_data = self._load_json("insecure_deserialization/deserialization_results.json") or []
         
+        # Load V9 Module data
+        self.open_redirect_data = self._load_json("open_redirect/open_redirect_results.json") or []
+        self.host_injection_data = self._load_json("host_header_injection/host_injection_results.json") or []
+        self.ssti_data = self._load_json("ssti/ssti_results.json") or []
+        self.xxe_data = self._load_json("xxe/xxe_results.json") or []
+        self.proto_data = self._load_json("prototype_pollution/prototype_pollution_results.json") or []
+        self.oauth_data = self._load_json("oauth_misconfig/oauth_misconfig_results.json") or []
+        self.api_ver_data = self._load_json("api_versioning/api_versioning_results.json") or []
+        self.file_upload_data = self._load_json("file_upload/file_upload_results.json") or []
+        self.sensitive_files_data = self._load_json("files/sensitive_files.json") or []
+
         # Load subdomains
         subs_file = self.base_dir / "domain" / "subdomains.txt"
         self.subdomains = []
@@ -425,6 +447,69 @@ class IntelligenceEngine:
             priority_data[host]["score"] += ATTACK_WEIGHTS["deserialization_vulnerable"]
             priority_data[host]["factors"].append(f"Insecure Deserialization Susceptible: {deser.get('payload_type')}")
             priority_data[host]["tags"].append("DESERIALIZATION")
+            
+        # V9: Open Redirect
+        for d in self.open_redirect_data:
+            host = urlparse(d.get("url", "")).netloc
+            priority_data[host]["score"] += ATTACK_WEIGHTS["open_redirect_vulnerable"]
+            priority_data[host]["factors"].append("Open Redirect Confirmed")
+            priority_data[host]["tags"].append("OPEN_REDIRECT")
+
+        # V9: Host Header Injection
+        for d in self.host_injection_data:
+            host = urlparse(d.get("url", "")).netloc
+            priority_data[host]["score"] += ATTACK_WEIGHTS["host_injection_vulnerable"]
+            priority_data[host]["factors"].append(f"Host Header Injection ({d.get('type')})")
+            priority_data[host]["tags"].append("HOST_INJECTION")
+
+        # V9: SSTI
+        for d in self.ssti_data:
+            host = urlparse(d.get("url", "")).netloc
+            priority_data[host]["score"] += ATTACK_WEIGHTS["ssti_vulnerable"]
+            priority_data[host]["factors"].append("SSTI (Server-Side Template Injection) Detected")
+            priority_data[host]["tags"].append("SSTI")
+
+        # V9: XXE
+        for d in self.xxe_data:
+            host = urlparse(d.get("url", "")).netloc
+            priority_data[host]["score"] += ATTACK_WEIGHTS["xxe_vulnerable"]
+            priority_data[host]["factors"].append("XXE Detected")
+            priority_data[host]["tags"].append("XXE")
+
+        # V9: Prototype Pollution
+        for d in self.proto_data:
+            host = urlparse(d.get("url", "")).netloc
+            priority_data[host]["score"] += ATTACK_WEIGHTS["prototype_pollution_vulnerable"]
+            priority_data[host]["factors"].append("Prototype Pollution Reflected/Dom-based")
+            priority_data[host]["tags"].append("PROTO_POLLUTION")
+
+        # V9: OAuth Misconfig
+        for d in self.oauth_data:
+            host = urlparse(d.get("url", "")).netloc
+            priority_data[host]["score"] += ATTACK_WEIGHTS["oauth_misconfig_vulnerable"]
+            priority_data[host]["factors"].append(f"OAuth Flaw: {d.get('type')}")
+            priority_data[host]["tags"].append("OAUTH")
+
+        # V9: API Versioning Exposed
+        for d in self.api_ver_data:
+            host = urlparse(d.get("url", "")).netloc
+            priority_data[host]["score"] += ATTACK_WEIGHTS["api_versioning_exposed"]
+            priority_data[host]["factors"].append(f"Multiple API Versions Exposed: {d.get('status')}")
+            priority_data[host]["tags"].append("API_VERSIONS")
+
+        # V9: File Upload Susceptible
+        for d in self.file_upload_data:
+            host = urlparse(d.get("url", "")).netloc
+            priority_data[host]["score"] += ATTACK_WEIGHTS["file_upload_vulnerable"]
+            priority_data[host]["factors"].append("File Upload Endpoint Exposed")
+            priority_data[host]["tags"].append("FILE_UPLOAD")
+            
+        # V9: Sensitive Files
+        for f in self.sensitive_files_data:
+            host = urlparse(f).netloc
+            priority_data[host]["score"] += ATTACK_WEIGHTS["sensitive_files_exposed"]
+            priority_data[host]["factors"].append("Sensitive Files (Git/Env/Bak) Exposed")
+            priority_data[host]["tags"].append("SENSITIVE_FILES")
         
         # Build final sorted list
         result = []

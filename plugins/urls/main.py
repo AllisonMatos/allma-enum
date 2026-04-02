@@ -170,15 +170,15 @@ def run_katana_discovery(target: str, out_file: Path):
         "-u", f"https://{target}",
         "-jc", "-jsl",   # Parse JS
         "-hl",           # Headless browser
-        "-d", "3",       # Max depth 3
+        "-d", "2",       # Max depth 2 (otimizado p/ performance)
         "-f", "qurl",
         "-silent",
         "-o", str(out_file)
     ]
     
     try:
-        # Aumentado timeout para 1200 (20 min) como solicitado pelo usuário
-        subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=1200)
+        # Timeout otimizado para 600s (10 minutos)
+        subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=600)
     except subprocess.TimeoutExpired:
         warn(f"   [!] Katana atingiu o timeout de 20 min. Processando o que foi encontrado até agora...")
     except Exception as e:
@@ -199,6 +199,10 @@ def run_paramspider_discovery(target: str, out_file: Path):
     """Executa ParamSpider para descobrir URLs ricas em parâmetros."""
     info(f"{C.BOLD}{C.BLUE}🕷️ Iniciando descoberta de parâmetros com ParamSpider...{C.END}")
     paramspider = shutil.which("paramspider") or shutil.which("ParamSpider")
+    
+    if not paramspider and Path("/home/allma/.local/bin/paramspider").exists():
+        paramspider = "/home/allma/.local/bin/paramspider"
+        
     if not paramspider:
         warn("⚠️ 'paramspider' não encontrado. Pulando descoberta.")
         return []
@@ -529,19 +533,49 @@ def run(context: dict):
         for pattern in gf_patterns:
             pattern_file = gf_dir / f"{pattern}_urls.txt"
             
-            # Execute gf com pipe seguro (sem shell=True)
             try:
                 with open(urls_200, "r") as infile:
                     proc_gf = subprocess.run(
                         [gf, pattern], stdin=infile,
                         capture_output=True, text=True, timeout=120
                     )
-                if proc_gf.stdout.strip():
+                if proc_gf.stdout and proc_gf.stdout.strip():
                     pattern_file.write_text(proc_gf.stdout)
                 else:
-                    continue
+                    raise Exception("GF Empty Output")
             except Exception:
-                continue
+                # -------------------------------------------------------------
+                # PYTHON NATIVE FALLBACK (GF Patterns Missing/Failed)
+                # -------------------------------------------------------------
+                import urllib.parse
+                fallback_urls = []
+                keywords = {
+                    "ssrf": ["dest", "redirect", "uri", "path", "continue", "url", "window", "next", "data", "reference", "site", "html", "val", "validate", "domain", "callback", "return", "page", "feed", "host", "port", "to", "out", "view", "dir"],
+                    "xss": ["q", "s", "search", "id", "lang", "keyword", "query", "page", "keywords", "year", "view", "email", "type", "name", "p"],
+                    "redirect": ["redirect", "next", "url", "target", "return", "return_to", "continue", "view", "redirect_uri", "redirect_url", "forward"],
+                    "sqli": ["id", "page", "dir", "search", "category", "file", "class", "url", "news", "item", "menu", "lang", "name", "ref"],
+                    "lfi": ["file", "document", "folder", "root", "path", "pg", "style", "pdf", "template", "dir", "page", "include"]
+                }
+                
+                try:
+                    with open(urls_200, "r") as infile:
+                        for line in infile:
+                            u = line.strip()
+                            parsed = urllib.parse.urlparse(u)
+                            if parsed.query:
+                                qs = urllib.parse.parse_qs(parsed.query)
+                                # Adiciona se algum parâmetro bater com a lista
+                                for k in qs:
+                                    if any(kw in k.lower() for kw in keywords.get(pattern, [])):
+                                        fallback_urls.append(u)
+                                        break
+                except Exception:
+                    pass
+                
+                if fallback_urls:
+                    pattern_file.write_text("\n".join(fallback_urls))
+                else:
+                    continue
             
             if pattern_file.exists() and pattern_file.stat().st_size > 0:
                 payload_file = gf_dir / f"{pattern}_ready.txt"

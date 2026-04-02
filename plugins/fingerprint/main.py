@@ -141,6 +141,46 @@ async def run_certs_scan_async(hosts):
 
 
 # ============================
+# ASYNC DJANGO DEBUG CHECK
+# ============================
+async def check_django_debug_async(client, host, semaphore):
+    """Verifica se o Django Debug Mode está ativo forçando um 404 no host."""
+    url = f"http://{host}/enum-allma-django-debug-test-404"
+    if host.startswith("http"):
+        url = f"{host}/enum-allma-django-debug-test-404"
+        
+    async with semaphore:
+        try:
+            resp = await client.get(url, timeout=5)
+            # Django debug usa 404 para mostrar as rotas
+            if resp.status_code == 404:
+                text = resp.text.lower()
+                if "django" in text and "urlconf" in text and "settings" in text:
+                    return host, True
+        except Exception:
+            pass
+    return host, False
+
+async def run_django_debug_scan_async(hosts):
+    import httpx
+    info(f"{C.BOLD}{C.BLUE}🕷️ Verificando Django Debug Mode em {len(hosts)} hosts...{C.END}")
+    
+    results = []
+    sem = asyncio.Semaphore(CONCURRENCY_LIMIT)
+    
+    async with httpx.AsyncClient(verify=False, follow_redirects=True, timeout=8) as client:
+        tasks = [check_django_debug_async(client, h, sem) for h in hosts]
+        responses = await asyncio.gather(*tasks)
+        
+        for host, is_vulnerable in responses:
+            if is_vulnerable:
+                results.append(host)
+                warn(f"   🚨 {C.BOLD}{C.RED}HIGH RISK: Django Debug Mode ativo em {host}!{C.END}")
+                
+    return results
+
+
+# ============================
 # MAIN
 # ============================
 def run(context: dict):
@@ -235,9 +275,22 @@ def run(context: dict):
             info(f"   💾 Certificado salvo: {C.GREEN}{cert_file}{C.END}")
         except Exception as e:
             warn(f"Erro ao coletar certificados: {e}")
-            certs = {}
+            certs = {}            
+            
+        # ==========================================================================
+        # 🕷️ ETAPA 6 — Django Debug Mode Assíncrono
+        # ==========================================================================
+        try:
+            async def _run_django_async():
+                return await run_django_debug_scan_async(sorted(hosts))
+            django_alerts = asyncio.run(_run_django_async())
+            if django_alerts:
+                (outdir / "django_debug_alerts.txt").write_text("\n".join(django_alerts))
+        except Exception as e:
+            warn(f"Erro no scan de Django Debug: {e}")
     else:
         certs = {}
+        django_alerts = []
 
     # ==========================================================================
     # 🎉 FINALIZAÇÃO

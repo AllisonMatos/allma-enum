@@ -250,6 +250,20 @@
         <button class="nav-btn" data-section="depconfusion"><div class="nav-icon">📦</div><div class="nav-label">Dep. Conf. <span class="count">{{ stats.stats_depconfusion }}</span></div></button>
         <button class="nav-btn" data-section="graphql_scan"><div class="nav-icon">🧬</div><div class="nav-label">GraphQL <span class="count">{{ stats.stats_graphql }}</span></div></button>
         <button class="nav-btn" data-section="api_sec"><div class="nav-icon">🛡️</div><div class="nav-label">API Security <span class="count">{{ stats.stats_api_security }}</span></div></button>
+        
+        <button class="nav-btn" data-section="ssrf_sec"><div class="nav-icon">📡</div><div class="nav-label">SSRF <span class="count">{{ stats.stats_ssrf }}</span></div></button>
+        <button class="nav-btn" data-section="open_redirect"><div class="nav-icon">🔀</div><div class="nav-label">Redirect <span class="count">{{ stats.stats_open_redirect }}</span></div></button>
+        <button class="nav-btn" data-section="host_injection"><div class="nav-icon">🏠</div><div class="nav-label">Host Inj. <span class="count">{{ stats.stats_host_injection }}</span></div></button>
+        <button class="nav-btn" data-section="ssti_sec"><div class="nav-icon">🧪</div><div class="nav-label">SSTI <span class="count">{{ stats.stats_ssti }}</span></div></button>
+        <button class="nav-btn" data-section="xxe_sec"><div class="nav-icon">📄</div><div class="nav-label">XXE <span class="count">{{ stats.stats_xxe }}</span></div></button>
+        <button class="nav-btn" data-section="proto_pollution"><div class="nav-icon">🧬</div><div class="nav-label">Prototype <span class="count">{{ stats.stats_proto }}</span></div></button>
+        <button class="nav-btn" data-section="oauth_sec"><div class="nav-icon">🔐</div><div class="nav-label">OAuth <span class="count">{{ stats.stats_oauth }}</span></div></button>
+        <button class="nav-btn" data-section="file_upload"><div class="nav-icon">📤</div><div class="nav-label">Upload <span class="count">{{ stats.stats_file_upload }}</span></div></button>
+        <button class="nav-btn" data-section="api_versioning"><div class="nav-icon">🔢</div><div class="nav-label">API Ver. <span class="count">{{ stats.stats_api_versioning }}</span></div></button>
+        <button class="nav-btn" data-section="email_security"><div class="nav-icon">📧</div><div class="nav-label">Mail Sec. <span class="count">{{ stats.stats_email_sec }}</span></div></button>
+        <button class="nav-btn" data-section="google_dorks"><div class="nav-icon">🔍</div><div class="nav-label">Dorks <span class="count">{{ stats.stats_google_dorks }}</span></div></button>
+        <button class="nav-btn" data-section="cache_deception"><div class="nav-icon">🧊</div><div class="nav-label">Cache Dec. <span class="count">{{ stats.stats_cache_deception }}</span></div></button>
+
         <button class="nav-btn" data-section="jwt_sec"><div class="nav-icon">🔑</div><div class="nav-label">JWT <span class="count">{{ stats.stats_jwt }}</span></div></button>
         <button class="nav-btn" data-section="crlf_sec"><div class="nav-icon">💉</div><div class="nav-label">CRLF <span class="count">{{ stats.stats_crlf }}</span></div></button>
         <button class="nav-btn" data-section="smuggling_sec"><div class="nav-icon">🔀</div><div class="nav-label">Smuggling <span class="count">{{ stats.stats_smuggling }}</span></div></button>
@@ -281,7 +295,7 @@
             </section>
 
             <!-- All other sections — loaded via AJAX on click -->
-            {% set section_ids = ['quickwins_attack','security','subdomains','takeover','urls','routes','services','keys','emails','waf','files','js','params','sourcemaps','cve','jsroutes','swagger','logic','surfacemap','git','cloud','admin','depconfusion','graphql_scan','api_sec','jwt_sec','crlf_sec','smuggling_sec','deser_sec'] %}
+            {% set section_ids = ['quickwins_attack','security','subdomains','takeover', 'ssrf_sec', 'open_redirect', 'host_injection', 'ssti_sec', 'xxe_sec', 'proto_pollution', 'oauth_sec', 'file_upload', 'api_versioning', 'email_security', 'google_dorks', 'cache_deception', 'urls','routes','services','keys','emails','waf','files','js','params','sourcemaps','cve','jsroutes','swagger','logic','surfacemap','git','cloud','admin','depconfusion','graphql_scan','api_sec','jwt_sec','crlf_sec','smuggling_sec','deser_sec', 'oast_sec'] %}
             {% for sid in section_ids %}
             <section class="section" id="section-{{ sid }}">
                 <div class="section-loading" id="loader-{{ sid }}">

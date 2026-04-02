@@ -4,3 +4,7 @@ dnspython
 aiohttp
 aiofiles
 flask
+fastapi
+uvicorn
+rich
+pydantic

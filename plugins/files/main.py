@@ -80,6 +80,32 @@ def write_single_by_extension(groups: dict, outdir: Path):
     return outfile
 
 
+import json
+
+# ----------------------------------------------
+# Reforço de Regex para Arquivos Sensíveis
+# ----------------------------------------------
+SENSITIVE_PATTERNS = [
+    r"\.git(/|$)",        # Git repos
+    r"\.env(\.[a-z]+)?$", # Env vars
+    r"\.bak$",            # Backups
+    r"\.old$",
+    r"\.sql$",            # Dumps de banco
+    r"\.tar\.gz$",        # Arquivos compactados
+    r"\.zip$",
+    r"config\.php$",
+    r"wp-config\.php$",
+    r"\.htpasswd$",
+]
+
+def extract_sensitive_files(urls: list) -> list:
+    sensitive = []
+    for u in urls:
+        path = unquote(urlparse(u).path.lower())
+        if any(re.search(p, path) for p in SENSITIVE_PATTERNS):
+            sensitive.append(u)
+    return sorted(set(sensitive))
+
 # ----------------------------------------------
 # Plugin principal
 # ----------------------------------------------
@@ -121,10 +147,22 @@ def run(context: dict):
         return []
 
     # ======================================================
-    # 🧩 ETAPA 2 — Agrupar por extensão
+    # 🧩 ETAPA 2 — Agrupar por extensão e Buscar Sensíveis
     # ======================================================
     info(f"{C.BOLD}{C.BLUE}🧩 Agrupando URLs por extensão...{C.END}")
     groups = build_groups(urls)
+    
+    sensitive_files = extract_sensitive_files(urls)
+    if sensitive_files:
+        info(f"   🚨 {C.BOLD}{C.RED}{len(sensitive_files)} ARQUIVOS SENSÍVEIS (Backups/Git/Env) ENCONTRADOS!{C.END}")
+        for s in sensitive_files[:10]:
+            info(f"      👉 {C.RED}{s}{C.END}")
+        if len(sensitive_files) > 10:
+            info(f"      ... e mais {len(sensitive_files) - 10} omitidos.")
+        (outdir / "sensitive_files.json").write_text(json.dumps(sensitive_files, indent=2))
+    else:
+        info(f"   ✅ Nenhum arquivo sensível óbvio (.env, .git, .bak) detectado.")
+        (outdir / "sensitive_files.json").write_text(json.dumps([], indent=2))
 
     # ======================================================
     # 💾 ETAPA 3 — Salvar arquivo final
@@ -137,8 +175,9 @@ def run(context: dict):
     # ======================================================
     success(
         f"\n{C.GREEN}{C.BOLD}✔ FILES concluído com sucesso!{C.END}\n"
-        f"📂 Arquivo organizado por extensão salvo em:\n"
-        f"   {C.CYAN}{outfile}{C.END}\n"
+        f"📂 Arquivos organizados por extensão: {C.CYAN}{outfile}{C.END}\n"
+        f"📂 JSON Sensível em: {C.CYAN}{outdir / 'sensitive_files.json'}{C.END}"
     )
 
     return [str(outfile)]
+

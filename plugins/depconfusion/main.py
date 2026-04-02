@@ -11,47 +11,29 @@ from menu import C
 from plugins import ensure_outdir
 from ..output import info, success, warn, error
 
-# Módulos built-in do Node.js (não devem ser verificados no npm)
+# Módulos built-in do Node.js (estes são os únicos que devem ser ignorados p/ poupar reqs HTTP,
+# pois pacotes de frontend legítimos DEVEM ser testados caso a empresa crie um pacote homônimo privado)
 NODE_BUILTINS = {
     "assert", "buffer", "child_process", "cluster", "console", "constants",
     "crypto", "dgram", "dns", "domain", "events", "fs", "http", "http2",
     "https", "inspector", "module", "net", "os", "path", "perf_hooks",
     "process", "punycode", "querystring", "readline", "repl", "stream",
     "string_decoder", "sys", "timers", "tls", "trace_events", "tty",
-    "url", "util", "v8", "vm", "wasi", "worker_threads", "zlib",
-    # Web APIs / Browser built-ins
-    "react", "react-dom", "vue", "angular", "svelte",
-    "next", "nuxt", "gatsby",
-    "webpack", "vite", "rollup", "esbuild", "parcel",
-    "express", "koa", "fastify", "hapi",
-    "lodash", "moment", "dayjs", "date-fns",
-    "axios", "node-fetch", "got", "superagent",
-    "jquery", "d3", "chart.js", "three",
-    "typescript", "babel", "eslint", "prettier",
-    "jest", "mocha", "chai", "jasmine",
-    "mongoose", "sequelize", "knex", "prisma",
-    "socket.io", "ws", "graphql", "apollo",
-    "redux", "mobx", "zustand", "recoil",
-    "tailwindcss", "bootstrap", "material-ui", "antd",
-    "uuid", "chalk", "commander", "yargs", "inquirer",
-    "dotenv", "cors", "helmet", "jsonwebtoken",
-    "bcrypt", "passport", "multer", "formidable",
-    "nodemailer", "bull", "agenda", "cron",
-    "winston", "pino", "morgan", "debug",
-    "sharp", "jimp", "canvas",
-    "puppeteer", "playwright", "cheerio",
+    "url", "util", "v8", "vm", "wasi", "worker_threads", "zlib"
 }
 
 # Regexes para extrair nomes de pacotes
 IMPORT_PATTERNS = [
     # require('package') / require("package")
-    re.compile(r'''require\s*\(\s*['"]([a-z@][a-z0-9\-_./@]*)['"]\s*\)'''),
+    re.compile(r'''require\s*\(\s*['"]([a-zA-Z@][a-zA-Z0-9\-_./@]*)['"]\s*\)'''),
     # import ... from 'package' / import ... from "package"
-    re.compile(r'''import\s+.*?\s+from\s+['"]([a-z@][a-z0-9\-_./@]*)['"]'''),
+    re.compile(r'''import\s+.*?\s+from\s+['"]([a-zA-Z@][a-zA-Z0-9\-_./@]*)['"]'''),
     # import('package') — dynamic import
-    re.compile(r'''import\s*\(\s*['"]([a-z@][a-z0-9\-_./@]*)['"]\s*\)'''),
+    re.compile(r'''import\s*\(\s*['"]([a-zA-Z@][a-zA-Z0-9\-_./@]*)['"]\s*\)'''),
     # export ... from 'package'
-    re.compile(r'''export\s+.*?\s+from\s+['"]([a-z@][a-z0-9\-_./@]*)['"]'''),
+    re.compile(r'''export\s+.*?\s+from\s+['"]([a-zA-Z@][a-zA-Z0-9\-_./@]*)['"]'''),
+    # import "package" (side-effects only)
+    re.compile(r'''import\s+['"]([a-zA-Z@][a-zA-Z0-9\-_./@]*)['"]'''),
 ]
 
 
