@@ -98,7 +98,7 @@ def _test_ssrf_native(url: str, param_name: str) -> list:
                     matched_markers = [m for m in markers if m.lower() in body and m.lower() not in baseline_body]
 
                     # Confirmação extra: body deve ser significativamente diferente do baseline
-                    if matched_markers and abs(len(resp.text) - baseline_len) > 50:
+                    if matched_markers and abs(len(resp.text) - baseline_len) > 200:
                         findings.append({
                             "url": url,
                             "test_url": test_url,

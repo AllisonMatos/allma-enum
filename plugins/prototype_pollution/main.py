@@ -7,6 +7,7 @@ V10.3: httpx.Client reuse, dedup de resultados, URL normalization.
 import json
 import time
 import re
+import uuid
 import httpx
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
@@ -40,7 +41,10 @@ JS_SINK_PATTERNS_V10_2 = [
 ]
 
 def _test_pollution(client: httpx.Client, url: str) -> list:
-    """Testa payloads de prototype pollution com prova de conceito prática. Reutiliza sessão."""
+    """Testa payloads de prototype pollution com prova de conceito prática. Reutiliza sessão.
+    V10.5: Redirect validation, second-shot confirmation, baseline hash."""
+    import hashlib
+
     findings = []
     parsed = urlparse(url)
     qs = parse_qs(parsed.query, keep_blank_values=True)
@@ -50,18 +54,23 @@ def _test_pollution(client: httpx.Client, url: str) -> list:
     try:
         baseline_resp = client.get(url, headers={"User-Agent": DEFAULT_USER_AGENT})
         baseline_body = baseline_resp.text.lower()
+        baseline_hash = hashlib.sha256(baseline_body.encode(errors='ignore')).hexdigest()
+        baseline_url = str(baseline_resp.url)  # V10.5: URL final após redirects
     except Exception:
         return []
 
-    # Payloads V10.1 + V10.2
+    # V10.4: Canary único por teste (UUID4) para evitar FPs de echo
+    canary = f"allma_{uuid.uuid4().hex[:12]}"
+
+    # Payloads V10.1 + V10.2 + V10.4 (canary dinâmico)
     payloads = [
-        ("__proto__[polluted]", "allma_v10_1"),
-        ("constructor[prototype][polluted]", "allma_v10_1"),
-        ("__proto__[toString]", "allma_v10_1_override"),
-        ("__proto__[constructor][prototype][polluted]", "allma_v10_2"),
-        ("constructor.prototype.polluted", "allma_v10_2"),
-        ("__proto__[hasOwnProperty]", "allma_v10_2_hop"),
-        ("__proto__[valueOf]", "allma_v10_2_valueof"),
+        ("__proto__[polluted]", canary),
+        ("constructor[prototype][polluted]", canary),
+        ("__proto__[toString]", f"{canary}_override"),
+        ("__proto__[constructor][prototype][polluted]", canary),
+        ("constructor.prototype.polluted", canary),
+        ("__proto__[hasOwnProperty]", f"{canary}_hop"),
+        ("__proto__[valueOf]", f"{canary}_valueof"),
     ]
 
     for p_key, p_val in payloads:
@@ -74,20 +83,56 @@ def _test_pollution(client: httpx.Client, url: str) -> list:
         try:
             resp = client.get(test_url, headers={"User-Agent": DEFAULT_USER_AGENT})
             body = resp.text.lower()
+            final_url = str(resp.url)
             
             if resp.status_code >= 400:
+                continue
+
+            # V10.5: Ignorar se redirect para URL significativamente diferente
+            if urlparse(final_url).netloc != urlparse(url).netloc:
+                continue  # Redirect cross-domain = FP
+
+            # V10.5: Ignorar se body é idêntico ao baseline (redirect para mesma página)
+            resp_hash = hashlib.sha256(body.encode(errors='ignore')).hexdigest()
+            if resp_hash == baseline_hash:
                 continue
 
             is_vuln = False
             reason = ""
             
-            if p_val in body and p_val not in baseline_body:
-                is_vuln = True
-                reason = f"Poluição confirmada: Valor '{p_val}' injetado via '{p_key}' aparece no response (ausente no baseline)"
-            elif p_val in body:
-                if p_key not in body or body.count(p_val) > body.count(p_key):
-                    is_vuln = True
-                    reason = f"Poluição detectada: Valor '{p_val}' refletido via merge de objeto (Payload: {p_key})"
+            if p_val.lower() in body and p_val.lower() not in baseline_body:
+                # V10.4: Verificar que o canary aparece FORA da query string echoada
+                body_cleaned = body
+                for qk, qv_list in test_qs.items():
+                    for qv in qv_list:
+                        body_cleaned = body_cleaned.replace(f"{qk.lower()}={qv.lower()}", "")
+                        body_cleaned = body_cleaned.replace(f"{qk.lower()}%3d{qv.lower()}", "")
+                
+                if p_val.lower() in body_cleaned:
+                    # V10.5: Second-shot confirmation com canary diferente
+                    canary2 = f"allma_{uuid.uuid4().hex[:12]}"
+                    test_qs2 = qs.copy()
+                    test_qs2[p_key] = [canary2]
+                    new_query2 = urlencode(test_qs2, doseq=True)
+                    test_url2 = urlunparse((parsed.scheme, parsed.netloc, parsed.path, parsed.params, new_query2, parsed.fragment))
+                    
+                    try:
+                        resp2 = client.get(test_url2, headers={"User-Agent": DEFAULT_USER_AGENT})
+                        body2 = resp2.text.lower()
+                        # Limpar echo de query string no segundo test
+                        for qk2, qv2_list in test_qs2.items():
+                            for qv2 in qv2_list:
+                                body2 = body2.replace(f"{qk2.lower()}={qv2.lower()}", "")
+                                body2 = body2.replace(f"{qk2.lower()}%3d{qv2.lower()}", "")
+                        
+                        if canary2.lower() in body2:
+                            is_vuln = True
+                            reason = f"Poluição CONFIRMADA (double-shot): Valor injetado via '{p_key}' aparece fora de query echo em ambos os testes"
+                    except Exception:
+                        pass
+                    
+                    if not is_vuln:
+                        continue  # Primeiro hit mas sem confirmação = provável FP
 
             if is_vuln:
                 findings.append({
@@ -95,6 +140,7 @@ def _test_pollution(client: httpx.Client, url: str) -> list:
                     "test_url": test_url,
                     "type": "PROTOTYPE_POLLUTION",
                     "risk": "HIGH",
+                    "confirmed": True,
                     "details": reason,
                     "payload": f"{p_key}={p_val}",
                     "request_raw": format_http_request(resp.request),
@@ -110,9 +156,12 @@ def _test_pollution_json(client: httpx.Client, url: str) -> list:
     """V10.2: Testa prototype pollution via JSON body em endpoints API. Reutiliza sessão."""
     findings = []
     
+    # V10.4: Canary único por teste
+    canary = f"allma_{uuid.uuid4().hex[:12]}_json"
+    
     json_payloads = [
-        {"__proto__": {"polluted": "allma_v10_2_json"}},
-        {"constructor": {"prototype": {"polluted": "allma_v10_2_json"}}},
+        {"__proto__": {"polluted": canary}},
+        {"constructor": {"prototype": {"polluted": canary}}},
     ]
     
     for payload in json_payloads:
@@ -125,7 +174,7 @@ def _test_pollution_json(client: httpx.Client, url: str) -> list:
             )
             body = resp.text.lower()
             
-            if "allma_v10_2_json" in body and resp.status_code < 400:
+            if canary in body and resp.status_code < 400:
                 findings.append({
                     "url": url,
                     "type": "PROTOTYPE_POLLUTION",

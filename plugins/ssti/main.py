@@ -32,6 +32,11 @@ def _build_payloads(deep: bool = False):
             ("${{7*7}}", "49"),          # Spring Expression Language
             ("{{7*'7'}}", "7777777"),    # Type testing
             ("@(7*7)", "49"),            # Razor
+            ("{{'7'*7}}", "7777777"),    # Pebble
+            ("{{variable.getClass().forName('java.lang.Runtime')}}", "java.lang.Runtime"), # Pebble RCE
+            ("${T(java.lang.Runtime).getRuntime()}", "java.lang.Runtime"), # Spring EL RCE
+            ("${applicationScope}", "ApplicationScope"), # JSP EL
+            ("${pageContext}", "PageContext"), # JSP EL
         ])
     
     # V10.2: Payloads adicionais para mais engines e RCE chain hints
@@ -49,8 +54,15 @@ def _build_payloads(deep: bool = False):
     return payloads
 
 
-def _test_ssti(client: httpx.Client, url: str, param: str, deep: bool = False) -> dict | None:
-    """Testa payloads SSTI em um parâmetro específico com baseline check. Reutiliza sessão."""
+def _test_ssti(client: httpx.Client, url: str, param: str, deep: bool = False, target: str = "") -> dict | None:
+    """Testa payloads SSTI em um parâmetro específico com baseline check. Reutiliza sessão.
+    V10.5: Filtro de escopo, double-check confirmation, baseline hash."""
+    import hashlib
+
+    # V10.5: Filtro de escopo — ignorar URLs fora do target
+    if target and target not in url:
+        return None
+
     parsed = urlparse(url)
     qs = parse_qs(parsed.query, keep_blank_values=True)
     
@@ -58,10 +70,18 @@ def _test_ssti(client: httpx.Client, url: str, param: str, deep: bool = False) -
     try:
         baseline_resp = client.get(url, headers={"User-Agent": DEFAULT_USER_AGENT})
         baseline_body = baseline_resp.text
+        baseline_hash = hashlib.sha256(baseline_body.encode(errors='ignore')).hexdigest()
     except Exception:
         return None
 
     payloads = _build_payloads(deep)
+
+    # V10.5: Payloads de confirmação para double-check
+    CONFIRMATION_PAYLOADS = [
+        ("{{7*8}}", "56"),
+        ("{{3*9}}", "27"),
+        ("${8*8}", "64"),
+    ]
 
     for payload, expected in payloads:
         time.sleep(REQUEST_DELAY)
@@ -77,8 +97,35 @@ def _test_ssti(client: httpx.Client, url: str, param: str, deep: bool = False) -
             if resp.status_code >= 400:
                 continue
 
+            # V10.5: Ignorar se o body é idêntico ao baseline (redirect body)
+            resp_hash = hashlib.sha256(body.encode(errors='ignore')).hexdigest()
+            if resp_hash == baseline_hash:
+                continue
+
             # Confirmação V10: Resultado esperado surge no body e NÃO estava no baseline
             if expected.lower() in body.lower() and expected.lower() not in baseline_body.lower():
+                # V10.5: Para expected genéricos (< 5 chars), exigir double-check
+                needs_confirmation = len(expected) < 5
+
+                if needs_confirmation:
+                    confirmed = False
+                    for conf_payload, conf_expected in CONFIRMATION_PAYLOADS:
+                        if conf_payload == payload:
+                            continue  # Usar payload diferente
+                        time.sleep(REQUEST_DELAY)
+                        qs[param] = [conf_payload]
+                        conf_query = urlencode(qs, doseq=True)
+                        conf_url = urlunparse((parsed.scheme, parsed.netloc, parsed.path, parsed.params, conf_query, parsed.fragment))
+                        try:
+                            conf_resp = client.get(conf_url, headers={"User-Agent": DEFAULT_USER_AGENT})
+                            if conf_resp.status_code < 400 and conf_expected in conf_resp.text and conf_expected not in baseline_body:
+                                confirmed = True
+                                break
+                        except Exception:
+                            pass
+                    if not confirmed:
+                        continue  # Falso positivo — não confirmado
+
                 return {
                     "url": url,
                     "test_url": test_url,
@@ -89,6 +136,7 @@ def _test_ssti(client: httpx.Client, url: str, param: str, deep: bool = False) -
                     "status": resp.status_code,
                     "risk": "CRITICAL",
                     "type": "SSTI",
+                    "confirmed": True,
                     "details": f"Vulnerabilidade Detectada: SSTI via '{param}' (Payload: {payload} -> {expected})",
                     "request_raw": format_http_request(resp.request),
                     "response_raw": format_http_response(resp),
@@ -199,7 +247,7 @@ def run(context: dict):
     # V10.3: Criar UMA sessão httpx e reutilizar para todos os testes
     with httpx.Client(timeout=DEFAULT_TIMEOUT, verify=False, follow_redirects=True) as client:
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            futures = {executor.submit(_test_ssti, client, url, param, deep): (url, param) for url, param in candidates}
+            futures = {executor.submit(_test_ssti, client, url, param, deep, target): (url, param) for url, param in candidates}
 
             for future in as_completed(futures):
                 try:

@@ -269,6 +269,37 @@ def run(context: dict):
                             info(f"   🚨 {C.RED}{f['type']}: {futures[future]}{C.END}")
                 except Exception:
                     pass
+        
+        # V10.4: Depth Limiting DoS Test
+        info(f"   🔄 {C.CYAN}[V10.4] Testando depth limiting em endpoints GraphQL...{C.END}")
+        for url in test_urls[:5]:  # Limitar a 5 endpoints
+            try:
+                # Gerar query recursiva com profundidade crescente
+                for depth in [10, 25, 50]:
+                    nested_field = "id "
+                    for _ in range(depth):
+                        nested_field = f"__typename nodes {{ {nested_field} }}"
+                    
+                    depth_query = {"query": "{ " + nested_field + " }"}
+                    resp = client.post(url, json=depth_query, headers={"User-Agent": DEFAULT_USER_AGENT})
+                    
+                    if resp.status_code == 200:
+                        body = resp.text.lower()
+                        if "error" not in body and "data" in body:
+                            all_findings.append({
+                                "url": url,
+                                "type": "NO_DEPTH_LIMITING",
+                                "risk": "MEDIUM",
+                                "details": f"Query com profundidade {depth} aceita sem limites — possível DoS via nested queries",
+                                "depth_tested": depth,
+                            })
+                            info(f"   ⚠️ {C.YELLOW}Sem depth limiting em {url} (profundidade {depth}){C.END}")
+                            break  # Se passou com profundidade menor, não precisa testar mais
+                    elif resp.status_code in [400, 413, 422]:
+                        # Server rejeitou — depth limiting está ativo
+                        break
+            except Exception:
+                pass
     
     print("")  # Quebra de linha apos o progresso
     

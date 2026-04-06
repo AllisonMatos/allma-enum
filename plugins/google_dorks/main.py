@@ -53,9 +53,8 @@ def run(context: dict):
 
     outdir = ensure_outdir(target, "google_dorks")
 
-    # Extrair domínio base
-    parts = target.split(".")
-    base_domain = ".".join(parts[-2:]) if len(parts) > 2 else target
+    # V10.5: Usar target diretamente — evita trocar acionista.com.br por com.br
+    base_domain = target
 
     dorks = []
     for category, template in DORK_TEMPLATES:

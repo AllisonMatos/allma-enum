@@ -60,8 +60,13 @@ def check_cors(url: str, target: str) -> dict | None:
                         finding["severity"] = "critical" if acac.lower() == "true" else "high"
                         finding["issue"] = "Origin reflected (arbitrary)"
                     elif acao == "*":
-                        finding["severity"] = "medium"
-                        finding["issue"] = "Wildcard ACAO (*)"
+                        # V10.4: Wildcard sem credentials é comportamento padrão seguro
+                        if acac.lower() == "true":
+                            finding["severity"] = "critical"
+                            finding["issue"] = "Wildcard ACAO (*) + Credentials: true — PERIGOSO"
+                        else:
+                            finding["severity"] = "info"
+                            finding["issue"] = "Wildcard ACAO (*) sem credentials (padrão seguro)"
                     elif acao == "null" and origin == "null":
                         finding["severity"] = "high" if acac.lower() == "true" else "medium"
                         finding["issue"] = "Null origin accepted"

@@ -495,7 +495,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         
         /* SIDEBAR */
         .sidebar {{
-            width: var(--sidebar-width);
+            width: var(--sidebar-width-expanded);
             background: var(--bg-secondary);
             border-right: 1px solid var(--border-color);
             display: flex;
@@ -509,8 +509,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             flex-shrink: 0;
         }}
         
-        .sidebar:hover {{
-            width: var(--sidebar-width-expanded);
+        .sidebar {{
             align-items: stretch;
         }}
         
@@ -580,8 +579,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             padding-left: 10px;
             font-size: 14px;
             font-weight: 500;
-            opacity: 0;
-            transition: opacity 0.2s;
+            opacity: 1;
             display: flex;
             align-items: center;
             justify-content: space-between;
@@ -589,9 +587,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             padding-right: 16px;
         }}
         
-        .sidebar:hover .nav-label {{
-            opacity: 1;
-        }}
+        
         
         .count {{
             background: var(--bg-primary);
@@ -953,218 +949,218 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         </div>
         
         <button class="nav-btn active" data-section="dashboard">
-            <div class="nav-icon">📊</div>
+            <div class="nav-icon">&#9679;</div>
             <div class="nav-label">Dashboard</div>
         </button>
 
         <button class="nav-btn" data-section="quickwins_attack">
-            <div class="nav-icon">⚡</div>
+            <div class="nav-icon">&#9679;</div>
             <div class="nav-label">Quick Wins <span class="count">{stats_quickwins}</span></div>
         </button>
 
         
         <button class="nav-btn" data-section="security">
-            <div class="nav-icon">🛡️</div>
+            <div class="nav-icon">&#9679;</div>
             <div class="nav-label">Security <span class="count">{stats_xss}</span></div>
         </button>
         
         <button class="nav-btn" data-section="subdomains">
-            <div class="nav-icon">🌐</div>
+            <div class="nav-icon">&#9679;</div>
             <div class="nav-label">Subdomains <span class="count">{stats_subdomains}</span></div>
         </button>
         
 
         <button class="nav-btn" data-section="takeover">
-            <div class="nav-icon">🏴‍☠️</div>
+            <div class="nav-icon">&#9679;</div>
             <div class="nav-label">Takeover <span class="count">{stats_takeover}</span></div>
         </button>
         
         <button class="nav-btn" data-section="urls">
-            <div class="nav-icon">🔗</div>
+            <div class="nav-icon">&#9679;</div>
             <div class="nav-label">URLs <span class="count">{stats_urls_combined}</span></div>
         </button>
         
         <button class="nav-btn" data-section="routes">
-            <div class="nav-icon">🛣️</div>
+            <div class="nav-icon">&#9679;</div>
             <div class="nav-label">Endpoints <span class="count">{stats_endpoints}</span></div>
         </button>
         
         <button class="nav-btn" data-section="services">
-            <div class="nav-icon">🔌</div>
+            <div class="nav-icon">&#9679;</div>
             <div class="nav-label">Services <span class="count">{stats_ports}</span></div>
         </button>
         
         <button class="nav-btn" data-section="keys">
-            <div class="nav-icon">🔑</div>
+            <div class="nav-icon">&#9679;</div>
             <div class="nav-label">Keys <span class="count">{stats_keys}</span></div>
         </button>
         
         <button class="nav-btn" data-section="emails">
-            <div class="nav-icon">📧</div>
+            <div class="nav-icon">&#9679;</div>
             <div class="nav-label">Emails <span class="count">{stats_emails}</span></div>
         </button>
         
         <button class="nav-btn" data-section="waf">
-            <div class="nav-icon">🧱</div>
+            <div class="nav-icon">&#9679;</div>
             <div class="nav-label">WAF <span class="count">{stats_waf}</span></div>
         </button>
         
          <button class="nav-btn" data-section="files">
-            <div class="nav-icon">📁</div>
+            <div class="nav-icon">&#9679;</div>
             <div class="nav-label">Files</div>
         </button>
         
         <button class="nav-btn" data-section="js">
-            <div class="nav-icon">📜</div>
+            <div class="nav-icon">&#9679;</div>
             <div class="nav-label">JS Files <span class="count">{stats_js}</span></div>
         </button>
         
         <button class="nav-btn" data-section="params">
-            <div class="nav-icon">🧩</div>
+            <div class="nav-icon">&#9679;</div>
             <div class="nav-label">Params <span class="count">{stats_params}</span></div>
         </button>
         
 
 
         <button class="nav-btn" data-section="sourcemaps">
-            <div class="nav-icon">🗺️</div>
+            <div class="nav-icon">&#9679;</div>
             <div class="nav-label">Source Maps <span class="count">{stats_sourcemaps}</span></div>
         </button>
         
         <button class="nav-btn" data-section="cve">
-            <div class="nav-icon">💣</div>
+            <div class="nav-icon">&#9679;</div>
             <div class="nav-label">CVEs <span class="count">{stats_cves}</span></div>
         </button>
         
         <button class="nav-btn" data-section="jsroutes">
-            <div class="nav-icon">🗺️</div>
+            <div class="nav-icon">&#9679;</div>
             <div class="nav-label">API & JS <span class="count">{stats_js_routes}</span></div>
         </button>
         
         <button class="nav-btn" data-section="swagger">
-            <div class="nav-icon">📖</div>
+            <div class="nav-icon">&#9679;</div>
             <div class="nav-label">Swagger <span class="count">{stats_swagger}</span></div>
         </button>
         
 
         
         <button class="nav-btn" data-section="logic">
-            <div class="nav-icon">⚙️</div>
+            <div class="nav-icon">&#9679;</div>
             <div class="nav-label">Logic & Smug. <span class="count">{stats_logic}</span></div>
         </button>
 
         <button class="nav-btn" data-section="surfacemap">
-            <div class="nav-icon">🗺️</div>
+            <div class="nav-icon">&#9679;</div>
             <div class="nav-label">Surface Map</div>
         </button>
         
         <button class="nav-btn" data-section="git">
-            <div class="nav-icon">🕰️</div>
+            <div class="nav-icon">&#9679;</div>
             <div class="nav-label">Git Exposed <span class="count">{stats_git}</span></div>
         </button>
         
         <button class="nav-btn" data-section="cloud">
-            <div class="nav-icon">☁️</div>
+            <div class="nav-icon">&#9679;</div>
             <div class="nav-label">Cloud <span class="count">{stats_buckets}</span></div>
         </button>
         
         <button class="nav-btn" data-section="admin">
-            <div class="nav-icon">👑</div>
+            <div class="nav-icon">&#9679;</div>
             <div class="nav-label">Admin <span class="count">{stats_admin}</span></div>
         </button>
         
         <button class="nav-btn" data-section="depconfusion">
-            <div class="nav-icon">📦</div>
+            <div class="nav-icon">&#9679;</div>
             <div class="nav-label">Dep. Conf. <span class="count">{stats_depconfusion}</span></div>
         </button>
 
         <button class="nav-btn" data-section="graphql_scan">
-            <div class="nav-icon">🧬</div>
+            <div class="nav-icon">&#9679;</div>
             <div class="nav-label">GraphQL <span class="count">{stats_graphql}</span></div>
         </button>
 
         <button class="nav-btn" data-section="api_sec">
-            <div class="nav-icon">🛡️</div>
+            <div class="nav-icon">&#9679;</div>
             <div class="nav-label">API Security <span class="count">{stats_api_security}</span></div>
         </button>
 
         <button class="nav-btn" data-section="jwt_sec">
-            <div class="nav-icon">🔑</div>
+            <div class="nav-icon">&#9679;</div>
             <div class="nav-label">JWT <span class="count">{stats_jwt}</span></div>
         </button>
 
         <button class="nav-btn" data-section="crlf_sec">
-            <div class="nav-icon">💉</div>
+            <div class="nav-icon">&#9679;</div>
             <div class="nav-label">CRLF <span class="count">{stats_crlf}</span></div>
         </button>
 
         <button class="nav-btn" data-section="smuggling_sec">
-            <div class="nav-icon">🔀</div>
+            <div class="nav-icon">&#9679;</div>
             <div class="nav-label">Smuggling <span class="count">{stats_smuggling}</span></div>
         </button>
 
         <button class="nav-btn" data-section="deser_sec">
-            <div class="nav-icon">🧬</div>
+            <div class="nav-icon">&#9679;</div>
             <div class="nav-label">Deserial. <span class="count">{stats_deser}</span></div>
         </button>
         
         <button class="nav-btn" data-section="oast_sec">
-            <div class="nav-icon">🚨</div>
+            <div class="nav-icon">&#9679;</div>
             <div class="nav-label" style="color:#ff7b72">Blind Bugs <span class="count">{stats_oast}</span></div>
         </button>
 
         <button class="nav-btn" data-section="wordlist_sec">
-            <div class="nav-icon">🗂️</div>
+            <div class="nav-icon">&#9679;</div>
             <div class="nav-label">Wordlists <span class="count">{stats_wordlist}</span></div>
         </button>
 
         <button class="nav-btn" data-section="open_redirect_sec">
-            <div class="nav-icon">🔀</div>
+            <div class="nav-icon">&#9679;</div>
             <div class="nav-label">Open Redir <span class="count">{stats_open_redirect}</span></div>
         </button>
 
         <button class="nav-btn" data-section="host_inj_sec">
-            <div class="nav-icon">🏠</div>
+            <div class="nav-icon">&#9679;</div>
             <div class="nav-label">Host Inj <span class="count">{stats_host_injection}</span></div>
         </button>
 
         <button class="nav-btn" data-section="ssti_sec">
-            <div class="nav-icon">🧪</div>
+            <div class="nav-icon">&#9679;</div>
             <div class="nav-label">SSTI <span class="count">{stats_ssti}</span></div>
         </button>
 
         <button class="nav-btn" data-section="xxe_sec">
-            <div class="nav-icon">📄</div>
+            <div class="nav-icon">&#9679;</div>
             <div class="nav-label">XXE <span class="count">{stats_xxe}</span></div>
         </button>
 
         <button class="nav-btn" data-section="proto_sec">
-            <div class="nav-icon">🧬</div>
+            <div class="nav-icon">&#9679;</div>
             <div class="nav-label">Proto Poll <span class="count">{stats_proto_pollution}</span></div>
         </button>
 
         <button class="nav-btn" data-section="oauth_sec">
-            <div class="nav-icon">🔐</div>
+            <div class="nav-icon">&#9679;</div>
             <div class="nav-label">OAuth <span class="count">{stats_oauth}</span></div>
         </button>
 
         <button class="nav-btn" data-section="api_ver_sec">
-            <div class="nav-icon">🔢</div>
+            <div class="nav-icon">&#9679;</div>
             <div class="nav-label">API Ver <span class="count">{stats_api_versioning}</span></div>
         </button>
 
         <button class="nav-btn" data-section="file_upload_sec">
-            <div class="nav-icon">📤</div>
+            <div class="nav-icon">&#9679;</div>
             <div class="nav-label">Upload <span class="count">{stats_file_upload}</span></div>
         </button>
 
         <button class="nav-btn" data-section="email_sec">
-            <div class="nav-icon">📧</div>
+            <div class="nav-icon">&#9679;</div>
             <div class="nav-label">Email Sec</div>
         </button>
 
         <button class="nav-btn" data-section="dorks_sec">
-            <div class="nav-icon">🔍</div>
+            <div class="nav-icon">&#9679;</div>
             <div class="nav-label">Dorks <span class="count">{stats_google_dorks}</span></div>
         </button>
     </nav>
@@ -1175,7 +1171,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 <h1>Enum-Allma: <span>{target}</span></h1>
             </div>
             <div class="meta-info">
-                📅 {date} &nbsp; ⏰ {time}
+                {date} &nbsp; {time}
             </div>
         </header>
         
@@ -1236,7 +1232,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                     <div>{hvt_dashboard}</div>
                     <div class="card open" style="border-left: 4px solid var(--accent-blue);">
                          <div class="card-header">
-                            <span class="card-title">🧠 Dicas de Hacking (Recon Intelligence)</span>
+                            <span class="card-title"> Dicas de Hacking (Recon Intelligence)</span>
                         </div>
                         <div class="card-content" style="display:block;">
                             <p style="margin-bottom:15px; color:#888;">Dicas práticas baseadas nas tecnologias detectadas no alvo.</p>
@@ -1589,7 +1585,7 @@ def build_graphql_content(target: str) -> str:
     return f'''
     <div class="card open" style="border-left: 4px solid var(--accent-purple);">
         <div class="card-header">
-            <span class="card-title">🧬 GraphQL Instances</span>
+            <span class="card-title"> GraphQL Instances</span>
             <span class="card-badge">{len(data)} endpoints</span>
         </div>
         <div class="card-content" style="display:block;">
@@ -1632,7 +1628,7 @@ def build_api_security_content(target: str) -> str:
     return f'''
     <div class="card open" style="border-left: 4px solid var(--accent-red);">
         <div class="card-header">
-            <span class="card-title">🛡️ API Security Flaws</span>
+            <span class="card-title"> API Security Flaws</span>
             <span class="card-badge">{len(data)} items</span>
         </div>
         <div class="card-content" style="display:block;">
@@ -1727,61 +1723,61 @@ def build_open_redirect_content(target: str) -> str:
     if not data:
         s = summary.get("status", "NOT_RUN")
         detail = f"Testados {summary.get('urls_checked', 0)} URLs com {summary.get('tests_run', 0)} requests." if summary else ""
-        return f'<div class="empty-state"><p>✅ Nenhum Open Redirect encontrado. {detail}</p></div>'
-    return _build_generic_security_card_from_data(data, "Open Redirect Vulnerabilities", "🔀", "--accent-orange")
+        return f'<div class="empty-state"><p> Nenhum Open Redirect encontrado. {detail}</p></div>'
+    return _build_generic_security_card_from_data(data, "Open Redirect Vulnerabilities", "", "--accent-orange")
 
 def build_host_injection_content(target: str) -> str:
     data = read_json_file(Path("output") / target / "host_header_injection" / "host_injection_results.json")
     summary = read_json_file(Path("output") / target / "host_header_injection" / "scan_summary.json") or {}
     if not data:
         detail = f"Testados {summary.get('hosts_checked', 0)} hosts com {summary.get('tests_run', 0)} requests." if summary else ""
-        return f'<div class="empty-state"><p>✅ Nenhum Host Header Injection encontrado. {detail}</p></div>'
-    return _build_generic_security_card_from_data(data, "Host Header Injection", "🏠", "--accent-red")
+        return f'<div class="empty-state"><p> Nenhum Host Header Injection encontrado. {detail}</p></div>'
+    return _build_generic_security_card_from_data(data, "Host Header Injection", "", "--accent-red")
 
 def build_ssti_content(target: str) -> str:
     data = read_json_file(Path("output") / target / "ssti" / "ssti_results.json")
     summary = read_json_file(Path("output") / target / "ssti" / "scan_summary.json") or {}
     if not data:
         detail = f"Testados {summary.get('urls_checked', 0)} parâmetros com {summary.get('tests_run', 0)} requests." if summary else ""
-        return f'<div class="empty-state"><p>✅ Nenhum SSTI encontrado. {detail}</p></div>'
-    return _build_generic_security_card_from_data(data, "SSTI (Template Injection)", "🧪", "--accent-red")
+        return f'<div class="empty-state"><p> Nenhum SSTI encontrado. {detail}</p></div>'
+    return _build_generic_security_card_from_data(data, "SSTI (Template Injection)", "", "--accent-red")
 
 def build_xxe_content(target: str) -> str:
     data = read_json_file(Path("output") / target / "xxe" / "xxe_results.json")
     summary = read_json_file(Path("output") / target / "xxe" / "scan_summary.json") or {}
     if not data:
         detail = f"Testados {summary.get('endpoints_checked', 0)} endpoints." if summary else ""
-        return f'<div class="empty-state"><p>✅ Nenhum XXE encontrado. {detail}</p></div>'
-    return _build_generic_security_card_from_data(data, "XXE (XML External Entity)", "📄", "--accent-red")
+        return f'<div class="empty-state"><p> Nenhum XXE encontrado. {detail}</p></div>'
+    return _build_generic_security_card_from_data(data, "XXE (XML External Entity)", "", "--accent-red")
 
 def build_proto_pollution_content(target: str) -> str:
     data = read_json_file(Path("output") / target / "prototype_pollution" / "prototype_pollution_results.json")
     summary = read_json_file(Path("output") / target / "prototype_pollution" / "scan_summary.json") or {}
     if not data:
         detail = f"Testados {summary.get('tests_run', 0)} requests. {summary.get('js_sinks', 0)} sinks JS analisados." if summary else ""
-        return f'<div class="empty-state"><p>✅ Nenhum Prototype Pollution encontrado. {detail}</p></div>'
-    return _build_generic_security_card_from_data(data, "Prototype Pollution", "🧬", "--accent-purple")
+        return f'<div class="empty-state"><p> Nenhum Prototype Pollution encontrado. {detail}</p></div>'
+    return _build_generic_security_card_from_data(data, "Prototype Pollution", "", "--accent-purple")
 
 def build_oauth_content(target: str) -> str:
     data = read_json_file(Path("output") / target / "oauth_misconfig" / "oauth_misconfig_results.json")
     summary = read_json_file(Path("output") / target / "oauth_misconfig" / "scan_summary.json") or {}
     if not data:
         detail = f"Testados {summary.get('oauth_endpoints', 0)} endpoints OAuth." if summary else ""
-        return f'<div class="empty-state"><p>✅ Nenhuma misconfiguraçao OAuth encontrada. {detail}</p></div>'
-    return _build_generic_security_card_from_data(data, "OAuth Misconfiguration", "🔐", "--accent-orange")
+        return f'<div class="empty-state"><p> Nenhuma misconfiguraçao OAuth encontrada. {detail}</p></div>'
+    return _build_generic_security_card_from_data(data, "OAuth Misconfiguration", "", "--accent-orange")
 
 def build_file_upload_content(target: str) -> str:
     data = read_json_file(Path("output") / target / "file_upload" / "file_upload_results.json")
     summary = read_json_file(Path("output") / target / "file_upload" / "scan_summary.json") or {}
     if not data:
         detail = f"Testados {summary.get('tests_run', 0)} endpoints de upload." if summary else ""
-        return f'<div class="empty-state"><p>✅ Nenhum upload inseguro encontrado. {detail}</p></div>'
-    return _build_generic_security_card_from_data(data, "Insecure File Upload", "📤", "--accent-orange")
+        return f'<div class="empty-state"><p> Nenhum upload inseguro encontrado. {detail}</p></div>'
+    return _build_generic_security_card_from_data(data, "Insecure File Upload", "", "--accent-orange")
 
 def build_api_versioning_content(target: str) -> str:
     data = read_json_file(Path("output") / target / "api_versioning" / "api_versioning_results.json")
     if not data:
-        return '<div class="empty-state"><p>✅ Nenhuma versão de API detectada.</p></div>'
+        return '<div class="empty-state"><p> Nenhuma versão de API detectada.</p></div>'
     rows = ""
     for item in data:
         risk = item.get("risk", "INFO")
@@ -1802,7 +1798,7 @@ def build_api_versioning_content(target: str) -> str:
         </tr>'''
     return f'''
     <div class="card open" style="border-left: 4px solid var(--accent-blue);">
-        <div class="card-header"><span class="card-title">🔢 API Versioning</span><span class="card-badge">{len(data)} versions</span></div>
+        <div class="card-header"><span class="card-title"> API Versioning</span><span class="card-badge">{len(data)} versions</span></div>
         <div class="card-content" style="display:block;"><div class="table-wrapper"><table>
             <thead><tr><th>URL</th><th>Version</th><th>Status</th><th>Length</th><th>Details</th><th>PoC</th></tr></thead>
             <tbody>{rows}</tbody>
@@ -1812,7 +1808,7 @@ def build_api_versioning_content(target: str) -> str:
 def build_email_security_content(target: str) -> str:
     data = read_json_file(Path("output") / target / "email_security" / "email_security_results.json")
     if not data:
-        return '<div class="empty-state"><p>✅ Análise de email security não executada.</p></div>'
+        return '<div class="empty-state"><p> Análise de email security não executada.</p></div>'
     spf = data.get("spf", {})
     dmarc = data.get("dmarc", {})
     dkim = data.get("dkim", {})
@@ -1821,14 +1817,14 @@ def build_email_security_content(target: str) -> str:
         return f'<span class="tag {cls}">{r}</span>'
     return f'''
     <div class="card open" style="border-left: 4px solid var(--accent-blue);">
-        <div class="card-header"><span class="card-title">📧 Email Security (SPF/DMARC/DKIM)</span>
-        <span class="card-badge">{"🔴 SPOOFABLE" if data.get("spoofable") else "✅ OK"}</span></div>
+        <div class="card-header"><span class="card-title"> Email Security (SPF/DMARC/DKIM)</span>
+        <span class="card-badge">{" SPOOFABLE" if data.get("spoofable") else " OK"}</span></div>
         <div class="card-content" style="display:block;"><div class="table-wrapper"><table>
             <thead><tr><th>Check</th><th>Status</th><th>Risk</th><th>Details</th><th>Record</th></tr></thead>
             <tbody>
-                <tr><td><strong>SPF</strong></td><td>{"✅ Present" if spf.get("present") else "❌ Missing"}</td><td>{_risk_tag(spf.get("risk", ""))}</td><td>{html.escape(spf.get("issue", ""))}</td><td style="font-size:11px;max-width:300px;overflow:auto;">{html.escape(str(spf.get("record") or "-"))}</td></tr>
-                <tr><td><strong>DMARC</strong></td><td>{"✅ Present" if dmarc.get("present") else "❌ Missing"}</td><td>{_risk_tag(dmarc.get("risk", ""))}</td><td>{html.escape(dmarc.get("issue", ""))}</td><td style="font-size:11px;max-width:300px;overflow:auto;">{html.escape(str(dmarc.get("record") or "-"))}</td></tr>
-                <tr><td><strong>DKIM</strong></td><td>{"✅ Present" if dkim.get("present") else "❌ Missing"}</td><td>{_risk_tag(dkim.get("risk", ""))}</td><td>{html.escape(dkim.get("issue", ""))}</td><td style="font-size:11px;">-</td></tr>
+                <tr><td><strong>SPF</strong></td><td>{" Present" if spf.get("present") else " Missing"}</td><td>{_risk_tag(spf.get("risk", ""))}</td><td>{html.escape(spf.get("issue", ""))}</td><td style="font-size:11px;max-width:300px;overflow:auto;">{html.escape(str(spf.get("record") or "-"))}</td></tr>
+                <tr><td><strong>DMARC</strong></td><td>{" Present" if dmarc.get("present") else " Missing"}</td><td>{_risk_tag(dmarc.get("risk", ""))}</td><td>{html.escape(dmarc.get("issue", ""))}</td><td style="font-size:11px;max-width:300px;overflow:auto;">{html.escape(str(dmarc.get("record") or "-"))}</td></tr>
+                <tr><td><strong>DKIM</strong></td><td>{" Present" if dkim.get("present") else " Missing"}</td><td>{_risk_tag(dkim.get("risk", ""))}</td><td>{html.escape(dkim.get("issue", ""))}</td><td style="font-size:11px;">-</td></tr>
             </tbody>
         </table></div></div>
     </div>'''
@@ -1846,7 +1842,7 @@ def build_google_dorks_content(target: str) -> str:
         </tr>'''
     return f'''
     <div class="card open" style="border-left: 4px solid var(--accent-green);">
-        <div class="card-header"><span class="card-title">🔍 Google Dorks</span><span class="card-badge">{len(data)} dorks</span></div>
+        <div class="card-header"><span class="card-title"> Google Dorks</span><span class="card-badge">{len(data)} dorks</span></div>
         <div class="card-content" style="display:block;"><div class="table-wrapper"><table>
             <thead><tr><th>Categoria</th><th>Query</th><th>Link</th></tr></thead>
             <tbody>{rows}</tbody>
@@ -1883,10 +1879,10 @@ def _build_generic_security_card_from_data(data: list, title: str, icon: str, bo
     </div>'''
 
 def build_ssrf_content(target: str) -> str:
-    return _build_generic_security_card(target, "scanners/ssrf.json", "Server-Side Request Forgery", "🎯", "--accent-red")
+    return _build_generic_security_card(target, "scanners/ssrf.json", "Server-Side Request Forgery", "", "--accent-red")
 
 def build_cache_deception_content(target: str) -> str:
-    return _build_generic_security_card(target, "scanners/cache_deception.json", "Web Cache Deception", "🗃️", "--accent-purple")
+    return _build_generic_security_card(target, "scanners/cache_deception.json", "Web Cache Deception", "", "--accent-purple")
 
 
 def build_subdomains_content(subdomains: Dict, target: str) -> str:
@@ -1928,10 +1924,10 @@ def build_subdomains_content(subdomains: Dict, target: str) -> str:
         cdn_badge = '<span class="tag tag-medium" style="margin-left:8px;">CDN</span>' if is_cdn else ""
         
         is_active = len(data["urls"]) > 0 or len(data["ports"]) > 0
-        active_badge = '<span class="tag tag-high" style="background:#23863630; color:#3fb950; margin-left:8px;">🟢 Active</span>' if is_active else '<span class="tag tag-low" style="background:#f8514930; color:#f85149; margin-left:8px;">🔴 Inactive</span>'
+        active_badge = '<span class="tag tag-high" style="background:#23863630; color:#3fb950; margin-left:8px;">[+] Active</span>' if is_active else '<span class="tag tag-low" style="background:#f8514930; color:#f85149; margin-left:8px;"> Inactive</span>'
         
         if data["is_login"]:
-            badge = '<span class="card-badge login">🔑 LOGIN</span>'
+            badge = '<span class="card-badge login"> LOGIN</span>'
         
         content_parts = []
         
@@ -1943,7 +1939,7 @@ def build_subdomains_content(subdomains: Dict, target: str) -> str:
                 <div style="display:flex; align-items:flex-start; gap:12px; margin-bottom:12px; padding:10px; background:#2d1f1f; border:1px solid #f8514930; border-radius:8px;">
                     <div style="flex:1;">
                         <p style="margin:0;">
-                            <span class="tag tag-medium" style="font-size:10px;">🔑 LOGIN</span>
+                            <span class="tag tag-medium" style="font-size:10px;"> LOGIN</span>
                             <a href="{html.escape(login_url)}" target="_blank" style="color:var(--accent-orange); font-weight:bold; margin-left:8px;">{html.escape(login_url)}</a>
                         </p>
                     </div>
@@ -1951,7 +1947,7 @@ def build_subdomains_content(subdomains: Dict, target: str) -> str:
             
             content_parts.append(f'''
             <div style="margin-bottom:16px; border-left:3px solid var(--accent-orange); padding-left:12px;">
-                <p style="color:var(--accent-orange); font-weight:bold; margin-bottom:8px;">🔑 Login Pages Detected ({len(data["login_urls"])})</p>
+                <p style="color:var(--accent-orange); font-weight:bold; margin-bottom:8px;"> Login Pages Detected ({len(data["login_urls"])})</p>
                 {login_html}
             </div>''')
         
@@ -1976,7 +1972,7 @@ def build_subdomains_content(subdomains: Dict, target: str) -> str:
                     <td><span class="tag tag-low" style="background:#444; color:#fff">{html.escape(str(tech.get("version") or ""))}</span></td>
                     <td>{html.escape(tech.get("category", "Unknown"))}</td>
                     <td><span class="tag {conf_class}">{conf}%</span></td>
-                    <td>{f'<span class="tag tag-high">⚠️ {tech["cve_count"]} CVEs</span>' if tech.get("cve_count") else '-'}</td>
+                    <td>{f'<span class="tag tag-high"> {tech["cve_count"]} CVEs</span>' if tech.get("cve_count") else '-'}</td>
                 </tr>'''
             
             content_parts.append(f'''
@@ -2042,7 +2038,7 @@ def build_subdomains_content(subdomains: Dict, target: str) -> str:
     
     return f'''
     <div style="margin-bottom:15px; display:flex; gap:10px;">
-        <input type="text" id="subdomainSearch" placeholder="🔍 Search subdomains..." style="flex:1; background:var(--bg-secondary); border:1px solid var(--border-color); border-radius:6px; padding:8px 12px; color:var(--text-primary); font-size:13px;" onkeyup="filterSubdomains(this.value)">
+        <input type="text" id="subdomainSearch" placeholder=" Search subdomains..." style="flex:1; background:var(--bg-secondary); border:1px solid var(--border-color); border-radius:6px; padding:8px 12px; color:var(--text-primary); font-size:13px;" onkeyup="filterSubdomains(this.value)">
     </div>
     <div id="subdomains_container"></div>
     {ips_card}
@@ -2126,7 +2122,7 @@ def build_urls_content(subdomains: Dict, target: str) -> str:
     return f'''
     <div class="card open" style="margin-top:20px;">
         <div class="card-header">
-            <span class="card-title">🔗 All Found URLs</span>
+            <span class="card-title"> All Found URLs</span>
             <span class="card-badge">{len(all_urls)} URLs</span>
         </div>
         <div class="card-content" id="urls_container" style="display:block;"></div>
@@ -2139,8 +2135,8 @@ def build_urls_content(subdomains: Dict, target: str) -> str:
                 ["Host", "URL", "Type", "Tags", "Login"], 
                 function(row) {{
                     let style = row.type === "validated" ? "color:var(--text-primary);" : "color:var(--text-muted);";
-                    let type_badge = row.type === "validated" ? '<span class="tag tag-high" style="background:#23863630; color:#3fb950; font-size:10px;">✅ Validated</span>' : '<span class="tag tag-low" style="background:#d2992230; color:#d29922; font-size:10px;">🔍 Discovered</span>';
-                    let login_badge = row.is_login ? '<span class="tag tag-medium">🔑 LOGIN</span>' : "";
+                    let type_badge = row.type === "validated" ? '<span class="tag tag-high" style="background:#23863630; color:#3fb950; font-size:10px;"> Validated</span>' : '<span class="tag tag-low" style="background:#d2992230; color:#d29922; font-size:10px;"> Discovered</span>';
+                    let login_badge = row.is_login ? '<span class="tag tag-medium"> LOGIN</span>' : "";
                     let tags_html = (row.tags || []).map(t => `<span class="tag tag-low" style="background:#333; color:#aaa; font-size:10px;">${{escapeHtml(t)}}</span>`).join(" ");
                     
                     return `<tr>
@@ -2223,9 +2219,9 @@ def build_keys_content(target: str) -> str:
         validated = key.get("validated")
         val_info = key.get("validation_info", "")
         if validated is True:
-            validated_badge = f'<span class="tag tag-high" style="margin-left:8px;" title="{html.escape(val_info)}">✓ VALIDATED</span>'
+            validated_badge = f'<span class="tag tag-high" style="margin-left:8px;" title="{html.escape(val_info)}"> VALIDATED</span>'
         elif validated is False:
-            validated_badge = f'<span class="tag tag-low" style="margin-left:8px;" title="{html.escape(val_info)}">✗ INVALID</span>'
+            validated_badge = f'<span class="tag tag-low" style="margin-left:8px;" title="{html.escape(val_info)}"> INVALID</span>'
         else:
             validated_badge = f'<span class="tag" style="margin-left:8px;background:#30363d;" title="{html.escape(val_info)}">⊘ NOT TESTED</span>'
         
@@ -2251,9 +2247,9 @@ def build_keys_content(target: str) -> str:
             conf_color = "#8b949e"  # gray
             conf_bg = "rgba(139,148,158,0.15)"
         
-        conf_badge = f'<span class="tag" style="margin-left:8px;background:{conf_bg};color:{conf_color};border:1px solid {conf_color}40;" title="Entropy: {conf_entropy} | Context: {conf_context}">⚡ {conf_score}/100 {conf_level}</span>'
+        conf_badge = f'<span class="tag" style="margin-left:8px;background:{conf_bg};color:{conf_color};border:1px solid {conf_color}40;" title="Entropy: {conf_entropy} | Context: {conf_context}"> {conf_score}/100 {conf_level}</span>'
         
-        placeholder_badge = '<span class="tag" style="margin-left:6px;background:rgba(210,153,34,0.15);color:#d29922;border:1px solid rgba(210,153,34,0.4);">⚠ PLACEHOLDER</span>' if conf_placeholder else ''
+        placeholder_badge = '<span class="tag" style="margin-left:6px;background:rgba(210,153,34,0.15);color:#d29922;border:1px solid rgba(210,153,34,0.4);"> PLACEHOLDER</span>' if conf_placeholder else ''
         
         # Dados principais
         key_type = key.get("type", "Unknown")
@@ -2392,7 +2388,7 @@ def build_files_content(target: str) -> str:
         sensitive_html = f'''
         <div class="card open" style="border-left: 4px solid var(--accent-red); margin-bottom: 20px;">
             <div class="card-header">
-                <span class="card-title">🚨 Sensitive Files Found (.git, .env, backups)</span>
+                <span class="card-title"> Sensitive Files Found (.git, .env, backups)</span>
                 <span class="card-badge tag-critical">{len(sensitive_files)} files</span>
             </div>
             <div class="card-content" style="display:block;">
@@ -2558,7 +2554,7 @@ def build_routes_content(target: str) -> str:
         html_parts.append(f'''
         <div class="card" style="border-left: 4px solid var(--accent-purple);">
             <div class="card-header">
-                <span class="card-title">⚛️ GraphQL Endpoints</span>
+                <span class="card-title"> GraphQL Endpoints</span>
                 <span class="card-badge">{len(graphql)} items</span>
             </div>
             <div class="card-content" style="display:block;">
@@ -2571,7 +2567,7 @@ def build_routes_content(target: str) -> str:
     html_parts.append(f'''
     <div class="card open" style="margin-top:20px;">
         <div class="card-header">
-            <span class="card-title">🎯 API Routes & Endpoints</span>
+            <span class="card-title"> API Routes & Endpoints</span>
             <span class="card-badge">{len(flat_routes)} endpoints</span>
         </div>
         <div class="card-content" id="routes_container" style="display:block;"></div>
@@ -2636,7 +2632,7 @@ def build_js_content(target: str) -> str:
     html_parts.append(f'''
     <div class="card open" style="margin-top:20px;">
         <div class="card-header">
-            <span class="card-title">📜 JavaScript Files</span>
+            <span class="card-title"> JavaScript Files</span>
             <span class="card-badge">{len(flat_js)} files</span>
         </div>
         <div class="card-content" id="js_container" style="display:block;"></div>
@@ -2819,7 +2815,7 @@ def build_params_content(target: str) -> str:
         html_parts.append(f'''
         <div class="card open" style="border-left:4px solid var(--accent-orange); margin-bottom: 20px;">
             <div class="card-header">
-                <span class="card-title">⚠️ Potentially Sensitive Parameters</span>
+                <span class="card-title"> Potentially Sensitive Parameters</span>
                 <span class="card-badge">{len(dangerous)} params</span>
             </div>
             <div class="card-content" id="params_dang_container" style="display:block;">
@@ -3078,7 +3074,7 @@ def build_security_content(target: str) -> str:
                 html_parts.append(f'''
                 <div class="card" style="border-left: 3px solid var(--accent-red);">
                     <div class="card-header">
-                        <span class="card-title">🔥 Passive XSS Vulnerabilities</span>
+                        <span class="card-title"> Passive XSS Vulnerabilities</span>
                     </div>
                     <div class="card-content" style="display:block;">
                         <pre>{formatted_content}</pre>
@@ -3094,7 +3090,7 @@ def build_security_content(target: str) -> str:
             html_parts.append(f'''
             <div class="card" style="border-left: 3px solid #f85149; margin-top: 15px;">
                 <div class="card-header">
-                    <span class="card-title">🦊 Dalfox Active XSS Scan</span>
+                    <span class="card-title"> Dalfox Active XSS Scan</span>
                 </div>
                 <div class="card-content" style="display:block;">
                     <pre>{formatted_content}</pre>
@@ -3157,7 +3153,7 @@ def build_kiterunner_content(target: str) -> str:
     return f'''
     <div class="card open" style="border-left: 4px solid var(--accent-purple); margin-top: 15px;">
         <div class="card-header">
-            <span class="card-title">🪁 Kiterunner (API Fuzzer) Hidden Endpoints</span>
+            <span class="card-title"> Kiterunner (API Fuzzer) Hidden Endpoints</span>
             <span class="card-badge tag-high">{len(data)} routes</span>
         </div>
         <div class="card-content" style="display:block;">
@@ -3211,7 +3207,7 @@ def build_cors_content(target: str) -> str:
     return f'''
     <div class="card" style="border-left: 3px solid var(--accent-orange);">
         <div class="card-header">
-            <span class="card-title">⚠️ CORS Misconfigurations</span>
+            <span class="card-title"> CORS Misconfigurations</span>
             <span class="card-badge warning">{len(data)} issues</span>
         </div>
         <div class="card-content" style="display:block;">
@@ -3247,7 +3243,7 @@ def build_cors_content(target: str) -> str:
             output += f'''
             <div class="card" style="border-left: 3px solid #bf8700; margin-top: 15px;">
                 <div class="card-header">
-                    <span class="card-title">🌪️ Corsy Active Findings</span>
+                    <span class="card-title"> Corsy Active Findings</span>
                 </div>
                 <div class="card-content" style="display:block;">
                     <pre>{html.escape(clean_content)}</pre>
@@ -3283,7 +3279,7 @@ def build_headers_content(target: str) -> str:
         warnings = item.get("warnings", [])
         warnings_html = ""
         if warnings:
-            warnings_html = "<br>".join([f'<span style="color:#f85149; font-size:11px;">⚠️ {w}</span>' for w in warnings])
+            warnings_html = "<br>".join([f'<span style="color:#f85149; font-size:11px;"> {w}</span>' for w in warnings])
             if warnings_html:
                  warnings_html = f'<div style="margin-top:4px;">{warnings_html}</div>'
 
@@ -3314,7 +3310,7 @@ def build_headers_content(target: str) -> str:
                 </div>
                 <div style="display:flex; justify-content:space-between; align-items:center;">
                     <div style="font-size:11px; color:#3fb950;">
-                        ✓ {present_count} security headers present
+                         {present_count} security headers present
                     </div>
                     <div>
                         <button class="burp-btn" onclick="openBurp('{row_id}')">View HTTP</button>
@@ -3327,7 +3323,7 @@ def build_headers_content(target: str) -> str:
     
     avg_score = sum(d.get("score", 0) for d in data) / len(data) if data else 0
     
-    # 🕷️ Django Debug Mode Alerts
+    #  Django Debug Mode Alerts
     django_debug_file = Path("output") / target / "fingerprint" / "django_debug_alerts.txt"
     django_html = ""
     if django_debug_file.exists():
@@ -3337,7 +3333,7 @@ def build_headers_content(target: str) -> str:
             django_html = f'''
             <div class="card open" style="border-left: 4px solid var(--accent-red); margin-bottom: 20px;">
                 <div class="card-header">
-                    <span class="card-title">🚨 HIGH RISK: Django Debug Mode Enabled</span>
+                    <span class="card-title"> HIGH RISK: Django Debug Mode Enabled</span>
                     <span class="card-badge tag-critical">{len(django_hosts)} hosts</span>
                 </div>
                 <div class="card-content" style="display:block;">
@@ -3355,7 +3351,7 @@ def build_headers_content(target: str) -> str:
     {django_html}
     <div class="card">
         <div class="card-header">
-            <span class="card-title">🛡️ Security Headers Analysis</span>
+            <span class="card-title"> Security Headers Analysis</span>
             <span class="card-badge">Avg Score: {int(avg_score)}%</span>
         </div>
         <div class="card-content">
@@ -3402,7 +3398,7 @@ def build_takeover_content(target: str) -> str:
     return f'''
     <div class="card" style="border-left: 3px solid var(--accent-red);">
         <div class="card-header">
-            <span class="card-title">🏴‍☠️ Subdomain Takeover Candidates</span>
+            <span class="card-title"> Subdomain Takeover Candidates</span>
             <span class="card-badge warning">{len(data)} found</span>
         </div>
         <div class="card-content" style="display:block;">
@@ -3468,7 +3464,7 @@ def build_waf_content(target: str) -> str:
     {stats_html}
     <div class="card">
         <div class="card-header">
-            <span class="card-title">🛡️ Detected WAFs via Fingerprinting</span>
+            <span class="card-title"> Detected WAFs via Fingerprinting</span>
             <span class="card-badge">{len(data)} detected</span>
         </div>
         <div class="card-content" style="display:block;">
@@ -3527,8 +3523,8 @@ def build_emails_content(target: str) -> str:
 
     return f'''
     <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 16px;">
-        <div>{render_table(internal, "🏢 Internal / Target Emails")}</div>
-        <div>{render_table(external, "🌐 External / Third-party Emails")}</div>
+        <div>{render_table(internal, " Internal / Target Emails")}</div>
+        <div>{render_table(external, " External / Third-party Emails")}</div>
     </div>
     '''
 
@@ -3557,7 +3553,7 @@ def build_admin_content(target: str) -> str:
         status_class = "tag-high" if status == 200 else "tag-medium" if status in (401, 403) or "BYPASS" in str(status) else "tag-low"
         title = panel.get("title", "")[:60]
         cms = panel.get("cms", "")
-        login_icon = "🔑" if panel.get("has_login_form") else ""
+        login_icon = "" if panel.get("has_login_form") else ""
         url = panel.get("url", "")
         
         cms_html = f'<span class="tag tag-low" style="margin-left:4px;">{html.escape(cms)}</span>' if cms else ""
@@ -3625,7 +3621,7 @@ def build_depconfusion_content(target: str) -> str:
         risk = dep.get("risk", "UNKNOWN")
         risk_class = "tag-high" if risk == "HIGH" else "tag-medium" if risk == "UNKNOWN" else "tag-low"
         npm_exists = dep.get("npm_exists")
-        npm_badge = '✓ Exists' if npm_exists is True else '✗ NOT FOUND' if npm_exists is False else '? Unknown'
+        npm_badge = ' Exists' if npm_exists is True else ' NOT FOUND' if npm_exists is False else '? Unknown'
         npm_class = "tag-low" if npm_exists else "tag-high"
         
         rows += f'''
@@ -3639,7 +3635,7 @@ def build_depconfusion_content(target: str) -> str:
     
     alert_html = ""
     if high_risk:
-        alert_html = f'<p style="color:var(--accent-red); margin-bottom:12px;"><strong>⚠️ {len(high_risk)} packages NOT FOUND on npm — potential dependency confusion targets!</strong></p>'
+        alert_html = f'<p style="color:var(--accent-red); margin-bottom:12px;"><strong> {len(high_risk)} packages NOT FOUND on npm — potential dependency confusion targets!</strong></p>'
     
     return f'''
     <div class="card open">
@@ -3702,7 +3698,7 @@ def build_js_routes_content(target: str) -> str:
         html_content += f'''
         <div class="card open">
             <div class="card-header">
-                <span class="card-title">📜 <a href="{html.escape(source)}" target="_blank" style="color:inherit;text-decoration:none;">{html.escape(source[:70] + '...' if len(source) > 70 else source)}</a></span>
+                <span class="card-title"> <a href="{html.escape(source)}" target="_blank" style="color:inherit;text-decoration:none;">{html.escape(source[:70] + '...' if len(source) > 70 else source)}</a></span>
                 <span class="card-badge">{len(routes)} routes, {len(params)} params</span>
             </div>
             <div class="card-content" style="display:flex; gap: 20px;">
@@ -3748,7 +3744,7 @@ def build_swagger_content(target: str) -> str:
     return f'''
     <div class="card open" style="border-left: 4px solid var(--accent-blue);">
         <div class="card-header">
-            <span class="card-title">📘 Swagger/OpenAPI Endpoints</span>
+            <span class="card-title"> Swagger/OpenAPI Endpoints</span>
             <span class="card-badge">{len(data)} endpoints</span>
         </div>
         <div class="card-content">
@@ -3796,7 +3792,7 @@ def build_logic_content(target: str) -> str:
     return f'''
     <div class="card open" style="border-left: 4px solid var(--accent-red);">
         <div class="card-header">
-            <span class="card-title">🧩 Logic & Smuggling Flaws</span>
+            <span class="card-title"> Logic & Smuggling Flaws</span>
             <span class="card-badge">{len(data)} flaws</span>
         </div>
         <div class="card-content" style="display:block;">
@@ -3841,7 +3837,7 @@ def build_git_content(target: str) -> str:
     return f'''
     <div class="card open" style="border-left: 4px solid var(--accent-orange);">
         <div class="card-header">
-            <span class="card-title">🕰️ Git & CI/CD Time Machine</span>
+            <span class="card-title"> Git & CI/CD Time Machine</span>
             <span class="card-badge">{len(data)} exposures</span>
         </div>
         <div class="card-content">
@@ -3888,7 +3884,7 @@ def build_jwt_content(target: str) -> str:
     return f'''
     <div class="card open" style="border-left: 4px solid var(--accent-orange);">
         <div class="card-header">
-            <span class="card-title">🔑 JWT Analysis</span>
+            <span class="card-title"> JWT Analysis</span>
             <span class="card-badge">{len(data)} issues</span>
         </div>
         <div class="card-content" style="display:block;">
@@ -3932,7 +3928,7 @@ def build_crlf_content(target: str) -> str:
     return f'''
     <div class="card open" style="border-left: 4px solid var(--accent-red);">
         <div class="card-header">
-            <span class="card-title">💉 CRLF Injection</span>
+            <span class="card-title"> CRLF Injection</span>
             <span class="card-badge warning">{len(data)} vulnerabilities</span>
         </div>
         <div class="card-content" style="display:block;">
@@ -3985,7 +3981,7 @@ def build_smuggling_content(target: str) -> str:
     return f'''
     <div class="card open" style="border-left: 4px solid var(--accent-red);">
         <div class="card-header">
-            <span class="card-title">🔀 HTTP Request Smuggling</span>
+            <span class="card-title"> HTTP Request Smuggling</span>
             <span class="card-badge warning">{len(data)} findings</span>
         </div>
         <div class="card-content" style="display:block;">
@@ -4040,7 +4036,7 @@ def build_deser_content(target: str) -> str:
     return f'''
     <div class="card open" style="border-left: 4px solid var(--accent-red);">
         <div class="card-header">
-            <span class="card-title">🧬 Insecure Deserialization</span>
+            <span class="card-title"> Insecure Deserialization</span>
             <span class="card-badge warning">{len(data)} findings</span>
         </div>
         <div class="card-content" style="display:block;">
@@ -4093,7 +4089,7 @@ def build_oast_content(target: str) -> str:
     return f'''
     <div class="card open" style="border-left: 4px solid var(--accent-purple);">
         <div class="card-header">
-            <span class="card-title">🚨 OAST / Blind Bugs (Interactsh)</span>
+            <span class="card-title"> OAST / Blind Bugs (Interactsh)</span>
             <span class="card-badge warning">{len(data)} interactions</span>
         </div>
         <div class="card-content">
@@ -4162,7 +4158,7 @@ def build_surfacemap_content(subdomains: Dict) -> str:
         if not node: return ""
         html_out = "<ul>"
         for name, children in sorted(node.items()):
-            icon = "📁" if children else "📄"
+            icon = "" if children else ""
             html_out += f'<li><span class="{"tree-folder" if children else "tree-file"}">{icon} {html.escape(name)}</span>'
             if children:
                 html_out += render_tree(children, depth + 1)
@@ -4170,9 +4166,9 @@ def build_surfacemap_content(subdomains: Dict) -> str:
         html_out += "</ul>"
         return html_out
 
-    final_html = '<div class="card open"><div class="card-header"><span class="card-title">🗺️ Application Structure Map</span></div><div class="card-content"><div class="tree">'
+    final_html = '<div class="card open"><div class="card-header"><span class="card-title"> Application Structure Map</span></div><div class="card-content"><div class="tree">'
     for host, structure in sorted(tree_data.items()):
-        final_html += f'<div style="margin-bottom:20px;"><strong style="font-size:16px; color:var(--accent-green);">🌐 {html.escape(host)}</strong>'
+        final_html += f'<div style="margin-bottom:20px;"><strong style="font-size:16px; color:var(--accent-green);"> {html.escape(host)}</strong>'
         if structure:
             final_html += render_tree(structure)
         else:
@@ -4203,7 +4199,7 @@ def build_sourcemaps_content(target: str) -> str:
     return f'''
     <div class="card open" style="border-left: 4px solid var(--accent-red);">
         <div class="card-header">
-            <span class="card-title">🗺️ Source Maps Secrets</span>
+            <span class="card-title"> Source Maps Secrets</span>
             <span class="card-badge">{len(data)} secrets</span>
         </div>
         <div class="card-content">
@@ -4267,18 +4263,18 @@ def build_attack_priority_content(target: str) -> str:
     
     weight_table = '''
     <div style="margin-bottom:16px; padding:12px; background:var(--bg-tertiary); border-radius:6px; border:1px solid var(--border-color);">
-        <span style="font-weight:bold; color:var(--text-primary); font-size:13px;">⚖️ Attack Priority Weights:</span>
+        <span style="font-weight:bold; color:var(--text-primary); font-size:13px;"> Attack Priority Weights:</span>
         <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:6px; margin-top:8px;">
-            <span style="font-size:11px; color:#aaa;">🔑 Login Page: +3</span>
-            <span style="font-size:11px; color:#aaa;">👑 Admin Panel: +5</span>
-            <span style="font-size:11px; color:#aaa;">🧬 GraphQL: +6</span>
-            <span style="font-size:11px; color:#aaa;">📖 Swagger: +5</span>
-            <span style="font-size:11px; color:#aaa;">🔐 JWT: +4</span>
-            <span style="font-size:11px; color:#aaa;">🔗 API Endpoint: +3</span>
-            <span style="font-size:11px; color:#aaa;">📤 Upload: +6</span>
-            <span style="font-size:11px; color:#aaa;">🏠 Internal Host: +4</span>
-            <span style="font-size:11px; color:#aaa;">🔧 Dev/Staging: +4</span>
-            <span style="font-size:11px; color:#aaa;">🔑 JS Secrets: +5</span>
+            <span style="font-size:11px; color:#aaa;"> Login Page: +3</span>
+            <span style="font-size:11px; color:#aaa;"> Admin Panel: +5</span>
+            <span style="font-size:11px; color:#aaa;"> GraphQL: +6</span>
+            <span style="font-size:11px; color:#aaa;"> Swagger: +5</span>
+            <span style="font-size:11px; color:#aaa;"> JWT: +4</span>
+            <span style="font-size:11px; color:#aaa;"> API Endpoint: +3</span>
+            <span style="font-size:11px; color:#aaa;"> Upload: +6</span>
+            <span style="font-size:11px; color:#aaa;"> Internal Host: +4</span>
+            <span style="font-size:11px; color:#aaa;"> Dev/Staging: +4</span>
+            <span style="font-size:11px; color:#aaa;"> JS Secrets: +5</span>
         </div>
     </div>
     '''
@@ -4286,7 +4282,7 @@ def build_attack_priority_content(target: str) -> str:
     return f'''
     <div class="card open" style="border-left: 4px solid var(--accent-red);">
         <div class="card-header">
-            <span class="card-title">🎯 Attack Priority Engine</span>
+            <span class="card-title"> Attack Priority Engine</span>
             <span class="card-badge">Top {min(len(data), 15)} Targets</span>
         </div>
         <div class="card-content">
@@ -4307,7 +4303,7 @@ def build_quick_wins_content(target: str) -> str:
     for win in data:
         severity = win.get("severity", "MEDIUM")
         sev_class = "tag-high" if severity in ["HIGH", "CRITICAL"] else "tag-medium"
-        icon = win.get("icon", "⚡")
+        icon = win.get("icon", "")
         
         bg_color = "rgba(248, 81, 73, 0.08)" if severity == "CRITICAL" else "rgba(210, 153, 34, 0.08)"
         border_color = "var(--accent-red)" if severity == "CRITICAL" else "var(--accent-orange)"
@@ -4324,7 +4320,7 @@ def build_quick_wins_content(target: str) -> str:
             </div>
             <div style="font-size:12px; color:var(--text-secondary);">{html.escape(str(win.get("detail", "")))}</div>
             <div style="margin-top:6px; padding:6px 10px; background:var(--bg-tertiary); border-radius:4px; border:1px solid var(--border-color);">
-                <span style="font-size:11px; color:var(--accent-green); font-weight:600;">💡 Action:</span>
+                <span style="font-size:11px; color:var(--accent-green); font-weight:600;"> Action:</span>
                 <span style="font-size:11px; color:var(--text-secondary);"> {html.escape(str(win.get("action", "")))}</span>
             </div>
         </div>
@@ -4333,7 +4329,7 @@ def build_quick_wins_content(target: str) -> str:
     return f'''
     <div class="card open" style="border-left: 4px solid var(--accent-orange);">
         <div class="card-header">
-            <span class="card-title">⚡ Quick Wins — Low-Effort, High-Impact</span>
+            <span class="card-title"> Quick Wins — Low-Effort, High-Impact</span>
             <span class="card-badge">{len(data)} wins</span>
         </div>
         <div class="card-content">
@@ -4365,7 +4361,7 @@ def build_vuln_patterns_content(target: str) -> str:
     return f'''
     <div class="card open" style="border-left: 4px solid var(--accent-orange);">
         <div class="card-header">
-            <span class="card-title">🎯 Vulnerability Pattern Detection</span>
+            <span class="card-title"> Vulnerability Pattern Detection</span>
             <span class="card-badge">{len(data)} suspicious URLs</span>
         </div>
         <div class="card-content">
@@ -4428,7 +4424,7 @@ def build_wordlist_content(target: str) -> str:
     return f'''
     <div class="card open">
         <div class="card-header">
-            <span class="card-title">🗂️ Extracted Wordlist</span>
+            <span class="card-title"> Extracted Wordlist</span>
             <span class="card-badge">{{len(lines)}} words</span>
         </div>
         <div class="card-content">
@@ -4437,7 +4433,7 @@ def build_wordlist_content(target: str) -> str:
                     Estas palavras foram passivamente extraídas do alvo (arquivos JS, parâmetros, diretórios). Elas são exclusivas do contexto da aplicação, perfeitas para <strong>Fuzzing focado</strong>.
                 </p>
                 <div style="margin-top:10px;">
-                    <a href="output/{target}/wordlist/combined.txt" target="_blank" style="display:inline-block; padding:6px 10px; background:var(--bg-tertiary); border-radius:4px; border:1px solid var(--border-color); color:var(--accent-blue); text-decoration:none; font-size:12px; font-weight: bold;">📄 Baixar dicionário (combined.txt)</a>
+                    <a href="output/{target}/wordlist/combined.txt" target="_blank" style="display:inline-block; padding:6px 10px; background:var(--bg-tertiary); border-radius:4px; border:1px solid var(--border-color); color:var(--accent-blue); text-decoration:none; font-size:12px; font-weight: bold;"> Baixar dicionário (combined.txt)</a>
                 </div>
             </div>
             

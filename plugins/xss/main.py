@@ -240,6 +240,50 @@ class AsyncHTTPClient:
 # ============================================================
 # PATTERNS OTIMIZADOS
 # ============================================================
+
+# V10.4: Fontes de input do usuário (taint sources) para validar DOM sinks
+TAINT_SOURCES = re.compile(
+    r'\b(?:location\.(?:search|hash|href|pathname)|'
+    r'document\.(?:URL|documentURI|referrer|cookie)|'
+    r'window\.(?:name|location)|'
+    r'URLSearchParams|'
+    r'history\.(?:pushState|replaceState)|'
+    r'postMessage|'
+    r'localStorage|sessionStorage|'
+    r'\$\.(?:get|post|ajax)|'
+    r'fetch\s*\(|'
+    r'getParameter|'
+    r'req\.(?:query|params|body))\b', re.I
+)
+
+# V10.4: Bibliotecas externas conhecidas — ignorar sinks dentro delas
+LIBRARY_FILENAMES = {
+    'jquery', 'jquery.min', 'jquery.slim', 'jquery.slim.min',
+    'react', 'react.min', 'react-dom', 'react-dom.min', 'react.production',
+    'angular', 'angular.min', 'angular.core',
+    'vue', 'vue.min', 'vue.runtime', 'vue.global',
+    'lodash', 'lodash.min', 'underscore', 'underscore.min',
+    'bootstrap', 'bootstrap.min', 'bootstrap.bundle',
+    'axios', 'axios.min',
+    'moment', 'moment.min',
+    'chart', 'chart.min', 'd3', 'd3.min',
+    'gsap', 'gsap.min', 'three', 'three.min',
+    'popper', 'popper.min', 'tippy', 'tippy.min',
+    'polyfill', 'polyfills', 'runtime', 'vendor', 'vendors',
+}
+
+def _is_library_url(url: str) -> bool:
+    """V10.4: Verifica se a URL pertence a uma biblioteca externa conhecida."""
+    try:
+        path = urlparse(url).path.lower()
+        filename = path.rsplit('/', 1)[-1].rsplit('.', 1)[0]  # remove extension
+        # Remove versão do nome (jquery-3.6.0 -> jquery)
+        filename = re.sub(r'[\-\.]\d+(\.\d+)*$', '', filename)
+        return filename in LIBRARY_FILENAMES
+    except Exception:
+        return False
+
+
 class XSSPatterns:
     def __init__(self):
         # Compilar regex uma vez
@@ -362,7 +406,7 @@ class XSSPatterns:
         return findings
     
     def scan_dom(self, text: str) -> List[XSSFinding]:
-        """Scan por padrões DOM perigosos."""
+        """Scan por padrões DOM perigosos com taint tracking V10.4."""
         findings = []
         
         for pattern in self.dom_patterns:
@@ -383,19 +427,43 @@ class XSSPatterns:
                 ]
                 if any(safe in lower_ctx for safe in safe_patterns):
                     continue
-                    
-                findings.append(XSSFinding(
-                    url="",
-                    pattern=pattern.pattern,
-                    context=context_preview,
-                    severity="low"
-                ))
+                
+                # V10.4: Taint tracking — verificar se alguma fonte de input do usuário
+                # alimenta este sink no contexto próximo (±500 chars)
+                taint_start = max(0, idx - 500)
+                taint_end = min(len(text), idx + 500)
+                taint_context = text[taint_start:taint_end]
+                
+                has_taint_source = bool(TAINT_SOURCES.search(taint_context))
+                
+                if has_taint_source:
+                    # Sink COM fonte de input controlável → MEDIUM (potencialmente explorável)
+                    findings.append(XSSFinding(
+                        url="",
+                        pattern=pattern.pattern,
+                        context=context_preview,
+                        context_type="TAINTED_SINK",
+                        severity="medium"
+                    ))
+                else:
+                    # Sink SEM fonte de input controlável → LOW (só informativo)
+                    findings.append(XSSFinding(
+                        url="",
+                        pattern=pattern.pattern,
+                        context=context_preview,
+                        context_type="UNTAINTED_SINK",
+                        severity="low"
+                    ))
                 
         return findings
     
-    def scan_js(self, js_code: str) -> List[XSSFinding]:
-        """Scan por padrões JS perigosos."""
+    def scan_js(self, js_code: str, source_url: str = "") -> List[XSSFinding]:
+        """Scan por padrões JS perigosos com filtro de bibliotecas V10.4."""
         findings = []
+        
+        # V10.4: Ignorar sinks em bibliotecas externas conhecidas
+        if source_url and _is_library_url(source_url):
+            return findings
         
         for pattern in self.js_patterns:
             matches = pattern.finditer(js_code)
@@ -405,11 +473,21 @@ class XSSPatterns:
                 end = min(len(js_code), idx + 60)
                 context_preview = js_code[start:end].replace('\n', ' ').strip()
                 
+                # V10.4: Taint tracking para JS também
+                taint_start = max(0, idx - 500)
+                taint_end = min(len(js_code), idx + 500)
+                taint_context = js_code[taint_start:taint_end]
+                
+                has_taint_source = bool(TAINT_SOURCES.search(taint_context))
+                severity = "medium" if has_taint_source else "low"
+                ctx_type = "TAINTED_SINK" if has_taint_source else "UNTAINTED_SINK"
+                
                 findings.append(XSSFinding(
                     url="",
                     pattern=pattern.pattern,
                     context=context_preview,
-                    severity="medium"
+                    context_type=ctx_type,
+                    severity=severity
                 ))
                 
         return findings
@@ -560,7 +638,7 @@ class XSSCrawler:
         try:
             result = await client.fetch(script_url)
             if result and result.text:
-                js_findings = self.patterns.scan_js(result.text)
+                js_findings = self.patterns.scan_js(result.text, source_url=script_url)
                 for finding in js_findings:
                     finding.url = script_url
                     self.findings.append(finding)
@@ -756,6 +834,105 @@ async def save_reports(outdir, crawler, reflections, dom_findings):
     async with aiofiles.open(outdir / "final_report.txt", 'w') as f:
         await f.write("\n".join(summary))
 
+# ============================================================
+# V10.4: ACTIVE XSS VALIDATION (teste ativo simples)
+# ============================================================
+def _active_xss_test(target: str, outdir: Path, reflections: list):
+    """
+    V10.4: Teste ativo simples — injeta payloads canary nos parâmetros
+    que já mostraram reflexão e verifica se escapam do contexto HTML.
+    """
+    import httpx
+    from core.config import REQUEST_DELAY, DEFAULT_TIMEOUT
+    
+    CANARY = "eNuMaLlMa"
+    ACTIVE_PAYLOADS = [
+        (f'"{CANARY}', f'"{CANARY}', "ATTRIBUTE_BREAKOUT"),         # Escapa de atributo com aspas duplas
+        (f"'{CANARY}", f"'{CANARY}", "ATTRIBUTE_BREAKOUT_SQ"),     # Escapa de atributo com aspas simples
+        (f"<{CANARY}", f"<{CANARY}", "TAG_INJECTION"),             # Injeta tag HTML
+        (f"<img src=x onerror={CANARY}>", f"onerror={CANARY}", "EVENT_HANDLER"),  # Event handler
+        (f"javascript:{CANARY}", f"javascript:{CANARY}", "JS_URI"),  # URI JavaScript
+    ]
+    
+    if not reflections:
+        return []
+    
+    # Coletar pares únicos (url, param)
+    seen = set()
+    test_targets = []
+    for ref in reflections:
+        key = (ref.url, ref.param)
+        if key not in seen and ref.url and ref.param:
+            seen.add(key)
+            test_targets.append((ref.url, ref.param, ref.context_type))
+    
+    test_targets = test_targets[:30]  # Limitar para não sobrecarregar
+    
+    info(f"\n   🎯 {C.BOLD}{C.CYAN}[V10.4] Active XSS Validation em {len(test_targets)} reflexões...{C.END}")
+    active_findings = []
+    
+    from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
+    
+    with httpx.Client(timeout=DEFAULT_TIMEOUT, verify=False, follow_redirects=True) as client:
+        for url, param, ctx_type in test_targets:
+            parsed = urlparse(url)
+            qs = parse_qs(parsed.query, keep_blank_values=True)
+            if param not in qs:
+                continue
+            
+            for payload, marker, attack_type in ACTIVE_PAYLOADS:
+                time.sleep(REQUEST_DELAY)
+                test_qs = qs.copy()
+                test_qs[param] = [payload]
+                new_query = urlencode(test_qs, doseq=True)
+                test_url = urlunparse((parsed.scheme, parsed.netloc, parsed.path,
+                                       parsed.params, new_query, parsed.fragment))
+                
+                try:
+                    resp = client.get(test_url, headers={"User-Agent": DEFAULT_USER_AGENT})
+                    if resp.status_code >= 400:
+                        continue
+                    
+                    body = resp.text
+                    
+                    # Verificar se o payload aparece SEM encoding no body
+                    if marker in body:
+                        # Confirmar que não é um false positive (o marker não estava na página original)
+                        original_resp = client.get(url, headers={"User-Agent": DEFAULT_USER_AGENT})
+                        if marker not in original_resp.text:
+                            severity = "high"
+                            if attack_type == "EVENT_HANDLER":
+                                severity = "critical"
+                            elif attack_type == "TAG_INJECTION":
+                                severity = "high"
+                            
+                            active_findings.append({
+                                "url": url,
+                                "test_url": test_url,
+                                "parameter": param,
+                                "payload": payload,
+                                "attack_type": attack_type,
+                                "context": ctx_type,
+                                "severity": severity,
+                                "type": "ACTIVE_XSS",
+                                "details": f"XSS Ativo: Payload '{payload}' refletido sem sanitização via '{param}' ({attack_type})",
+                            })
+                            info(f"   🔴 {C.RED}[ACTIVE XSS — {severity.upper()}]{C.END} {url} → '{param}' ({attack_type})")
+                            break  # Um payload confirmado basta por parâmetro
+                except Exception:
+                    pass
+    
+    if active_findings:
+        import json
+        active_file = outdir / "active_xss_results.json"
+        active_file.write_text(json.dumps(active_findings, indent=2, ensure_ascii=False))
+        success(f"   🎯 {len(active_findings)} XSS Ativos confirmados! Salvos em {active_file}")
+    else:
+        info(f"   ✅ Nenhum XSS ativo confirmado nas reflexões testadas.")
+    
+    return active_findings
+
+
 def run(context: dict):
     """Wrapper síncrono para função assíncrona."""
     try:
@@ -785,6 +962,24 @@ def run(context: dict):
                         success(f"   🦊 Resultados do Dalfox salvos em {dalfox_out}")
                 except subprocess.TimeoutExpired:
                     warn("   🦊 Dalfox demorou muito e foi interrompido.")
+            
+            # V10.4: Active XSS Validation Test
+            info(f"\n   🎭 {C.BOLD}{C.CYAN}[V10.4] Iniciando Active XSS Validation...{C.END}")
+            reflections_file = outdir / "reflections.txt"
+            # Reconstruir lista de reflexões para teste ativo
+            active_reflections = []
+            if reflections_file.exists():
+                content = reflections_file.read_text(errors="ignore")
+                for block in content.split("---"):
+                    lines = block.strip().splitlines()
+                    if lines:
+                        parts = lines[0].split("\t")
+                        if len(parts) >= 3:
+                            active_reflections.append(XSSFinding(
+                                url=parts[0], param=parts[1], value=parts[2],
+                                pattern="PARAM_REFLECTION", context="", severity="medium"
+                            ))
+            _active_xss_test(target, outdir, active_reflections)
                     
         return reports
     except KeyboardInterrupt:

@@ -6,6 +6,7 @@ Inclui cache poisoning detection e payloads CRLF avançados.
 V10.3: httpx.Client reuse, port=None handling, dedup.
 """
 import json
+import re
 import time
 import httpx
 from pathlib import Path
@@ -69,13 +70,48 @@ def _test_host_injection(client: httpx.Client, url: str) -> list:
             
             is_vuln = False
             details = ""
+            risk_context = "SAFE"  # V10.4: Contexto de reflexão
             
             if EVIL_DOMAIN in location:
                 is_vuln = True
+                risk_context = "DANGEROUS"
                 details = f"Domínio injetado refletido no header 'Location' ({resp.status_code})"
             elif EVIL_DOMAIN in body:
-                is_vuln = True
-                details = f"Domínio injetado refletido no corpo da resposta ({resp.status_code})"
+                # V10.4: Verificar se a reflexão está em contexto perigoso vs inofensivo
+                evil_idx = body.find(EVIL_DOMAIN)
+                surrounding = body[max(0, evil_idx - 200):evil_idx + 200]
+                
+                # Contextos PERIGOSOS: form action, a href, script, meta refresh
+                dangerous_patterns = [
+                    r'<form[^>]*action\s*=\s*["\']?[^"\'>]*' + re.escape(EVIL_DOMAIN),
+                    r'<a[^>]*href\s*=\s*["\']?[^"\'>]*' + re.escape(EVIL_DOMAIN),
+                    r'<script[^>]*src\s*=\s*["\']?[^"\'>]*' + re.escape(EVIL_DOMAIN),
+                    r'<meta[^>]*content\s*=\s*["\']?\d+;\s*url\s*=\s*[^"\'>]*' + re.escape(EVIL_DOMAIN),
+                    r'<iframe[^>]*src\s*=\s*["\']?[^"\'>]*' + re.escape(EVIL_DOMAIN),
+                ]
+                # Contextos SEGUROS: link canonical, base href, og:url
+                safe_patterns = [
+                    r'<link[^>]*rel\s*=\s*["\']?canonical[^>]*' + re.escape(EVIL_DOMAIN),
+                    r'<link[^>]*rel\s*=\s*["\']?alternate[^>]*' + re.escape(EVIL_DOMAIN),
+                    r'<base[^>]*href\s*=\s*["\']?[^"\'>]*' + re.escape(EVIL_DOMAIN),
+                    r'property\s*=\s*["\']og:url["\']',
+                ]
+                
+                import re as _re
+                is_dangerous = any(_re.search(p, surrounding, _re.I) for p in dangerous_patterns)
+                is_safe_ctx = any(_re.search(p, surrounding, _re.I) for p in safe_patterns)
+                
+                if is_dangerous:
+                    is_vuln = True
+                    risk_context = "DANGEROUS"
+                    details = f"Domínio injetado refletido em contexto PERIGOSO no body ({resp.status_code})"
+                elif is_safe_ctx:
+                    # V10.4: Reflexão em contexto seguro — NÃO reportar como vuln
+                    continue
+                else:
+                    is_vuln = True
+                    risk_context = "UNKNOWN"
+                    details = f"Domínio injetado refletido no corpo da resposta ({resp.status_code})"
 
             # V10.2: Detectar cache poisoning
             cache_poisoned = False

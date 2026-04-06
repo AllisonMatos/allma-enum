@@ -75,6 +75,9 @@ def test_smuggling(url):
     if baseline_time == -1 or baseline_time > 4:
         return [] # Server too slow to reliably test timing
 
+    # V10.4: Threshold dinâmico baseado no baseline (mínimo 3s)
+    timing_threshold = max(baseline_time * 3, 3.0)
+
     # 1. CL.TE Timeout Payload
     cl_te_payload = (
         f"POST {path} HTTP/1.1\r\n"
@@ -92,12 +95,12 @@ def test_smuggling(url):
     )
 
     clte_time, clte_resp = raw_request(host, port, is_https, cl_te_payload, timeout=TIMEOUT)
-    if clte_time > (baseline_time + 4) and ("500" not in clte_resp and "400" not in clte_resp):
+    if clte_time > (baseline_time + timing_threshold) and ("500" not in clte_resp and "400" not in clte_resp):
         findings.append({
             "url": url,
             "type": "CL.TE Smuggling",
             "risk": "HIGH",
-            "details": f"Possível CL.TE vulnerability (delay de {clte_time:.2f}s vs {baseline_time:.2f}s base).",
+            "details": f"Possível CL.TE vulnerability (delay de {clte_time:.2f}s vs {baseline_time:.2f}s base, threshold: {timing_threshold:.2f}s).",
             "payload": cl_te_payload
         })
 
@@ -117,12 +120,12 @@ def test_smuggling(url):
     )
 
     tecl_time, tecl_resp = raw_request(host, port, is_https, te_cl_payload, timeout=TIMEOUT)
-    if tecl_time > (baseline_time + 4) and ("500" not in tecl_resp and "400" not in tecl_resp):
+    if tecl_time > (baseline_time + timing_threshold) and ("500" not in tecl_resp and "400" not in tecl_resp):
         findings.append({
             "url": url,
             "type": "TE.CL Smuggling",
             "risk": "HIGH",
-            "details": f"Possível TE.CL vulnerability (delay de {tecl_time:.2f}s vs {baseline_time:.2f}s base).",
+            "details": f"Possível TE.CL vulnerability (delay de {tecl_time:.2f}s vs {baseline_time:.2f}s base, threshold: {timing_threshold:.2f}s).",
             "payload": te_cl_payload
         })
 

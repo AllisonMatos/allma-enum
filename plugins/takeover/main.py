@@ -282,14 +282,71 @@ def run(context: dict):
     # Salvar
     output_file = outdir / "takeover_results.json"
     output_file.write_text(json.dumps(vulnerable, indent=2, ensure_ascii=False))
+    results_file = outdir / "takeover_results.json"
+    results_file.write_text(json.dumps(all_findings, indent=2, ensure_ascii=False))
 
-    if vulnerable:
-        confirmed = sum(1 for v in vulnerable if v["status"] == "VULNERABLE")
-        potential = sum(1 for v in vulnerable if v["status"] == "POTENTIAL")
-        success(f"\n   🏴‍☠️ {len(vulnerable)} subdomínios vulneráveis a takeover!")
+    if all_findings:
+        confirmed = sum(1 for v in all_findings if v["status"] == "VULNERABLE")
+        potential = sum(1 for v in all_findings if v["status"] == "POTENTIAL")
+        success(f"\n   🏴‍☠️ {len(all_findings)} subdomínios vulneráveis a takeover!")
         info(f"   📊 Confirmados: {C.RED}{confirmed}{C.END} | Potenciais: {C.YELLOW}{potential}{C.END}")
-        success(f"   📂 Salvos em {output_file}")
+    
+    if all_findings:
+        success(f"🔥 {len(all_findings)} potenciais takeovers encontrados!")
     else:
-        info("   ✅ Nenhum subdomain takeover detectado.")
-
-    return vulnerable
+        success("✅ Nenhum takeover detectado")
+    
+    # V10.4: NS Delegation Takeover + MX Takeover
+    info(f"   🌐 {C.CYAN}[V10.4] Testando NS Delegation e MX Takeover...{C.END}")
+    try:
+        import dns.resolver
+        
+        # NS Delegation Takeover: verificar se NS do domínio aponta para serviço desativado
+        try:
+            ns_records = dns.resolver.resolve(target, 'NS')
+            for ns in ns_records:
+                ns_host = str(ns).rstrip('.')
+                # Verificar se o NS resolve
+                try:
+                    dns.resolver.resolve(ns_host, 'A')
+                except (dns.resolver.NXDOMAIN, dns.resolver.NoAnswer):
+                    all_findings.append({
+                        "subdomain": target,
+                        "type": "NS_DELEGATION_TAKEOVER",
+                        "risk": "CRITICAL",
+                        "details": f"NS '{ns_host}' não resolve (NXDOMAIN) — controlando este NS, um atacante pode controlar TODO o domínio!",
+                        "ns_server": ns_host,
+                    })
+                    info(f"   🔴 {C.RED}NS Takeover: {ns_host} → NXDOMAIN{C.END}")
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        
+        # MX Takeover: verificar se MX do domínio aponta para serviço desativado
+        try:
+            mx_records = dns.resolver.resolve(target, 'MX')
+            for mx in mx_records:
+                mx_host = str(mx.exchange).rstrip('.')
+                try:
+                    dns.resolver.resolve(mx_host, 'A')
+                except (dns.resolver.NXDOMAIN, dns.resolver.NoAnswer):
+                    all_findings.append({
+                        "subdomain": target,
+                        "type": "MX_TAKEOVER",
+                        "risk": "HIGH",
+                        "details": f"MX '{mx_host}' não resolve — atacante pode registrar e interceptar emails de {target}",
+                        "mx_server": mx_host,
+                    })
+                    info(f"   🔴 {C.RED}MX Takeover: {mx_host} → NXDOMAIN{C.END}")
+                except Exception:
+                    pass
+        except Exception:
+            pass
+    except ImportError:
+        warn("   ⚠️ dnspython não instalado — NS/MX takeover check ignorado")
+    
+    # Re-salvar com achados extras
+    results_file.write_text(json.dumps(all_findings, indent=2, ensure_ascii=False))
+    
+    return [str(results_file)]

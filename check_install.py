@@ -46,6 +46,7 @@ OPTIONAL_TOOLS = [
     "waymore",
     "haktrails",
     "masscan",
+    "spiderfoot",
 ]
 
 GREEN = "\033[92m"
@@ -72,6 +73,7 @@ INSTALL_CMDS = {
     "wget": "sudo apt install -y wget",
     "git": "sudo apt install -y git",
     "searchsploit": "sudo apt install -y exploitdb",
+    "spiderfoot": "git clone https://github.com/smicallef/spiderfoot.git ~/spiderfoot && sudo apt install -y libxml2-dev libxslt1-dev && pip install --break-system-packages -r ~/spiderfoot/requirements.txt -U cryptography pyOpenSSL",
 }
 
 def check_python_modules():

@@ -135,6 +135,15 @@ GENERIC_TITLES = [
     "wordpress", "joomla", "drupal",
 ]
 
+# V10.5: Signatures de WAF/Cloudflare challenge pages (falsos positivos de bypass)
+WAF_CHALLENGE_SIGS = [
+    "attention required", "cloudflare", "captcha", "challenge-platform",
+    "cf-browser-verification", "just a moment", "cf-chl-bypass",
+    "ray id", "performance & security by", "enable javascript",
+    "checking your browser", "ddos-guard", "incapsula", "sucuri",
+    "access denied | used cloudflare", "please wait...",
+]
+
 def normalize_title(title: str) -> str:
     """Normalize a page title for deduplication."""
     import re
@@ -303,14 +312,22 @@ def check_admin_path(client, base_url: str, path: str, baseline: dict = None) ->
                 ]
                 
                 bypasses_found = []
+                bypass_evidence = []  # V10.5: Evidência por bypass
                 
                 # Test header bypasses
                 for bypass_h in bypass_headers_list:
                     try:
                         r = client.get(url, headers=bypass_h)
                         if r.status_code == 200:
+                            # V10.5: Validar que NÃO é WAF/Cloudflare challenge
+                            bypass_body = r.text.lower() if r.text else ""
+                            if any(sig in bypass_body for sig in WAF_CHALLENGE_SIGS):
+                                continue  # Falso positivo — página de challenge
                             header_name = list(bypass_h.keys())[0]
                             bypasses_found.append(f"Header {header_name}: {bypass_h[header_name]}")
+                            # V10.5: Capturar raw HTTP DESTE bypass específico
+                            bp_req, bp_res = generate_raw_http(r)
+                            bypass_evidence.append({"method": f"Header {header_name}", "req": bp_req, "res": bp_res})
                     except Exception:
                         pass
                 
@@ -320,18 +337,25 @@ def check_admin_path(client, base_url: str, path: str, baseline: dict = None) ->
                         test = base_url.rstrip("/") + bp
                         r = client.get(test)
                         if r.status_code == 200:
+                            # V10.5: Validar que NÃO é WAF/Cloudflare challenge
+                            bypass_body = r.text.lower() if r.text else ""
+                            if any(sig in bypass_body for sig in WAF_CHALLENGE_SIGS):
+                                continue  # Falso positivo — página de challenge
                             bypasses_found.append(f"Path: {bp}")
+                            # V10.5: Capturar raw HTTP DESTE bypass específico
+                            bp_req, bp_res = generate_raw_http(r)
+                            bypass_evidence.append({"method": f"Path: {bp}", "req": bp_req, "res": bp_res})
                     except Exception:
                         pass
                 
-                if bypasses_found:
+                # V10.5: Só reportar bypass se temos evidência real (não WAF)
+                if bypasses_found and bypass_evidence:
                     result["bypass_found"] = True
                     result["bypass_methods"] = bypasses_found
                     result["status"] = "403 → BYPASS"
-                    
-                    req_b64, res_b64 = generate_raw_http(r)
-                    result["raw_request"] = req_b64
-                    result["raw_response"] = res_b64
+                    # V10.5: Usar raw HTTP do PRIMEIRO bypass confirmado (não do último r do loop)
+                    result["raw_request"] = bypass_evidence[0]["req"]
+                    result["raw_response"] = bypass_evidence[0]["res"]
             
             return result
 

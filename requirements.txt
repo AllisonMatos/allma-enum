@@ -8,3 +8,11 @@ fastapi
 uvicorn
 rich
 pydantic
+
+# Dependências atualizadas (SpiderFoot / Kali compatibility)
+cryptography>=46.0.0
+pyOpenSSL>=24.0.0
+
+# NOTA: O SpiderFoot gerencia as próprias dependências.
+# Se instalado via Enum-allma, o check_install.py roda:
+# pip install -r ~/spiderfoot/requirements.txt -U cryptography pyOpenSSL

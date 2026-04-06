@@ -21,8 +21,18 @@ except ImportError:
 
 
 CACHE_EXTENSIONS = [
-    ".css", ".js", ".jpg", ".png", ".gif", ".ico",
-    ".svg", ".woff", ".woff2", ".ttf",
+    ".css", ".js", ".jpg", ".png", ".gif", ".ico", ".svg",
+    ".woff", ".woff2", ".ttf", ".eot",
+    ".json", ".xml",
+]
+
+# V10.4: Path delimiter confusion payloads
+CACHE_DELIMITER_PAYLOADS = [
+    "%23.css",    # # encoded → some CDNs use fragment as path
+    "%3F.css",    # ? encoded → query string confusion
+    ";.css",      # semicolon → path parameter delimiter (Tomcat, Spring)
+    "%00.css",    # null byte → truncation
+    "/.css",      # extra slash
 ]
 
 CACHE_HEADERS = [

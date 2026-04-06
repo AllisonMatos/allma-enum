@@ -76,6 +76,9 @@ def execute_chain(target: str, chain: list, params: dict, deep: bool = False, st
         "37": "google_dorks",
         "38": "takeover",       # Dangling DNS reusa o módulo takeover
         "39": "cve",            # NVD reusa o módulo cve (agora com NVD integrado)
+        "40": "sqli",
+        "41": "lfi",
+        "42": "spiderfoot",
         "99": "intelligence",
     }
 

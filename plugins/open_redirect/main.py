@@ -20,6 +20,15 @@ from ..http_utils import format_http_request, format_http_response
 
 EVIL_DOMAIN = "evil-enum-allma.com"
 
+# V10.4: Lista de domínios de confirmação em ordem de prioridade
+# O OAST URL (se disponível no context) é preferido para confirmação real
+def _get_redirect_target(context: dict) -> str:
+    """Retorna URL de confirmação: OAST se disponível, senão evil domain."""
+    oast_url = context.get("oast_url", "")
+    if oast_url:
+        return oast_url
+    return f"https://{EVIL_DOMAIN}/redirect"
+
 # Payloads Modernos V10.1
 REDIRECT_PAYLOADS = [
     f"//{EVIL_DOMAIN}",
@@ -141,14 +150,22 @@ def _test_redirect_post(client: httpx.Client, url: str) -> list:
 
 
 def run(context: dict):
+    """Executa o scan de open redirect."""
+    import httpx
+    from core.config import DEFAULT_USER_AGENT, DEFAULT_TIMEOUT, MAX_WORKERS, REQUEST_DELAY
+
     target = context.get("target")
     stealth = context.get("stealth", False)
     deep = context.get("deep", False)
     if not target:
         raise ValueError("Target required")
 
-    info(f"🧪 {C.BOLD}{C.CYAN}OPEN REDIRECT SCANNER (V10.3 PRECISION){C.END}")
+    info(f"🧪 {C.BOLD}{C.CYAN}OPEN REDIRECT SCANNER (V10.4 PRECISION){C.END}")
     outdir = ensure_outdir(target, "open_redirect")
+
+    # V10.4: URL de confirmação (OAST ou evil domain)
+    redirect_target = _get_redirect_target(context)
+    redirect_domain = redirect_target.split("//")[-1].split("/")[0]  # Extrai domínio
 
     urls_file = Path("output") / target / "urls" / "urls_200.txt"
     candidates = []

