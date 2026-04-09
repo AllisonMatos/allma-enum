@@ -1,42 +1,43 @@
-# Enum-Allma V10.1 Pro Surgical ⚡
+# Enum-Allma V10.5 Pro Surgical ⚡
 
 > **Ferramenta Profissional de Enumeração e Reconhecimento — Edição de Alta Precisão**
 > *Professional Enumeration, Reconnaissance, and Surgical Security Analysis Tool*
 
-Allma-Enum é uma suíte completa para pentest e bug bounty, focada em automação de reconhecimento, descoberta de ativos e análise de vulnerabilidades com **precisão cirúrgica** (zero falsos positivos).
+Allma-Enum é uma suíte completa para pentest e bug bounty, focada em automação de reconhecimento profundo, descoberta de ativos e análise de vulnerabilidades com **precisão cirúrgica** (zero falsos positivos).
 
-![Banner](https://img.shields.io/badge/Version-V10.1%20Pro-red)
+![Banner](https://img.shields.io/badge/Version-V10.5%20Pro-red)
 ![Status](https://img.shields.io/badge/Status-Surgical-success)
 ![Python](https://img.shields.io/badge/Python-3.9+-blue)
 
-## 🚀 Novidades da V10.1 Pro Surgical
+## 🚀 Capacidades da V10.5 Pro Surgical
 
-A versão **V10.1 Pro** introduz um novo padrão de qualidade em ferramentas de bug bounty, focando em evidências reais e bypass de proteções modernas:
+A versão **V10.5 Pro** oferece um padrão de qualidade elitizado em ferramentas de bug bounty, orientando-se a evidências reais e algoritmos consolidados de bypass e detecção unificada:
 
-- **📄 XXE Pro**: Payloads Error-based e OAST com filtros automáticos contra Cloudflare e WAFs (403/405/429 bypass).
-- **🏠 Host Header Surgical**: Blacklist inteligente de portas de painéis administrativos e detecção de Cache Poisoning/CRLF.
-- **🔀 Open Redirect Double-Check**: Validação secundária automática que confirma o redirecionamento externo real antes de reportar.
-- **🧬 Prototype Pollution Pro**: Detecção de sinks em lodash/Object.defineProperty com prova de conceito (Object overwrite) automática.
-- **🛡️ Stealth & Depth**: Flags `--stealth` (delay de 0.6s/slow scan) e `--deep` (análise exaustiva de POST e APIs) integradas globalmente.
-- **📊 Enriched Reporting**: Modal **Burp-style** reestruturado para exibir 100% do tráfego RAW (Request/Response) capturado em todos os achados.
+- **🕷️ OSINT nativo**: Integração pre-vulnerabilidade via SpiderFoot, montando o contorno exato da inteligência de domínio antes dos testes.
+- **📄 Extrema Precisão (SSTI & XXE)**: Payloads de OAST e numéricos sem ruídos. Checagem em tempo real de Cloudflare/WAFs e validação secundária para colisão numérica de SSTI.
+- **☁️ Deduplicação Elegante de APIs (Secret Finder)**: TruffleHog unificado a Regex modulares, identificando com eficácia as credenciais únicas de Firebase, Cloud, AWS, GCP (sem alertar falsos clones).
+- **🔀 Double-Check Core**: Validação secundária automática para Open Redirect e Prototype Pollution, garantindo uma detecção autêntica de Object overwrites.
+- **🛡️ Stealth, Depth, e Anti-Timeout**: Tolerância impecável em escopos imensos (Sincronização correta GraphQL), fluxos nativos contra queda de sessão e uso das flags `--stealth` (slow) e `--deep` (API completas).
+- **📊 Enriched Pipeline**: Dashboards profissionais renderizando 100% dos dados crudos (RAW HTTP) direto no output para todas as vulnerabilidades sem gargalos (Cache Deception, JWT Analisador).
 
 ---
 
 ## 🚀 Funcionalidades Principais (Core Features)
 
-### 🌐 Reconhecimento & Crawling
-- **Multi-source Discovery**: Enumeração passiva e ativa consolidada (`Subfinder`, `crt.sh`, `haktrails`, `Katana`).
-- **Headless Crawling**: Motor Katana para renderização de SPAs (React/Vue/Angular) e descoberta de rotas ocultas.
-- **Port Scanning**: Integração com Naabu para scans rápidos com rate-limit inteligente.
-- **Fingerprinting**: Identificação profunda de stack tecnológica e versões de pacotes.
+### 🌐 Reconhecimento de Inteligência (Recon & Crawling)
+- **Multi-source Discovery**: Enumeração passiva/ativa avançada (`Subfinder`, `crt.sh`, `haktrails`, `Katana`) operando em cadeia com módulos OSINT e Google Dorks aperfeiçoados.
+- **Headless Crawling**: Motor potente com integração tática de endpoints complexos de SPAs (React/Vue/Angular).
+- **Port Scanning**: Roteamento rápido com Naabu e limites inteligentes de requests.
+- **Fingerprinting**: Identificação profunda sem margem de erro.
 
 ### 🔍 Análise de Segurança Cirúrgica
-- **OAST (Blind Bugs)**: Integração centralizada com `Interactsh` para vulnerabilidades Out-of-Band.
-- **Secret Finder**: Busca por API Keys e segredos em arquivos JS usando TruffleHog e Regex customizados.
-- **API Security**: Fuzzing de rotas Kiterunner para descoberta de endpoints de API não documentados.
-- **Cloud Recon**: Mapeamento de Buckets S3, Azure Blobs e GCP vinculados ao alvo.
-- **JWT & GraphQL**: Suite completa para análise de tokens e introspecção de APIs modernas.
-- **🗺️ Source Maps**: Reconstrução de código-fonte original a partir de arquivos `.map`.
+### 🔍 Análise de Segurança Cirúrgica
+- **OAST Centralizado**: Conexões integradas de `Interactsh` para falhas Out-of-Band Blind.
+- **Advanced Secret Finder**: Verificação contínua de APIS e tokens, calculando entropia refinada para assegurar dados autênticos (com validação live interna).
+- **Vast API Security**: Kiterunner e Introspecção densa GraphQL.
+- **Cloud Recon**: Mapeamento limpo de S3/Azure/GCP expostos que cruzam as informações do alvo.
+- **JWT & Deserializadores**: Plataformas focadas para auditoria em JWT estruturados com as devidas falhas de payload, e falhas de Insecure Deserialization.
+- **🗺️ Source Maps**: Reconstrução imediata da branch JS de compilação.
 
 ---
 
@@ -68,18 +69,19 @@ python3 menu.py
 
 | ID | Módulo | Foco Principal |
 |----|--------|----------------|
-| 1-3 | **Discovery** | Domínios, IPs, Portas e Serviços |
-| 5-7 | **Analysis** | JS Scanning, Tecnologias e API Mapping |
-| 9-23 | **Vulnerabilities** | XSS, XXE, SSTI, Prototype Pollution, JWT, CORS, OAuth |
-| 26 | **ALL-IN-ONE** | Fluxo completo automatizado com motor de inteligência |
+| 1-4 | **Discovery & OSINT** | Domínios, IPs, Portas, Dorks e Modelos de Inteligência Prévia |
+| 5-8 | **Analysis** | JS Scanning Avançado, Source Maps e Integrações de Tecnologias |
+| 9-25 | **Vulnerabilities** | XSS, XXE, Admin, Cache Deception, Insecure Deserialization, SSTI, Prototype Pollution, JWT Analyzer, CORS, OAuth, GraphQL |
+| 26 | **ALL-IN-ONE** | Bateria autônoma de execução global limpa de todas as pontas |
 
 ---
 
-## 📊 Relatórios & WebApp
-O relatório interativo (`report.html`) e o Dashboard FastAPI oferecem:
-- **Timeline de Ataque**: Visualização sequencial da execução dos plugins.
-- **Burp-style Modal**: Clique em `View HTTP` para ver as provas base64 reais.
-- **Expert Details**: Explicações técnicas e recomendações de mitigação para cada descoberta.
+## 📊 Relatórios Visuais & Profissionais (Web Dashboard)
+O painel de monitoramento `report.html` com estética limpa padrão Dark Theme sem ruídos oferece:
+- **Fluxo limpo sem emojis**: Visual moderno, ícones minimalistas e formato "bullet_points" idealizadas para auditores.
+- **Timeline de Ataque**: Processamento linear direto via logs de OAST.
+- **Burp-style Modal**: Visualizador em RAW autêntico (HTTP Headers & Corpo da Resposta) para uma checagem minuciosa em tempo real.
+- **Expert Dicas**: Sugestões e tutoriais de Hacking em tempo de design integrados no dashboard.
 
 ---
 
@@ -98,4 +100,4 @@ output/alvo.com/
 ## ⚠️ Disclaimer
 Uso exclusivo para fins de segurança defensiva, programas de Bug Bounty autorizados e Pentests profissionais. O autor não se responsabiliza pelo uso indevido da ferramenta.
 
-**Enum-Allma V10.1 Pro Surgical: Precisão Total Garantida. 🛡️**
+**Enum-Allma V10.5 Pro Surgical: Precisão Total Garantida. 🛡️**

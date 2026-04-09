@@ -13,11 +13,9 @@ ROUTE_PATTERNS = [
     r'(?:"|\')([a-zA-Z0-9_\-/]+(?:\.php|\.asp|\.aspx|\.jsp|\.json|\.xml|\.action|\.do))(?:"|\')',
 ]
 
-# Regex para descobrir parâmetros GET/POST (ex: ?admin=true, token=abc)
+# Regex omitindo patterns genéricos que absorvem CSS classes do Bootstrap/React
 PARAM_PATTERNS = [
-    r'(?:"|\')[a-zA-Z0-9_\-]+(?:"|\')\s*:\s*(?:"|\')[^"\']*(?:"|\')', # JSON keys like "user_id": "val"
     r'(?:\?|&)([a-zA-Z0-9_]+)=', # URL get params like ?token=
-    r'\b(?:data|params|headers|body)\s*:\s*\{([^}]+)\}', # Ajax params block
 ]
 
 def extract_js_logic(content: str, full_url: str) -> Dict[str, Any]:
@@ -45,24 +43,44 @@ def extract_js_logic(content: str, full_url: str) -> Dict[str, Any]:
                     continue
                     
                 # Reconstruir URL absoluta
-                absolute_url = urljoin(full_url, matched_str)
+                parsed_base = urlparse(full_url)
+                base_domain = f"{parsed_base.scheme}://{parsed_base.netloc}"
+                
+                if matched_str.startswith('/'):
+                    absolute_url = urljoin(base_domain, matched_str)
+                elif matched_str.startswith('api/') or matched_str.startswith('v1/') or matched_str.startswith('v2/'):
+                    absolute_url = urljoin(base_domain, '/' + matched_str)
+                else:
+                    # Rota relativa, junta com o path atual
+                    absolute_url = urljoin(full_url, matched_str)
+                    
                 routes.add(absolute_url)
         except Exception:
             pass
 
     # 2. Extração de Parâmetros
+    # a) Params URL baseados em query string
     for pattern in PARAM_PATTERNS:
         try:
             matches = re.finditer(pattern, content)
             for m in matches:
-                param_str = m.group(1).strip() if len(m.groups()) > 0 else m.group().strip()
-                # Limpeza simples ("param": "1" -> param)
-                clean_param = re.sub(r'["\':={}]', '', param_str).strip()
-                
-                if 2 < len(clean_param) < 20 and ' ' not in clean_param:
-                    params.add(clean_param)
-        except Exception:
-            pass
+                p = m.group(1).strip()
+                if 2 < len(p) < 20 and not p.isdigit():
+                    params.add(p)
+        except Exception: pass
+        
+    # b) Params dentro de blocos de requisição Ajax / Axios / Fetch (ex: data: { param: value })
+    try:
+        ajax_block_re = re.compile(r'\b(?:data|params|headers|body)\s*:\s*\{([^}]+)\}')
+        key_re = re.compile(r'(?:["\'])?([a-zA-Z0-9_]+)(?:["\'])?\s*:')
+        for block_m in ajax_block_re.finditer(content):
+            block = block_m.group(1)
+            for key_m in key_re.finditer(block):
+                p = key_m.group(1).strip()
+                if 2 < len(p) < 20 and not p.isdigit() and p.lower() not in ['true', 'false', 'null']:
+                    params.add(p)
+    except Exception:
+        pass
 
     return {
         "source_js": full_url,

@@ -265,9 +265,8 @@ async def run_async_scan(target, outdir, report_file, raw_file):
             # Raw
             f_raw.write(f"=== FILE: {item['url']} ===\n")
             f_raw.write(item['text'] + "\n\n")
-            
             # Report
-            if item['urls'] or item['keys'] or item['routes'] or item['parameters']:
+            if item['urls'] or item['keys']:
                 f_rep.write(f"FILE: {item['url']}\n")
                 if item['urls']:
                     f_rep.write("  URLs found:\n")
@@ -277,26 +276,36 @@ async def run_async_scan(target, outdir, report_file, raw_file):
                     f_rep.write("  KEYS found:\n")
                     for k in item['keys']:
                         f_rep.write(f"    - {k}\n")
-                if item['routes']:
-                    f_rep.write("  API ROUTES found:\n")
-                    for r in item['routes']:
-                        f_rep.write(f"    - {r}\n")
-                if item['parameters']:
-                    f_rep.write("  PARAMETERS found:\n")
-                    for p in item['parameters']:
-                        f_rep.write(f"    - {p}\n")
                 f_rep.write("\n")
+                
+        # Global Deduplication of API Routes and Parameters for clean reports
+        global_routes = set()
+        global_parameters = set()
+        for item in results_data:
+            global_routes.update(item.get('routes', []))
+            global_parameters.update(item.get('parameters', []))
+            
+        f_rep.write("==================================================\n")
+        f_rep.write("V10.5: GLOBAL DEDUPLICATED ROUTES & PARAMETERS\n")
+        f_rep.write("==================================================\n")
+        if global_routes:
+            f_rep.write("  UNIQUE API ROUTES:\n")
+            for r in sorted(list(global_routes)):
+                f_rep.write(f"    - {r}\n")
+        if global_parameters:
+            f_rep.write("  UNIQUE PARAMETERS:\n")
+            for p in sorted(list(global_parameters)):
+                f_rep.write(f"    - {p}\n")
                 
     # Bug Bounty 2026: Export JSON structure for the UI Report
     js_routes_file = outdir / "js_routes.json"
     structured_data = []
-    for item in results_data:
-        if item['routes'] or item['parameters']:
-            structured_data.append({
-                "source": item['url'],
-                "routes": item['routes'],
-                "parameters": item['parameters']
-            })
+    if global_routes or global_parameters:
+        structured_data.append({
+            "source": "V10.5 Global Deduplication Pipeline",
+            "routes": sorted(list(global_routes)),
+            "parameters": sorted(list(global_parameters))
+        })
             
     if structured_data:
         import json

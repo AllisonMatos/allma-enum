@@ -616,16 +616,17 @@ def extract_keys(content: str, source_url: str = None, source_file: str = None) 
 
         for m in matches:
             match_str = m.group(0)
+            secret_value = m.group(1) if m.groups() else match_str
 
             # Deduplicate
-            if match_str in seen_values:
+            if secret_value in seen_values:
                 continue
             
             # Rigorous validation: check if it's a media/binary false positive
             if is_media_false_positive(content, m.start()):
                 continue
 
-            seen_values.add(match_str)
+            seen_values.add(secret_value)
 
             # Context
             ctx = get_context_lines(content, m.start())
@@ -642,11 +643,11 @@ def extract_keys(content: str, source_url: str = None, source_file: str = None) 
             })
 
             # Validate token against API
-            validation = validate_token(key_type, match_str)
+            validation = validate_token(key_type, secret_value)
 
             # Confidence scoring
             confidence = calculate_confidence(
-                secret_value=match_str,
+                secret_value=secret_value,
                 key_type=key_type,
                 content=content,
                 match_position=m.start(),
@@ -655,8 +656,8 @@ def extract_keys(content: str, source_url: str = None, source_file: str = None) 
 
             found.append({
                 "type": key_type,
-                "match": match_str[:100] + "..." if len(match_str) > 100 else match_str,
-                "full_match": match_str,
+                "match": secret_value[:100] + "..." if len(secret_value) > 100 else secret_value,
+                "full_match": secret_value,
                 "source": {
                     "url": source_url,
                     "file": source_file,
