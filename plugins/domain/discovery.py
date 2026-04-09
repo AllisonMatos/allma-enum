@@ -35,22 +35,23 @@ def _extract_hostnames_from_urls(lines: list, target: str) -> set:
 def discover_crtsh(target: str) -> set:
     """
     Consulta Certificate Transparency via crt.sh (API HTTP pública).
-    Retorna subdomínios encontrados em certificados SSL.
+    Retorna subdomínios encontrados em certificados SSL com suporte a retry robusto.
     """
+    import time
     subs = set()
     try:
         import httpx
         url = f"https://crt.sh/?q=%25.{target}&output=json"
-        with httpx.Client(timeout=30, verify=False, follow_redirects=True) as client:
+        
+        transport = httpx.HTTPTransport(retries=3)
+        with httpx.Client(transport=transport, timeout=90, verify=False, follow_redirects=True) as client:
             resp = client.get(url)
             if resp.status_code == 200:
                 data = resp.json()
                 for entry in data:
                     name_value = entry.get("name_value", "")
-                    # Pode ter múltiplos domínios separados por \n
                     for name in name_value.split("\n"):
                         name = name.strip().lower()
-                        # Remover wildcard prefix
                         if name.startswith("*."):
                             name = name[2:]
                         if name.endswith(target) and name:
@@ -59,7 +60,7 @@ def discover_crtsh(target: str) -> set:
     except ImportError:
         warn("   httpx não instalado — crt.sh requer httpx")
     except Exception as e:
-        warn(f"   crt.sh: erro — {e}")
+        warn(f"   crt.sh: erro — {e} (A API do crt.sh frequentemente sofre sobrecarga)")
     return subs
 
 

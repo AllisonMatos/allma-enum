@@ -34,22 +34,21 @@
             overflow: hidden;
         }
 
-        /* SIDEBAR — identical to report.html */
+        /* SIDEBAR — permanently expanded, matching report.html */
         .sidebar {
-            width: var(--sidebar-width);
+            width: var(--sidebar-width-expanded);
             background: var(--bg-secondary);
             border-right: 1px solid var(--border-color);
             display: flex;
             flex-direction: column;
-            align-items: center;
+            align-items: stretch;
             padding: 12px 0;
             z-index: 1000;
-            transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
             overflow-x: hidden;
             overflow-y: auto;
             flex-shrink: 0;
         }
-        .sidebar:hover { width: var(--sidebar-width-expanded); align-items: stretch; }
+
         .brand { width: 50px; height: 50px; margin: 0 auto 20px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
         .brand svg { width: 100%; height: 100%; transition: transform 0.3s ease; filter: drop-shadow(0 0 2px rgba(0,0,0,0.5)); }
         .brand:hover svg { transform: scale(1.1) rotate(5deg); }
@@ -63,11 +62,10 @@
         .nav-btn.active:before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--accent-blue); }
         .nav-icon { width: var(--sidebar-width); height: 48px; display: flex; align-items: center; justify-content: center; font-size: 20px; flex-shrink: 0; }
         .nav-label {
-            padding-left: 10px; font-size: 14px; font-weight: 500; opacity: 0;
-            transition: opacity 0.2s; display: flex; align-items: center;
+            padding-left: 10px; font-size: 14px; font-weight: 500; opacity: 1;
+            display: flex; align-items: center;
             justify-content: space-between; flex: 1; padding-right: 16px;
         }
-        .sidebar:hover .nav-label { opacity: 1; }
         .count { background: var(--bg-primary); padding: 2px 8px; border-radius: 12px; font-size: 11px; color: var(--text-muted); border: 1px solid var(--border-color); }
 
         /* CONTENT AREA */
@@ -188,6 +186,19 @@
         .header-val { color: #ce9178; }
         .status-code { color: #b5cea8; font-weight: bold; }
 
+        /* Sidebar Categories */
+        .sidebar-category {
+            padding: 15px 15px 5px 15px;
+            color: #8b949e;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            font-family: system-ui, sans-serif;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+            margin-bottom: 5px;
+        }
+
         /* Tree view */
         .tree { list-style-type: none; padding-left: 10px; }
         .tree ul { list-style-type: none; padding-left: 20px; border-left: 1px dashed var(--border-color); margin-left: 5px; }
@@ -224,51 +235,58 @@
             </svg>
         </div>
         
-        <button class="nav-btn active" data-section="dashboard"><div class="nav-icon">📊</div><div class="nav-label">Dashboard</div></button>
-        <button class="nav-btn" data-section="quickwins_attack"><div class="nav-icon">⚡</div><div class="nav-label">Quick Wins <span class="count">{{ stats.stats_quickwins }}</span></div></button>
-        <button class="nav-btn" data-section="security"><div class="nav-icon">🛡️</div><div class="nav-label">Security <span class="count">{{ stats.stats_xss }}</span></div></button>
-        <button class="nav-btn" data-section="subdomains"><div class="nav-icon">🌐</div><div class="nav-label">Subdomains <span class="count">{{ stats.stats_subdomains }}</span></div></button>
-        <button class="nav-btn" data-section="takeover"><div class="nav-icon">🏴‍☠️</div><div class="nav-label">Takeover <span class="count">{{ stats.stats_takeover }}</span></div></button>
-        <button class="nav-btn" data-section="urls"><div class="nav-icon">🔗</div><div class="nav-label">URLs <span class="count">{{ stats.stats_urls_combined }}</span></div></button>
-        <button class="nav-btn" data-section="routes"><div class="nav-icon">🛣️</div><div class="nav-label">Endpoints <span class="count">{{ stats.stats_endpoints }}</span></div></button>
-        <button class="nav-btn" data-section="services"><div class="nav-icon">🔌</div><div class="nav-label">Services <span class="count">{{ stats.stats_ports }}</span></div></button>
-        <button class="nav-btn" data-section="keys"><div class="nav-icon">🔑</div><div class="nav-label">Keys <span class="count">{{ stats.stats_keys }}</span></div></button>
-        <button class="nav-btn" data-section="emails"><div class="nav-icon">📧</div><div class="nav-label">Emails <span class="count">{{ stats.stats_emails }}</span></div></button>
-        <button class="nav-btn" data-section="waf"><div class="nav-icon">🧱</div><div class="nav-label">WAF <span class="count">{{ stats.stats_waf }}</span></div></button>
-        <button class="nav-btn" data-section="files"><div class="nav-icon">📁</div><div class="nav-label">Files</div></button>
-        <button class="nav-btn" data-section="js"><div class="nav-icon">📜</div><div class="nav-label">JS Files <span class="count">{{ stats.stats_js }}</span></div></button>
-        <button class="nav-btn" data-section="params"><div class="nav-icon">🧩</div><div class="nav-label">Params <span class="count">{{ stats.stats_params }}</span></div></button>
-        <button class="nav-btn" data-section="sourcemaps"><div class="nav-icon">🗺️</div><div class="nav-label">Source Maps <span class="count">{{ stats.stats_sourcemaps }}</span></div></button>
-        <button class="nav-btn" data-section="cve"><div class="nav-icon">💣</div><div class="nav-label">CVEs <span class="count">{{ stats.stats_cves }}</span></div></button>
-        <button class="nav-btn" data-section="jsroutes"><div class="nav-icon">🗺️</div><div class="nav-label">API & JS <span class="count">{{ stats.stats_js_routes }}</span></div></button>
-        <button class="nav-btn" data-section="swagger"><div class="nav-icon">📖</div><div class="nav-label">Swagger <span class="count">{{ stats.stats_swagger }}</span></div></button>
-        <button class="nav-btn" data-section="logic"><div class="nav-icon">⚙️</div><div class="nav-label">Logic & Smug. <span class="count">{{ stats.stats_logic }}</span></div></button>
-        <button class="nav-btn" data-section="surfacemap"><div class="nav-icon">🗺️</div><div class="nav-label">Surface Map</div></button>
-        <button class="nav-btn" data-section="git"><div class="nav-icon">🕰️</div><div class="nav-label">Git Exposed <span class="count">{{ stats.stats_git }}</span></div></button>
-        <button class="nav-btn" data-section="cloud"><div class="nav-icon">☁️</div><div class="nav-label">Cloud <span class="count">{{ stats.stats_buckets }}</span></div></button>
-        <button class="nav-btn" data-section="admin"><div class="nav-icon">👑</div><div class="nav-label">Admin <span class="count">{{ stats.stats_admin }}</span></div></button>
-        <button class="nav-btn" data-section="depconfusion"><div class="nav-icon">📦</div><div class="nav-label">Dep. Conf. <span class="count">{{ stats.stats_depconfusion }}</span></div></button>
-        <button class="nav-btn" data-section="graphql_scan"><div class="nav-icon">🧬</div><div class="nav-label">GraphQL <span class="count">{{ stats.stats_graphql }}</span></div></button>
-        <button class="nav-btn" data-section="api_sec"><div class="nav-icon">🛡️</div><div class="nav-label">API Security <span class="count">{{ stats.stats_api_security }}</span></div></button>
+        <button class="nav-btn active" data-section="dashboard" data-always-show="true"><div class="nav-icon">&#9679;</div><div class="nav-label">Dashboard</div></button>
+        <button class="nav-btn" data-section="quickwins_attack" data-always-show="true"><div class="nav-icon">&#9679;</div><div class="nav-label">Quick Wins <span class="count">{{ stats.stats_quickwins }}</span></div></button>
         
-        <button class="nav-btn" data-section="ssrf_sec"><div class="nav-icon">📡</div><div class="nav-label">SSRF <span class="count">{{ stats.stats_ssrf }}</span></div></button>
-        <button class="nav-btn" data-section="open_redirect"><div class="nav-icon">🔀</div><div class="nav-label">Redirect <span class="count">{{ stats.stats_open_redirect }}</span></div></button>
-        <button class="nav-btn" data-section="host_injection"><div class="nav-icon">🏠</div><div class="nav-label">Host Inj. <span class="count">{{ stats.stats_host_injection }}</span></div></button>
-        <button class="nav-btn" data-section="ssti_sec"><div class="nav-icon">🧪</div><div class="nav-label">SSTI <span class="count">{{ stats.stats_ssti }}</span></div></button>
-        <button class="nav-btn" data-section="xxe_sec"><div class="nav-icon">📄</div><div class="nav-label">XXE <span class="count">{{ stats.stats_xxe }}</span></div></button>
-        <button class="nav-btn" data-section="proto_pollution"><div class="nav-icon">🧬</div><div class="nav-label">Prototype <span class="count">{{ stats.stats_proto }}</span></div></button>
-        <button class="nav-btn" data-section="oauth_sec"><div class="nav-icon">🔐</div><div class="nav-label">OAuth <span class="count">{{ stats.stats_oauth }}</span></div></button>
-        <button class="nav-btn" data-section="file_upload"><div class="nav-icon">📤</div><div class="nav-label">Upload <span class="count">{{ stats.stats_file_upload }}</span></div></button>
-        <button class="nav-btn" data-section="api_versioning"><div class="nav-icon">🔢</div><div class="nav-label">API Ver. <span class="count">{{ stats.stats_api_versioning }}</span></div></button>
-        <button class="nav-btn" data-section="email_security"><div class="nav-icon">📧</div><div class="nav-label">Mail Sec. <span class="count">{{ stats.stats_email_sec }}</span></div></button>
-        <button class="nav-btn" data-section="google_dorks"><div class="nav-icon">🔍</div><div class="nav-label">Dorks <span class="count">{{ stats.stats_google_dorks }}</span></div></button>
-        <button class="nav-btn" data-section="cache_deception"><div class="nav-icon">🧊</div><div class="nav-label">Cache Dec. <span class="count">{{ stats.stats_cache_deception }}</span></div></button>
+        <div class="sidebar-category">🌍 ASSETS & SURFACE</div>
+        <button class="nav-btn" data-section="subdomains" data-always-show="true"><div class="nav-icon">&#9679;</div><div class="nav-label">Subdomains <span class="count">{{ stats.stats_subdomains }}</span></div></button>
+        <button class="nav-btn" data-section="urls" data-always-show="true"><div class="nav-icon">&#9679;</div><div class="nav-label">URLs <span class="count">{{ stats.stats_urls_combined }}</span></div></button>
+        <button class="nav-btn" data-section="routes"><div class="nav-icon">&#9679;</div><div class="nav-label">Endpoints <span class="count">{{ stats.stats_endpoints }}</span></div></button>
+        <button class="nav-btn" data-section="files"><div class="nav-icon">&#9679;</div><div class="nav-label">Files</div></button>
+        <button class="nav-btn" data-section="params"><div class="nav-icon">&#9679;</div><div class="nav-label">Params <span class="count">{{ stats.stats_params }}</span></div></button>
+        <button class="nav-btn" data-section="surfacemap"><div class="nav-icon">&#9679;</div><div class="nav-label">Surface Map</div></button>
+        <button class="nav-btn" data-section="js"><div class="nav-icon">&#9679;</div><div class="nav-label">JS Files <span class="count">{{ stats.stats_js }}</span></div></button>
+        <button class="nav-btn" data-section="jsroutes"><div class="nav-icon">&#9679;</div><div class="nav-label">API & JS <span class="count">{{ stats.stats_js_routes }}</span></div></button>
+        <button class="nav-btn" data-section="sourcemaps"><div class="nav-icon">&#9679;</div><div class="nav-label">Source Maps <span class="count">{{ stats.stats_sourcemaps }}</span></div></button>
 
-        <button class="nav-btn" data-section="jwt_sec"><div class="nav-icon">🔑</div><div class="nav-label">JWT <span class="count">{{ stats.stats_jwt }}</span></div></button>
-        <button class="nav-btn" data-section="crlf_sec"><div class="nav-icon">💉</div><div class="nav-label">CRLF <span class="count">{{ stats.stats_crlf }}</span></div></button>
-        <button class="nav-btn" data-section="smuggling_sec"><div class="nav-icon">🔀</div><div class="nav-label">Smuggling <span class="count">{{ stats.stats_smuggling }}</span></div></button>
-        <button class="nav-btn" data-section="deser_sec"><div class="nav-icon">🧬</div><div class="nav-label">Deserial. <span class="count">{{ stats.stats_deser }}</span></div></button>
-        <button class="nav-btn" data-section="oast_sec"><div class="nav-icon">🚨</div><div class="nav-label" style="color:#ff7b72">Blind Bugs <span class="count">{{ stats.stats_oast }}</span></div></button>
+        <div class="sidebar-category">🔥 VULNERABILITIES</div>
+        <button class="nav-btn" data-section="security"><div class="nav-icon">&#9679;</div><div class="nav-label">Security <span class="count">{{ stats.stats_xss }}</span></div></button>
+        <button class="nav-btn" data-section="api_sec"><div class="nav-icon">&#9679;</div><div class="nav-label">API Security <span class="count">{{ stats.stats_api_security }}</span></div></button>
+        <button class="nav-btn" data-section="logic"><div class="nav-icon">&#9679;</div><div class="nav-label">Logic & Smug. <span class="count">{{ stats.stats_logic }}</span></div></button>
+        <button class="nav-btn" data-section="takeover"><div class="nav-icon">&#9679;</div><div class="nav-label">Takeover <span class="count">{{ stats.stats_takeover }}</span></div></button>
+        <button class="nav-btn" data-section="cve"><div class="nav-icon">&#9679;</div><div class="nav-label">CVEs <span class="count">{{ stats.stats_cves }}</span></div></button>
+        <button class="nav-btn" data-section="depconfusion"><div class="nav-icon">&#9679;</div><div class="nav-label">Dep. Conf. <span class="count">{{ stats.stats_depconfusion }}</span></div></button>
+
+        <div class="sidebar-category">⚙️ EXPOSURES</div>
+        <button class="nav-btn" data-section="admin"><div class="nav-icon">&#9679;</div><div class="nav-label">Admin Panels <span class="count">{{ stats.stats_admin }}</span></div></button>
+        <button class="nav-btn" data-section="keys"><div class="nav-icon">&#9679;</div><div class="nav-label">Keys & Secrets <span class="count">{{ stats.stats_keys }}</span></div></button>
+        <button class="nav-btn" data-section="emails"><div class="nav-icon">&#9679;</div><div class="nav-label">Emails <span class="count">{{ stats.stats_emails }}</span></div></button>
+        <button class="nav-btn" data-section="git"><div class="nav-icon">&#9679;</div><div class="nav-label">Git Exposed <span class="count">{{ stats.stats_git }}</span></div></button>
+        <button class="nav-btn" data-section="cloud"><div class="nav-icon">&#9679;</div><div class="nav-label">Cloud Storage <span class="count">{{ stats.stats_buckets }}</span></div></button>
+        <button class="nav-btn" data-section="graphql_scan"><div class="nav-icon">&#9679;</div><div class="nav-label">GraphQL <span class="count">{{ stats.stats_graphql }}</span></div></button>
+        <button class="nav-btn" data-section="swagger"><div class="nav-icon">&#9679;</div><div class="nav-label">Swagger UI <span class="count">{{ stats.stats_swagger }}</span></div></button>
+        <button class="nav-btn" data-section="services"><div class="nav-icon">&#9679;</div><div class="nav-label">Ports/Services <span class="count">{{ stats.stats_ports }}</span></div></button>
+        <button class="nav-btn" data-section="waf"><div class="nav-icon">&#9679;</div><div class="nav-label">WAF Detection <span class="count">{{ stats.stats_waf }}</span></div></button>
+        
+        <button class="nav-btn" data-section="ssrf_sec"><div class="nav-icon">&#9679;</div><div class="nav-label">SSRF <span class="count">{{ stats.stats_ssrf }}</span></div></button>
+        <button class="nav-btn" data-section="open_redirect"><div class="nav-icon">&#9679;</div><div class="nav-label">Redirect <span class="count">{{ stats.stats_open_redirect }}</span></div></button>
+        <button class="nav-btn" data-section="host_injection"><div class="nav-icon">&#9679;</div><div class="nav-label">Host Inj. <span class="count">{{ stats.stats_host_injection }}</span></div></button>
+        <button class="nav-btn" data-section="ssti_sec"><div class="nav-icon">&#9679;</div><div class="nav-label">SSTI <span class="count">{{ stats.stats_ssti }}</span></div></button>
+        <button class="nav-btn" data-section="xxe_sec"><div class="nav-icon">&#9679;</div><div class="nav-label">XXE <span class="count">{{ stats.stats_xxe }}</span></div></button>
+        <button class="nav-btn" data-section="proto_pollution"><div class="nav-icon">&#9679;</div><div class="nav-label">Prototype <span class="count">{{ stats.stats_proto }}</span></div></button>
+        <button class="nav-btn" data-section="oauth_sec"><div class="nav-icon">&#9679;</div><div class="nav-label">OAuth <span class="count">{{ stats.stats_oauth }}</span></div></button>
+        <button class="nav-btn" data-section="file_upload"><div class="nav-icon">&#9679;</div><div class="nav-label">Upload <span class="count">{{ stats.stats_file_upload }}</span></div></button>
+        <button class="nav-btn" data-section="api_versioning"><div class="nav-icon">&#9679;</div><div class="nav-label">API Ver. <span class="count">{{ stats.stats_api_versioning }}</span></div></button>
+        <button class="nav-btn" data-section="email_security"><div class="nav-icon">&#9679;</div><div class="nav-label">Mail Sec. <span class="count">{{ stats.stats_email_sec }}</span></div></button>
+        <button class="nav-btn" data-section="google_dorks"><div class="nav-icon">&#9679;</div><div class="nav-label">Dorks <span class="count">{{ stats.stats_google_dorks }}</span></div></button>
+        <button class="nav-btn" data-section="cache_deception"><div class="nav-icon">&#9679;</div><div class="nav-label">Cache Dec. <span class="count">{{ stats.stats_cache_deception }}</span></div></button>
+        <button class="nav-btn" data-section="spiderfoot_sec"><div class="nav-icon">&#9679;</div><div class="nav-label">SpiderFoot <span class="count">{{ stats.stats_spiderfoot }}</span></div></button>
+
+        <button class="nav-btn" data-section="jwt_sec"><div class="nav-icon">&#9679;</div><div class="nav-label">JWT <span class="count">{{ stats.stats_jwt }}</span></div></button>
+        <button class="nav-btn" data-section="crlf_sec"><div class="nav-icon">&#9679;</div><div class="nav-label">CRLF <span class="count">{{ stats.stats_crlf }}</span></div></button>
+        <button class="nav-btn" data-section="smuggling_sec"><div class="nav-icon">&#9679;</div><div class="nav-label">Smuggling <span class="count">{{ stats.stats_smuggling }}</span></div></button>
+        <button class="nav-btn" data-section="deser_sec"><div class="nav-icon">&#9679;</div><div class="nav-label">Deserial. <span class="count">{{ stats.stats_deser }}</span></div></button>
+        <button class="nav-btn" data-section="oast_sec"><div class="nav-icon">&#9679;</div><div class="nav-label">Blind Bugs <span class="count">{{ stats.stats_oast }}</span></div></button>
     </nav>
 
     <div class="content-wrapper">
@@ -284,7 +302,7 @@
                         {% endfor %}
                     </select>
                 </div>
-                <div class="meta-info">📅 Web Viewer</div>
+                <div class="meta-info">Web Viewer</div>
             </div>
         </header>
 
@@ -295,7 +313,7 @@
             </section>
 
             <!-- All other sections — loaded via AJAX on click -->
-            {% set section_ids = ['quickwins_attack','security','subdomains','takeover', 'ssrf_sec', 'open_redirect', 'host_injection', 'ssti_sec', 'xxe_sec', 'proto_pollution', 'oauth_sec', 'file_upload', 'api_versioning', 'email_security', 'google_dorks', 'cache_deception', 'urls','routes','services','keys','emails','waf','files','js','params','sourcemaps','cve','jsroutes','swagger','logic','surfacemap','git','cloud','admin','depconfusion','graphql_scan','api_sec','jwt_sec','crlf_sec','smuggling_sec','deser_sec', 'oast_sec'] %}
+            {% set section_ids = ['quickwins_attack','security','subdomains','takeover', 'ssrf_sec', 'open_redirect', 'host_injection', 'ssti_sec', 'xxe_sec', 'proto_pollution', 'oauth_sec', 'file_upload', 'api_versioning', 'email_security', 'google_dorks', 'cache_deception', 'spiderfoot_sec', 'urls','routes','services','keys','emails','waf','files','js','params','sourcemaps','cve','jsroutes','swagger','logic','surfacemap','git','cloud','admin','depconfusion','graphql_scan','api_sec','jwt_sec','crlf_sec','smuggling_sec','deser_sec', 'oast_sec'] %}
             {% for sid in section_ids %}
             <section class="section" id="section-{{ sid }}">
                 <div class="section-loading" id="loader-{{ sid }}">
@@ -543,6 +561,35 @@
             tableData.page = 1;
             renderPaginatedTable(containerId);
         }
+        // ==========================================
+        // AUTO-HIDE EMPTY SECTIONS IN SIDEBAR
+        // ==========================================
+        document.addEventListener('DOMContentLoaded', () => {
+            document.querySelectorAll('.nav-btn').forEach(btn => {
+                const countSpan = btn.querySelector('.count');
+                if (countSpan && !btn.dataset.alwaysShow) {
+                    const count = parseInt(countSpan.textContent.trim(), 10);
+                    if (!isNaN(count) && count === 0) {
+                        btn.style.display = 'none';
+                    }
+                }
+            });
+
+            document.querySelectorAll('.sidebar-category').forEach(cat => {
+                let sibling = cat.nextElementSibling;
+                let hasVisible = false;
+                while (sibling && !sibling.classList.contains('sidebar-category')) {
+                    if (sibling.classList.contains('nav-btn') && getComputedStyle(sibling).display !== 'none') {
+                        hasVisible = true;
+                        break;
+                    }
+                    sibling = sibling.nextElementSibling;
+                }
+                if (!hasVisible) {
+                    cat.style.display = 'none';
+                }
+            });
+        });
     </script>
 </body>
 </html>

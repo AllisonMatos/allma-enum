@@ -135,8 +135,7 @@ def run(context: dict):
         auth_data = auth_file.read_text(errors="ignore").strip()
         
     if not auth_data:
-        warn("   [!] Teste WCD skipado: Cache Deception EXIGE uma baseline Autenticada x Anônima.")
-        warn(f"   [i] Para testar, crie o arquivo '{C.YELLOW}{auth_file}{C.END}' com seu Cookie ou Header Authorization.")
+        info("   [i] Não há conta autenticada (auth_session.txt). WCD completo pulado na varredura anônima.")
         results_file.write_text("[]")
         return [str(results_file)]
         

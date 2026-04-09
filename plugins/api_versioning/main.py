@@ -34,6 +34,20 @@ def _probe_versions(base_url: str) -> list:
                 resp = client.get(test_url, headers={"User-Agent": DEFAULT_USER_AGENT})
                 # Evitar 403 (WAF block common FP), 404, e outros erros 5xx
                 if resp.status_code < 400 or resp.status_code == 401:
+                    body = resp.text.lower()
+                    
+                    # 1. Filtro de WAF e páginas de erro comuns
+                    if any(fp in body for fp in ["404 not found", "403 forbidden", "access denied", "cloudflare", "error 404", "page not found"]):
+                        continue
+                        
+                    content_type = resp.headers.get("content-type", "").lower()
+                    
+                    # 2. Filtro de Soft-404 (Frontend SPA Routers)
+                    # APIs reais deveriam retornar application/json, xml, ou plain text.
+                    # Se retornar um documento HTML grande, é provavelmente a homepage do React/Vue.
+                    if "text/html" in content_type and ("<html" in body or "<!doctype" in body):
+                        continue
+                        
                     results.append({
                         "url": test_url,
                         "version": vpath.strip("/"),

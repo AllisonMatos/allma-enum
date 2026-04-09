@@ -20,19 +20,19 @@ from ..http_utils import format_http_request, format_http_response
 
 def _build_payloads(deep: bool = False):
     payloads = [
-        ("{{7*7}}", "49"),            # Jinja2, Twig
-        ("${7*7}", "49"),             # Freemarker, Velocity
-        ("<%= 7*7 %>", "49"),         # ERB (Ruby)
-        ("#{7*7}", "49"),             # Slim, Pug
+        ("{{7777*7777}}", "60481729"),            # Jinja2, Twig
+        ("${7777*7777}", "60481729"),             # Freemarker, Velocity
+        ("<%= 7777*7777 %>", "60481729"),         # ERB (Ruby)
+        ("#{7777*7777}", "60481729"),             # Slim, Pug
     ]
     if deep:
         payloads.extend([
             ("{{config}}", "Config"),    # Flask/Jinja leak
-            ("{{settings.SECRET_KEY}}", "SECRET_KEY"), # Django leak hint
-            ("${{7*7}}", "49"),          # Spring Expression Language
-            ("{{7*'7'}}", "7777777"),    # Type testing
-            ("@(7*7)", "49"),            # Razor
-            ("{{'7'*7}}", "7777777"),    # Pebble
+            ("{{settings.DATABASES}}", "'default'"), # Django leak hint (unique expected)
+            ("${{7777*7777}}", "60481729"),          # Spring Expression Language
+            ("{{7*'7777777'}}", "7777777777777777777777777777777777777777777777777"),    # Type testing
+            ("@(7777*7777)", "60481729"),            # Razor
+            ("{{'7'*7777777}}", "7777777777777777777777777777777777777777777777777"),    # Pebble
             ("{{variable.getClass().forName('java.lang.Runtime')}}", "java.lang.Runtime"), # Pebble RCE
             ("${T(java.lang.Runtime).getRuntime()}", "java.lang.Runtime"), # Spring EL RCE
             ("${applicationScope}", "ApplicationScope"), # JSP EL
@@ -45,13 +45,21 @@ def _build_payloads(deep: bool = False):
         ("{{self}}", "TemplateReference"), # Jinja2 self reference
         ("${T(java.lang.Runtime)}", "java.lang.Runtime"),  # Spring SpEL RCE hint
         ("{{range.constructor(\"return 1+1\")()}}", "2"),   # AngularJS sandbox bypass
-        ("#set($x=7*7)${x}", "49"),       # Velocity
+        ("#set($x=7777*7777)${x}", "60481729"),       # Velocity
         ("{{\"allma\".toUpperCase()}}", "ALLMA"),  # Freemarker/Twig string method
-        ("*{7*7}", "49"),                 # Thymeleaf
+        ("*{7777*7777}", "60481729"),                 # Thymeleaf
     ]
     payloads.extend(payloads_v10_2)
     
     return payloads
+
+# V10.6: Blacklist de expected values que aparecem naturalmente em JS/HTML
+# (frameworks de monitoring como New Relic, Datadog, Sentry contêm estas strings)
+_EXPECTED_BLACKLIST = {
+    "secret_key", "license_key", "licensekey", "api_key", "apikey",
+    "config", "debug", "true", "false", "null", "undefined",
+    "applicationid", "accountid", "agentid",
+}
 
 
 def _test_ssti(client: httpx.Client, url: str, param: str, deep: bool = False, target: str = "") -> dict | None:
@@ -78,9 +86,9 @@ def _test_ssti(client: httpx.Client, url: str, param: str, deep: bool = False, t
 
     # V10.5: Payloads de confirmação para double-check
     CONFIRMATION_PAYLOADS = [
-        ("{{7*8}}", "56"),
-        ("{{3*9}}", "27"),
-        ("${8*8}", "64"),
+        ("{{8888*8888}}", "78996544"),
+        ("{{9999*9999}}", "99980001"),
+        ("${8888*8888}", "78996544"),
     ]
 
     for payload, expected in payloads:
@@ -100,6 +108,10 @@ def _test_ssti(client: httpx.Client, url: str, param: str, deep: bool = False, t
             # V10.5: Ignorar se o body é idêntico ao baseline (redirect body)
             resp_hash = hashlib.sha256(body.encode(errors='ignore')).hexdigest()
             if resp_hash == baseline_hash:
+                continue
+
+            # V10.6: Rejeitar expected values na blacklist (strings comuns em JS/HTML)
+            if expected.lower().strip("'") in _EXPECTED_BLACKLIST:
                 continue
 
             # Confirmação V10: Resultado esperado surge no body e NÃO estava no baseline
@@ -126,6 +138,12 @@ def _test_ssti(client: httpx.Client, url: str, param: str, deep: bool = False, t
                     if not confirmed:
                         continue  # Falso positivo — não confirmado
 
+                # Extrair snippet para facilitar comprovação visual
+                idx = body.lower().find(expected.lower())
+                start = max(0, idx - 40)
+                end = min(len(body), idx + len(expected) + 40)
+                snippet = body[start:end].replace('\n', ' ').strip()
+                
                 return {
                     "url": url,
                     "test_url": test_url,
@@ -137,7 +155,7 @@ def _test_ssti(client: httpx.Client, url: str, param: str, deep: bool = False, t
                     "risk": "CRITICAL",
                     "type": "SSTI",
                     "confirmed": True,
-                    "details": f"Vulnerabilidade Detectada: SSTI via '{param}' (Payload: {payload} -> {expected})",
+                    "details": f"Vulnerabilidade Detectada: SSTI via '{param}' (Payload: {payload} -> {expected})<br><b>Snippet Mágico:</b> <code>...{snippet}...</code>",
                     "request_raw": format_http_request(resp.request),
                     "response_raw": format_http_response(resp),
                 }
@@ -171,7 +189,14 @@ def _test_ssti_post(client: httpx.Client, url: str, deep: bool = False) -> dict 
                 if resp.status_code >= 400:
                     continue
 
+                if expected.lower().strip("'") in _EXPECTED_BLACKLIST:
+                    continue
                 if expected.lower() in body.lower() and expected.lower() not in baseline_body.lower():
+                    # Extrair snippet
+                    idx = body.lower().find(expected.lower())
+                    start = max(0, idx - 40)
+                    end = min(len(body), idx + len(expected) + 40)
+                    snippet = body[start:end].replace('\n', ' ').strip()
                     return {
                         "url": url,
                         "parameter": param,
@@ -181,7 +206,7 @@ def _test_ssti_post(client: httpx.Client, url: str, deep: bool = False) -> dict 
                         "status": resp.status_code,
                         "risk": "CRITICAL",
                         "type": "SSTI",
-                        "details": f"SSTI via POST: Parâmetro '{param}' (Payload: {payload} -> {expected})",
+                        "details": f"SSTI via POST: Parâmetro '{param}' (Payload: {payload} -> {expected})<br><b>Snippet Mágico:</b> <code>...{snippet}...</code>",
                         "request_raw": format_http_request(resp.request),
                         "response_raw": format_http_response(resp),
                     }

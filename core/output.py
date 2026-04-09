@@ -5,12 +5,21 @@ from core.colors import C as Color
 
 ANSI_ESCAPE = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
 
+_GLOBAL_LOGFILE = "logs/enum_allma.log"
+
+def set_target_logfile(target: str):
+    global _GLOBAL_LOGFILE
+    _GLOBAL_LOGFILE = f"output/{target}/execution.log"
+    os.makedirs(f"output/{target}", exist_ok=True)
+
 def _log(level: str, msg: str):
     try:
-        os.makedirs("logs", exist_ok=True)
+        if _GLOBAL_LOGFILE.startswith("logs/"):
+            os.makedirs("logs", exist_ok=True)
+            
         clean_msg = ANSI_ESCAPE.sub('', msg)
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        with open("logs/enum_allma.log", "a", encoding="utf-8") as f:
+        with open(_GLOBAL_LOGFILE, "a", encoding="utf-8") as f:
             f.write(f"[{timestamp}] [{level}] {clean_msg}\n")
     except Exception:
         pass

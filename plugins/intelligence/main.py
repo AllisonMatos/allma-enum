@@ -177,7 +177,7 @@ KnowledgeBase = {
         {"tip": "Session Forging", "payload": "Se a secret_key for vazada, forje o cookie de sessão via flask-unsign", "category": "auth_bypass"},
     ],
     "Django": [
-        {"tip": "Django Debug Mode Enabled", "payload": "Forçar um erro 404/500 acesse rota inválida para obter config settings completas", "category": "info_disclosure"},
+        {"tip": "Teste por Django Debug Mode", "payload": "Forçar um erro 404/500 acesse rota inválida para obter config settings completas", "category": "info_disclosure"},
         {"tip": "Django Admin URL Discovery", "payload": "GET /admin/\nGET /django-admin/", "category": "admin_panel"},
     ],
     "Laravel": [
@@ -547,30 +547,100 @@ class IntelligenceEngine:
         """Identify high-impact, low-effort findings."""
         quick_wins = []
         
-        # CORS with credentials
+        # Helper: check if URL belongs to target scope
+        def _in_scope(url: str) -> bool:
+            try:
+                host = urlparse(url).netloc.split(":")[0]
+                return host.endswith(self.target) or host == self.target
+            except Exception:
+                return False
+
+        # Paths that should NEVER be flagged as admin panels
+        ADMIN_FALSE_PATHS = {
+            "/", "/robots.txt", "/crossdomain.xml", "/crossdomain.jsp",
+            "/clientaccesspolicy.xml", "/sitemap.xml", "/favicon.ico",
+            "/dashboard", "/dashboard/",
+        }
+        # Hosts that are third-party services, not the target
+        THIRD_PARTY_HOSTS = {
+            "manage.statuspage.io", "login.microsoftonline.com",
+            "accounts.google.com", "www.fdic.gov",
+        }
+
+        # CORS with credentials — ONLY if credentials=True AND not wildcard
         for cors in self.cors_data:
+            if not _in_scope(cors.get("url", "")):
+                continue
             issue = str(cors.get("issue", "")).lower()
-            if "credentials" in issue or cors.get("credentials"):
+            # Skip wildcard ACAO — it is secure by definition (browsers block credentials)
+            if "wildcard" in issue or "padr\u00e3o seguro" in issue:
+                continue
+            # Only alert if credentials are truly enabled
+            if cors.get("credentials") or "credentials: true" in issue:
                 quick_wins.append({
                     "type": "CORS with Credentials",
                     "severity": "HIGH",
                     "url": cors.get("url", ""),
                     "detail": cors.get("issue", ""),
-                    "action": "Teste com Origin: https://attacker.com — pode roubar dados autenticados",
-                    "icon": "🎯"
+                    "action": "Teste com Origin: https://attacker.com \u2014 pode roubar dados autenticados",
+                    "icon": "\ud83c\udfaf"
                 })
         
-        # Admin panels without auth (status 200, no login form)
+        # Admin panels & Sensitive Files
         for panel in self.admin_panels:
-            if panel.get("status") == 200 and not panel.get("has_login_form"):
-                quick_wins.append({
-                    "type": "Admin Panel Aberto (Sem Auth Detectado)",
-                    "severity": "HIGH",
-                    "url": panel.get("url", ""),
-                    "detail": f"Painel exposto: {panel.get('title', 'N/A')}",
-                    "action": "Acesse e verifique se permite operações administrativas sem login.",
-                    "icon": "👑"
-                })
+            if panel.get("status") != 200 or panel.get("has_login_form"):
+                continue
+            url_str = panel.get("url", "")
+            path = panel.get("path", urlparse(url_str).path)
+            host = urlparse(url_str).netloc.split(":")[0]
+            category = panel.get("category", "ADMIN PANEL")
+            
+            # Filter out third-party hosts
+            if host in THIRD_PARTY_HOSTS:
+                continue
+
+            # General filters: exclude absolute noise or status pages
+            title = panel.get("title", "").lower()
+            if "error" in title or "not found" in title:
+                continue
+            if "statuspage" in host or "status." in host:
+                continue
+            if "Help_Center_Error_Page" in url_str or "error_page" in url_str.lower():
+                continue
+
+            # Category-specific strict filtering
+            if category == "ADMIN PANEL":
+                # For admin panels strictly, ignore generic redirects to homepage or dashboard pages
+                if path.rstrip("/") in {"", "/", "/dashboard"}:
+                    continue
+                # Detect soft-404/catch-all redirecting to homepage
+                actual_path = urlparse(url_str).path.rstrip("/")
+                probed_path = path.rstrip("/")
+                if actual_path != probed_path and (actual_path == "" or actual_path == "/"):
+                    continue
+                # For admin panels, ensure the URL actually contains an admin indicator
+                admin_indicators = ("admin", "panel", "console", "pma", "phpmyadmin", "manager",
+                                    "cpanel", "wp-login", "wp-admin", "debug", "actuator", ".git")
+                url_lower = url_str.lower()
+                if not any(ind in url_lower for ind in admin_indicators) and not any(ind in probed_path.lower() for ind in admin_indicators):
+                    continue
+
+            icon_map = {
+                "ARQUIVO SENSÍVEL": "📄",
+                "CONFIG EXPOSURE": "⚙️",
+                "PATH API": "🔌",
+                "DEBUG/TOOL": "🛠️",
+                "ADMIN PANEL": "👑"
+            }
+
+            quick_wins.append({
+                "type": category,
+                "severity": "HIGH",
+                "url": url_str,
+                "detail": f"{category.title()}: {panel.get('title', 'N/A')}",
+                "action": "Acesse e verifique se há vazamento de informações ou acesso administrativo indevido.",
+                "icon": icon_map.get(category, "👑")
+            })
         
         # Confirmed takeovers
         for tk in self.takeover_data:
@@ -579,9 +649,9 @@ class IntelligenceEngine:
                     "type": "Subdomain Takeover Confirmado",
                     "severity": "CRITICAL",
                     "url": tk.get("subdomain", ""),
-                    "detail": f"CNAME: {tk.get('cname', '')} → {tk.get('service', '')}",
-                    "action": f"Registre o serviço {tk.get('service', '')} para assumir o subdomínio",
-                    "icon": "🏴‍☠️"
+                    "detail": f"CNAME: {tk.get('cname', '')} \u2192 {tk.get('service', '')}",
+                    "action": f"Registre o servi\u00e7o {tk.get('service', '')} para assumir o subdom\u00ednio",
+                    "icon": "\ud83c\udff4\u200d\u2620\ufe0f"
                 })
         
         # Git exposed
@@ -589,18 +659,16 @@ class IntelligenceEngine:
             url_str = panel.get("url", "")
             status = panel.get("status")
             
-            # Repositório Base Exposto
             if "/.git/" in url_str and status == 200:
                 quick_wins.append({
                     "type": "Git Repository Exposto",
                     "severity": "CRITICAL",
                     "url": url_str,
-                    "detail": "Repositório Git acessível (200 OK)",
-                    "action": "Use git-dumper para extrair código-fonte completo (já deve ter sido disparado no módulo Enum-Admin)",
-                    "icon": "🕰️"
+                    "detail": "Reposit\u00f3rio Git acess\u00edvel (200 OK)",
+                    "action": "Use git-dumper para extrair c\u00f3digo-fonte completo",
+                    "icon": "\ud83d\udd70\ufe0f"
                 })
                 
-            # Extração Ativa do GitLeaks
             if panel.get("cms") == "GitLeaks Exfiltration":
                 quick_wins.append({
                     "type": "GitLeaks: Secret Hackeada",
@@ -608,41 +676,58 @@ class IntelligenceEngine:
                     "url": url_str,
                     "detail": panel.get("title", "Key"),
                     "action": f"Secret/Chave Vazada Diretamente no Commit! Valor/Hash: {panel.get('content_hash', '')[:20]}...",
-                    "icon": "🩸"
+                    "icon": "\ud83e\ude78"
                 })
         
-        # Secrets in JS
+        # Secrets in JS — filter out-of-scope
         for key in self.keys_data:
             if not isinstance(key, dict):
                 continue
             key_type = key.get("type", "").lower()
+            if "generic" in key_type:
+                continue
+            # Check if key belongs to target scope
+            key_subdomain = key.get("subdomain", "")
+            src = key.get("source", {})
+            if isinstance(src, dict):
+                src_url = src.get("url", "")
+            else:
+                src_url = str(src) if src else ""
+            # Scope check: key must come from target domain
+            check_host = key_subdomain or urlparse(src_url).netloc
+            if check_host and not (check_host.endswith(self.target) or check_host == self.target):
+                continue
+            # Skip OAuth/SSO flow URLs
+            if src_url and any(p in src_url.lower() for p in ["/oauth", "/authorize", "microsoftonline", "accounts.google"]):
+                continue
             if any(kw in key_type for kw in ["aws", "api_key", "secret", "token", "password", "private"]):
-                src = key.get("source", {})
-                if isinstance(src, dict):
-                    src_url = src.get("url", "")
-                else:
-                    src_url = str(src) if src else ""
                 if not src_url:
-                    src_url = key.get("subdomain", "")
+                    src_url = key_subdomain
                 quick_wins.append({
                     "type": "Secret Exposto em JavaScript",
                     "severity": "HIGH",
                     "url": src_url,
-                    "detail": f"Tipo: {key.get('type', 'unknown')} — Value: {str(key.get('match', key.get('value', '')))[:30]}...",
-                    "action": "Valide se a chave/token ainda está ativa e pode ser abusada",
-                    "icon": "🔑"
+                    "detail": f"Tipo: {key.get('type', 'unknown')} \u2014 Value: {str(key.get('match', key.get('value', '')))[:30]}...",
+                    "action": "Valide se a chave/token ainda est\u00e1 ativa e pode ser abusada",
+                    "icon": "\ud83d\udd11"
                 })
         
-        # GraphQL with introspection
+        # GraphQL with introspection — DEDUPLICATE by host
+        seen_gql_hosts = set()
         for gql in self.graphql_data:
             if gql.get("introspection"):
+                gql_url = gql.get("url", "")
+                gql_host = urlparse(gql_url).netloc.split(":")[0]
+                if gql_host in seen_gql_hosts:
+                    continue
+                seen_gql_hosts.add(gql_host)
                 quick_wins.append({
                     "type": "GraphQL Introspection Habilitada",
                     "severity": "HIGH",
-                    "url": gql.get("url", ""),
-                    "detail": "Schema completo pode ser extraído",
+                    "url": gql_url,
+                    "detail": "Schema completo pode ser extra\u00eddo",
                     "action": "Execute introspection query para mapear toda a API",
-                    "icon": "🧬"
+                    "icon": "\ud83e\uddec"
                 })
                 
         # CRLF Injection
@@ -651,9 +736,9 @@ class IntelligenceEngine:
                 "type": "CRLF Injection (Header Splitting)",
                 "severity": "MEDIUM",
                 "url": crlf.get("url", ""),
-                "detail": f"Injeção bem sucedida: {crlf.get('payload', '')}",
+                "detail": f"Inje\u00e7\u00e3o bem sucedida: {crlf.get('payload', '')}",
                 "action": "Teste de escalonamento para XSS ou Cache Poisoning",
-                "icon": "🎭"
+                "icon": "\ud83c\udfad"
             })
             
         # Cache Deception
@@ -663,9 +748,9 @@ class IntelligenceEngine:
                     "type": "Web Cache Deception",
                     "severity": "HIGH",
                     "url": cache.get("url", ""),
-                    "detail": "Resposta dinâmica sendo indexada em cache CDN",
-                    "action": "Verifique vazamento de informações de sessão em navegação real",
-                    "icon": "👻"
+                    "detail": "Resposta din\u00e2mica sendo indexada em cache CDN",
+                    "action": "Verifique vazamento de informa\u00e7\u00f5es de sess\u00e3o em navega\u00e7\u00e3o real",
+                    "icon": "\ud83d\udc7b"
                 })
                 
         # Insecure Deserialization
@@ -675,8 +760,8 @@ class IntelligenceEngine:
                 "severity": "CRITICAL",
                 "url": deser.get("url", ""),
                 "detail": f"Anomalia detectada com objeto: {deser.get('payload_type', '')}",
-                "action": "Escalone para Execução de Comandos (RCE) via ysoserial, etc",
-                "icon": "💣"
+                "action": "Escalone para Execu\u00e7\u00e3o de Comandos (RCE) via ysoserial, etc",
+                "icon": "\ud83d\udca3"
             })
         
         # Sort by severity

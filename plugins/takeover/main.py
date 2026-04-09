@@ -253,7 +253,7 @@ def run(context: dict):
             pass
 
     # Executar em paralelo
-    vulnerable = []
+    all_findings = []
 
     with ThreadPoolExecutor(max_workers=10) as executor:
         futures = {executor.submit(check_subdomain, sub, known_cnames): sub for sub in subdomains}
@@ -267,7 +267,7 @@ def run(context: dict):
             try:
                 result = future.result()
                 if result:
-                    vulnerable.append(result)
+                    all_findings.append(result)
                     sev_color = C.RED if result["severity"] == "critical" else C.YELLOW
                     status = "🔴 VULNERABLE" if result["status"] == "VULNERABLE" else "🟡 POTENTIAL"
                     info(
@@ -281,7 +281,7 @@ def run(context: dict):
 
     # Salvar
     output_file = outdir / "takeover_results.json"
-    output_file.write_text(json.dumps(vulnerable, indent=2, ensure_ascii=False))
+    output_file.write_text(json.dumps(all_findings, indent=2, ensure_ascii=False))
     results_file = outdir / "takeover_results.json"
     results_file.write_text(json.dumps(all_findings, indent=2, ensure_ascii=False))
 

@@ -445,15 +445,6 @@ class XSSPatterns:
                         context_type="TAINTED_SINK",
                         severity="medium"
                     ))
-                else:
-                    # Sink SEM fonte de input controlável → LOW (só informativo)
-                    findings.append(XSSFinding(
-                        url="",
-                        pattern=pattern.pattern,
-                        context=context_preview,
-                        context_type="UNTAINTED_SINK",
-                        severity="low"
-                    ))
                 
         return findings
     
@@ -477,18 +468,14 @@ class XSSPatterns:
                 taint_start = max(0, idx - 500)
                 taint_end = min(len(js_code), idx + 500)
                 taint_context = js_code[taint_start:taint_end]
-                
-                has_taint_source = bool(TAINT_SOURCES.search(taint_context))
-                severity = "medium" if has_taint_source else "low"
-                ctx_type = "TAINTED_SINK" if has_taint_source else "UNTAINTED_SINK"
-                
-                findings.append(XSSFinding(
-                    url="",
-                    pattern=pattern.pattern,
-                    context=context_preview,
-                    context_type=ctx_type,
-                    severity=severity
-                ))
+                if has_taint_source:
+                    findings.append(XSSFinding(
+                        url="",
+                        pattern=pattern.pattern,
+                        context=context_preview,
+                        context_type="TAINTED_SINK",
+                        severity="medium"
+                    ))
                 
         return findings
 
@@ -711,12 +698,14 @@ async def run_async(context: dict):
     # ==========================================================================
     info(f"{C.BOLD}{get_color('BLUE')}📊 Gerando relatórios...{C.END}")
     
-    # Agrupar findings por tipo
-    reflections = [f for f in crawler.findings if f.pattern == "PARAM_REFLECTION"]
-    dom_findings = [f for f in crawler.findings if f not in reflections and "PARAM" not in f.pattern]
+    # Agrupar findings por tipo - APENAS SEVERIDADE MEDIA/ALTA PARA NAO POLUIR O REPORT GERAL
+    # A maioria dos sinks dom passivos são FPs sem estar associado a um input. Filtramos "low" out.
+    valid_findings = [f for f in crawler.findings if f.severity in ("medium", "high", "critical")]
+    reflections = [f for f in valid_findings if f.pattern == "PARAM_REFLECTION"]
+    dom_findings = [f for f in valid_findings if f not in reflections and "PARAM" not in f.pattern]
     
     # Salvar relatórios
-    await save_reports(outdir, crawler, reflections, dom_findings)
+    await save_reports(outdir, crawler, reflections, dom_findings, valid_findings)
     
     # ==========================================================================
     # 📈 ESTATÍSTICAS
@@ -729,9 +718,9 @@ async def run_async(context: dict):
         f"{C.BOLD}{get_color('CYAN')}│   📊 {C.CYAN if hasattr(C, 'CYAN') else ''}ESTATÍSTICAS{C.WHITE if hasattr(C, 'WHITE') else ''}                         │{C.END}\n"
         f"{C.BOLD}{get_color('CYAN')}├─────────────────────────────────────────────┤{C.END}\n"
         f"{C.BOLD}{get_color('CYAN')}│   🌐 Páginas analisadas: {get_color('YELLOW')}{len(crawler.visited)}{C.WHITE if hasattr(C, 'WHITE') else ''}          │{C.END}\n"
-        f"{C.BOLD}{get_color('CYAN')}│   🔄 Reflexões: {get_color('YELLOW')}{len(reflections)}{C.WHITE if hasattr(C, 'WHITE') else ''}                  │{C.END}\n"
-        f"{C.BOLD}{get_color('CYAN')}│   🧬 DOM Sinks: {get_color('YELLOW')}{len(dom_findings)}{C.WHITE if hasattr(C, 'WHITE') else ''}               │{C.END}\n"
-        f"{C.BOLD}{get_color('CYAN')}│   ⚡ Total findings: {get_color('YELLOW')}{len(crawler.findings)}{C.WHITE if hasattr(C, 'WHITE') else ''}             │{C.END}\n"
+        f"{C.BOLD}{get_color('CYAN')}│   🔄 Reflexões (High+): {get_color('YELLOW')}{len(reflections)}{C.WHITE if hasattr(C, 'WHITE') else ''}                  │{C.END}\n"
+        f"{C.BOLD}{get_color('CYAN')}│   🧬 Tainted Sinks: {get_color('YELLOW')}{len(dom_findings)}{C.WHITE if hasattr(C, 'WHITE') else ''}               │{C.END}\n"
+        f"{C.BOLD}{get_color('CYAN')}│   ⚡ Total findings (Med/High): {get_color('YELLOW')}{len(valid_findings)}{C.WHITE if hasattr(C, 'WHITE') else ''}             │{C.END}\n"
         f"{C.BOLD}{get_color('CYAN')}│   ⏱️  Tempo total: {get_color('YELLOW')}{elapsed:.1f}s{C.WHITE if hasattr(C, 'WHITE') else ''}                 │{C.END}\n"
         f"{C.BOLD}{get_color('CYAN')}└─────────────────────────────────────────────┘{C.END}\n"
         f"{C.BOLD}{get_color('CYAN')}📄 Relatório final: {C.CYAN if hasattr(C, 'CYAN') else ''}{outdir / 'final_report.txt'}{C.END}\n"
@@ -739,7 +728,7 @@ async def run_async(context: dict):
     
     return [str(outdir / 'final_report.txt')]
 
-async def save_reports(outdir, crawler, reflections, dom_findings):
+async def save_reports(outdir, crawler, reflections, dom_findings, valid_findings):
     """Salvar relatórios de forma assíncrona."""
     
     # Salvar parâmetros
@@ -778,7 +767,7 @@ async def save_reports(outdir, crawler, reflections, dom_findings):
             await f.write("\n".join(dom_content))
     
     # Salvar JS findings
-    js_findings = [f for f in crawler.findings if "PARAM" not in f.pattern]
+    js_findings = [f for f in valid_findings if "PARAM" not in f.pattern]
     if js_findings:
         js_content = []
         for finding in js_findings[:100]:  # Limitar
@@ -791,7 +780,7 @@ async def save_reports(outdir, crawler, reflections, dom_findings):
         f"XSS Passive Scan - {crawler.target}",
         f"Gerado em: {time.strftime('%Y-%m-%d %H:%M:%S')}",
         f"Páginas visitadas: {len(crawler.visited)}",
-        f"Total findings: {len(crawler.findings)}",
+        f"Total findings: {len(valid_findings)}",
         f"Reflexões de parâmetros: {len(reflections)}",
         f"Sinks DOM encontrados (avaliar manualmente): {len(dom_findings)}",
         "",
@@ -815,8 +804,8 @@ async def save_reports(outdir, crawler, reflections, dom_findings):
     summary.append("")
     
     # Adicionar top findings
-    all_findings = sorted(crawler.findings, key=lambda x: x.severity, reverse=True)
-    for i, finding in enumerate(all_findings[:10]):
+    all_findings_sorted = sorted(valid_findings, key=lambda x: x.severity, reverse=True)
+    for i, finding in enumerate(all_findings_sorted[:10]):
         summary.append(f"{i+1}. [{finding.severity.upper()}] {finding.url}")
         summary.append(f"   Padrão: {finding.pattern[:50]}")
         if hasattr(finding, 'context_type'):
@@ -957,7 +946,7 @@ def run(context: dict):
                 dalfox_out = outdir / "dalfox_results.txt"
                 cmd = ["dalfox", "file", str(dalfox_targets), "--skip-bav", "--silence", "-w", "20", "-o", str(dalfox_out)]
                 try:
-                    subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=600)
+                    subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=1200)
                     if dalfox_out.exists():
                         success(f"   🦊 Resultados do Dalfox salvos em {dalfox_out}")
                 except subprocess.TimeoutExpired:

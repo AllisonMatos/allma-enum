@@ -103,10 +103,20 @@ def _test_pollution(client: httpx.Client, url: str) -> list:
             if p_val.lower() in body and p_val.lower() not in baseline_body:
                 # V10.4: Verificar que o canary aparece FORA da query string echoada
                 body_cleaned = body
+                import urllib.parse
                 for qk, qv_list in test_qs.items():
                     for qv in qv_list:
+                        # Clean raw format
                         body_cleaned = body_cleaned.replace(f"{qk.lower()}={qv.lower()}", "")
                         body_cleaned = body_cleaned.replace(f"{qk.lower()}%3d{qv.lower()}", "")
+                        # Clean url encoded format (like %5B instead of [)
+                        qk_enc = urllib.parse.quote(qk).lower()
+                        qv_enc = urllib.parse.quote(qv).lower()
+                        body_cleaned = body_cleaned.replace(f"{qk_enc}={qv_enc}", "")
+                        body_cleaned = body_cleaned.replace(f"{qk_enc}%3d{qv_enc}", "")
+                        # Clean encoded value but raw key
+                        body_cleaned = body_cleaned.replace(f"{qk.lower()}={qv_enc}", "")
+
                 
                 if p_val.lower() in body_cleaned:
                     # V10.5: Second-shot confirmation com canary diferente
@@ -124,6 +134,11 @@ def _test_pollution(client: httpx.Client, url: str) -> list:
                             for qv2 in qv2_list:
                                 body2 = body2.replace(f"{qk2.lower()}={qv2.lower()}", "")
                                 body2 = body2.replace(f"{qk2.lower()}%3d{qv2.lower()}", "")
+                                qk2_enc = urllib.parse.quote(qk2).lower()
+                                qv2_enc = urllib.parse.quote(qv2).lower()
+                                body2 = body2.replace(f"{qk2_enc}={qv2_enc}", "")
+                                body2 = body2.replace(f"{qk2_enc}%3d{qv2_enc}", "")
+                                body2 = body2.replace(f"{qk2.lower()}={qv2_enc}", "")
                         
                         if canary2.lower() in body2:
                             is_vuln = True
@@ -135,13 +150,19 @@ def _test_pollution(client: httpx.Client, url: str) -> list:
                         continue  # Primeiro hit mas sem confirmação = provável FP
 
             if is_vuln:
+                # Extrair snippet visual da primeira resposta para comprovação
+                idx = body.find(p_val.lower())
+                start = max(0, idx - 40)
+                end = min(len(body), idx + len(p_val) + 40)
+                snippet = body[start:end].replace('\n', ' ').strip()
+                
                 findings.append({
                     "url": url,
                     "test_url": test_url,
                     "type": "PROTOTYPE_POLLUTION",
                     "risk": "HIGH",
                     "confirmed": True,
-                    "details": reason,
+                    "details": reason + f"<br><b>Snippet Mágico:</b> <code>...{snippet}...</code>",
                     "payload": f"{p_key}={p_val}",
                     "request_raw": format_http_request(resp.request),
                     "response_raw": format_http_response(resp),
@@ -175,12 +196,17 @@ def _test_pollution_json(client: httpx.Client, url: str) -> list:
             body = resp.text.lower()
             
             if canary in body and resp.status_code < 400:
+                idx = body.find(canary)
+                start = max(0, idx - 40)
+                end = min(len(body), idx + len(canary) + 40)
+                snippet = body[start:end].replace('\n', ' ').strip()
+                
                 findings.append({
                     "url": url,
                     "type": "PROTOTYPE_POLLUTION",
                     "risk": "HIGH",
                     "method": "POST (JSON)",
-                    "details": f"Prototype Pollution via JSON body: valor injetado refletido no response.",
+                    "details": f"Prototype Pollution via JSON body: valor injetado refletido no response.<br><b>Snippet Mágico:</b> <code>...{snippet}...</code>",
                     "payload": json.dumps(payload),
                     "request_raw": format_http_request(resp.request),
                     "response_raw": format_http_response(resp),

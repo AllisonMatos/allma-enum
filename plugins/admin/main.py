@@ -76,8 +76,6 @@ ADMIN_PATHS = [
     # Config / Debug
     "/.git/config", "/.git/HEAD",
     "/.svn/entries", "/.svn/wc.db",
-    "/.DS_Store", "/robots.txt", "/sitemap.xml",
-    "/crossdomain.xml", "/clientaccesspolicy.xml",
     "/debug", "/trace", "/actuator",
     "/actuator/health", "/actuator/env",
     "/info", "/__debug__/",
@@ -121,7 +119,70 @@ CMS_FINGERPRINTS = {
     "Spring Boot": ["actuator", "spring", "whitelabel"],
 }
 
-# Generic page titles that indicate duplicate redirect pages
+# ============================================================
+# PATH CLASSIFICATION — Tags de contexto para cada achado
+# ============================================================
+
+# Arquivos sensíveis (informação exposta)
+_SENSITIVE_FILE_PATTERNS = {
+    "robots.txt", "crossdomain.xml", "crossdomain.jsp",
+    "clientaccesspolicy.xml", "sitemap.xml", ".env",
+    "CHANGELOG.txt", "version.php", "debug.log",
+    "config.php", "config.yml", "config.json",
+    "web.config", ".htaccess", ".htpasswd",
+    "wp-config.php", "database.yml", "settings.py",
+    "application.properties", "application.yml",
+}
+
+# Paths de API / documentação
+_API_PATH_KEYWORDS = (
+    "/swagger", "/api-docs", "/api/docs", "/redoc",
+    "/graphql", "/graphiql", "/playground",
+    "/api/v1", "/api/v2", "/api/v3",
+    "/wp-json", "/api/gql",
+)
+
+# Debug / ferramentas de diagnóstico
+_DEBUG_TOOL_KEYWORDS = (
+    "/actuator", "/__debug__", "/debug", "/trace",
+    "/server-status", "/server-info", "/nginx-status",
+    "/status", "/health", "/info",
+    "/telescope", "/horizon", "/log-viewer",
+    "/prometheus", "/nagios", "/zabbix", "/munin",
+    "/cacti", "/grafana",
+)
+
+# Config / Source Code Exposure
+_CONFIG_EXPOSURE_KEYWORDS = (
+    "/.git/", "/.svn/", "/.hg/",
+    "/.env", "/.docker",
+)
+
+def classify_path(path: str) -> str:
+    """Classifica um path em uma categoria contextual."""
+    path_lower = path.lower()
+    basename = path_lower.rsplit("/", 1)[-1]
+
+    # 1. Arquivos sensíveis (match exato no basename)
+    if basename in {p.lower() for p in _SENSITIVE_FILE_PATTERNS}:
+        return "ARQUIVO SENSÍVEL"
+
+    # 2. Config / Source Code Exposure
+    if any(k in path_lower for k in _CONFIG_EXPOSURE_KEYWORDS):
+        return "CONFIG EXPOSURE"
+
+    # 3. Path API
+    if any(k in path_lower for k in _API_PATH_KEYWORDS):
+        return "PATH API"
+
+    # 4. Debug / Tool
+    if any(k in path_lower for k in _DEBUG_TOOL_KEYWORDS):
+        return "DEBUG/TOOL"
+
+    # 5. Default: Admin Panel
+    return "ADMIN PANEL"
+
+
 GENERIC_TITLES = [
     "login", "cpanel", "cpanel login", "admin", "administrator",
     "sign in", "sign-in", "signin", "log in", "log-in",
@@ -244,6 +305,23 @@ def check_admin_path(client, base_url: str, path: str, baseline: dict = None) ->
         # Verificar se é página real (não redirect genérico para home)
         final_url = str(resp.url)
         content_lower = content.lower()
+        
+        # Soft-404 Strict HTML Redirect Checks
+        # Often servers return 200 OK but inject a meta refresh to the homepage
+        if "<meta http-equiv=\"refresh\"" in content_lower or "meta http-equiv='refresh'" in content_lower:
+            return None
+        if "window.location=" in content_lower or "window.location.replace" in content_lower or "window.location.href" in content_lower:
+            return None
+
+        # WAF/Cloudflare rejection - if blocked, do not consider an exposed admin panel
+        if any(sig in content_lower for sig in WAF_CHALLENGE_SIGS):
+            return None
+
+        # Filter out purely generic 403 pages from common webservers if there's no actual admin signature
+        if resp.status_code == 403 and len(content_lower) < 1000 and "forbidden" in content_lower:
+            # Only keep it if the URL explicitly has a major CMS/admin keyword preventing pure brute force noise
+            if not any(k in path.lower() for k in ["admin", "wp-", "phpmyadmin", ".git"]):
+                return None
 
         # Detectar título
         title = ""
@@ -251,6 +329,15 @@ def check_admin_path(client, base_url: str, path: str, baseline: dict = None) ->
         title_match = re.search(r"<title>(.*?)</title>", content, re.I | re.S)
         if title_match:
             title = title_match.group(1).strip()[:100]
+            
+            # Mais um filtro de Soft-404: se retornou pro título base
+            # mas procuramos um /cpanel/ ou /admin, é um fake 200.
+            if baseline and baseline.get("title"):
+                norm_base = normalize_title(baseline["title"])
+                norm_current = normalize_title(title)
+                if norm_base and norm_current == norm_base and len(content_lower) > 3000:
+                    # Titulo identico a home, pagina grande (nao é só um form login pequeno). Fake redirect
+                    return None
 
         # Detectar form de login
         has_login = bool(re.search(
@@ -268,7 +355,7 @@ def check_admin_path(client, base_url: str, path: str, baseline: dict = None) ->
         is_interesting = (
             has_login or
             cms or
-            resp.status_code in (200, 401, 403) or
+            resp.status_code in (200, 401) or # Removido 403 puramente genérico
             "dashboard" in content_lower or
             resp.headers.get("content-type", "").startswith("application/json")
         )
@@ -287,7 +374,8 @@ def check_admin_path(client, base_url: str, path: str, baseline: dict = None) ->
                 "has_login_form": has_login,
                 "response_size": content_len,
                 "content_type": resp.headers.get("content-type", ""),
-                "content_hash": content_hash
+                "content_hash": content_hash,
+                "category": classify_path(path)
             }
             
             # 403 Bypass: Tentar headers e path manipulation
@@ -438,7 +526,15 @@ def run(context: dict):
                 import hashlib
                 cleaned = clean_html_for_fingerprint(r.text)
                 chash = hashlib.sha256(cleaned.encode('utf-8')).hexdigest()
-                return base_url, {"status": r.status_code, "length": len(r.text) if r.text else 0, "hash": chash}
+                
+                # Setup base title mapping for strict soft-404 match
+                base_title = ""
+                import re
+                t_match = re.search(r"<title>(.*?)</title>", r.text, re.I | re.S)
+                if t_match:
+                    base_title = t_match.group(1).strip()[:100]
+                
+                return base_url, {"status": r.status_code, "length": len(r.text) if r.text else 0, "hash": chash, "title": base_title}
             except Exception:
                 return base_url, None
 

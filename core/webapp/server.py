@@ -73,7 +73,7 @@ def import_target(target: str):
         build_oauth_content, build_file_upload_content,
         build_api_versioning_content, build_email_security_content,
         build_google_dorks_content, build_ssrf_content,
-        build_cache_deception_content
+        build_cache_deception_content, build_spiderfoot_content
     )
 
     print(f"  [+] Importing: {target}")
@@ -181,6 +181,7 @@ def import_target(target: str):
         "stats_google_dorks": len(read_json_file(Path("output") / target / "google_dorks" / "google_dorks_results.json") or []),
         "stats_ssrf": len(read_json_file(Path("output") / target / "ssrf" / "ssrf_results.json") or []),
         "stats_cache_deception": len(read_json_file(Path("output") / target / "cache_deception" / "cache_deception_results.json") or []),
+        "stats_spiderfoot": len((read_json_file(Path("output") / target / "spiderfoot" / "spiderfoot_results.json") or {}).get("findings", [])),
     }
 
     # Build all section content
@@ -228,6 +229,7 @@ def import_target(target: str):
         "google_dorks": build_google_dorks_content(target),
         "ssrf_sec": build_ssrf_content(target),
         "cache_deception": build_cache_deception_content(target),
+        "spiderfoot_sec": build_spiderfoot_content(target),
     }
 
     # Save to in-memory DB

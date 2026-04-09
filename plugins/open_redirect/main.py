@@ -82,29 +82,47 @@ def _test_redirect(client: httpx.Client, url: str, param: str) -> list:
             location = resp.headers.get("location", "")
             
             # Fase 1: Detectar 3xx + Location contendo o payload
-            if resp.status_code in [301, 302, 303, 307, 308] and (EVIL_DOMAIN in location or payload in location):
+            if resp.status_code in [301, 302, 303, 307, 308]:
+                is_javascript = payload.startswith(("javascript:", "data:")) and location.lower().startswith(("javascript:", "data:"))
                 
-                # Fase 2: Double-Check Cirúrgico V10.1
-                final_loc = location if location.startswith("http") else urlunparse((parsed.scheme, parsed.netloc, location, "", "", ""))
-                try:
-                    resp2 = client.get(final_loc, headers={"User-Agent": DEFAULT_USER_AGENT}, follow_redirects=True)
-                    final_url = str(resp2.url)
-                    
-                    if EVIL_DOMAIN in final_url:
-                         findings.append({
+                if EVIL_DOMAIN in location or is_javascript:
+                    # Fase 2: Double-Check Cirúrgico V10.1
+                    if is_javascript:
+                        findings.append({
                             "url": url,
                             "type": "OPEN_REDIRECT",
                             "risk": "HIGH",
                             "method": "GET",
                             "parameter": param,
-                            "details": f"Redirecionamento Confirmado: Parâmetro '{param}' enviou o navegador para {final_url}",
+                            "details": f"XSS via Redirect Confirmado: Parâmetro '{param}' retornou URI '{location}'",
                             "payload": payload,
                             "status": resp.status_code,
                             "request_raw": format_http_request(resp.request),
                             "response_raw": format_http_response(resp),
                         })
-                         break # Um payload com sucesso basta por parâmetro
-                except: pass
+                        break # Um payload com sucesso basta por parâmetro
+                    else:
+                        final_loc = location if location.startswith("http") else urlunparse((parsed.scheme, parsed.netloc, location, "", "", ""))
+                        try:
+                            resp2 = client.get(final_loc, headers={"User-Agent": DEFAULT_USER_AGENT}, follow_redirects=True)
+                            final_url = str(resp2.url)
+                            
+                            # STRICT CHECK: Ensure we actually landed on the evil domain (no soft query parameter reflections)
+                            if urlparse(final_url).netloc == EVIL_DOMAIN:
+                                findings.append({
+                                    "url": url,
+                                    "type": "OPEN_REDIRECT",
+                                    "risk": "HIGH",
+                                    "method": "GET",
+                                    "parameter": param,
+                                    "details": f"Redirecionamento Confirmado: Parâmetro '{param}' enviou o navegador para {final_url}",
+                                    "payload": payload,
+                                    "status": resp.status_code,
+                                    "request_raw": format_http_request(resp.request),
+                                    "response_raw": format_http_response(resp),
+                                })
+                                break # Um payload com sucesso basta por parâmetro
+                        except: pass
         except Exception:
             pass
     return findings
@@ -123,27 +141,45 @@ def _test_redirect_post(client: httpx.Client, url: str) -> list:
                 resp = client.post(url, data=data, headers={"User-Agent": DEFAULT_USER_AGENT})
                 location = resp.headers.get("location", "")
                 
-                if resp.status_code in [301, 302, 303, 307, 308] and EVIL_DOMAIN in location:
-                    # Confirmar com follow
-                    final_loc = location if location.startswith("http") else urlunparse((parsed.scheme, parsed.netloc, location, "", "", ""))
-                    try:
-                        resp2 = client.get(final_loc, headers={"User-Agent": DEFAULT_USER_AGENT}, follow_redirects=True)
-                        final_url = str(resp2.url)
-                        if EVIL_DOMAIN in final_url:
+                if resp.status_code in [301, 302, 303, 307, 308]:
+                    is_javascript = payload.startswith(("javascript:", "data:")) and location.lower().startswith(("javascript:", "data:"))
+                    
+                    if EVIL_DOMAIN in location or is_javascript:
+                        if is_javascript:
                             findings.append({
                                 "url": url,
                                 "type": "OPEN_REDIRECT",
                                 "risk": "HIGH",
                                 "method": "POST",
                                 "parameter": param,
-                                "details": f"Redirecionamento POST Confirmado: Parâmetro '{param}' redirecionou para {final_url}",
+                                "details": f"XSS via Redirect POST Confirmado: Retornou URI '{location}'",
                                 "payload": payload,
                                 "status": resp.status_code,
                                 "request_raw": format_http_request(resp.request),
                                 "response_raw": format_http_response(resp),
                             })
-                            return findings  # Um achado por URL basta
-                    except: pass
+                            return findings
+                        else:
+                            # Confirmar com follow
+                            final_loc = location if location.startswith("http") else urlunparse((parsed.scheme, parsed.netloc, location, "", "", ""))
+                            try:
+                                resp2 = client.get(final_loc, headers={"User-Agent": DEFAULT_USER_AGENT}, follow_redirects=True)
+                                final_url = str(resp2.url)
+                                if urlparse(final_url).netloc == EVIL_DOMAIN:
+                                    findings.append({
+                                        "url": url,
+                                        "type": "OPEN_REDIRECT",
+                                        "risk": "HIGH",
+                                        "method": "POST",
+                                        "parameter": param,
+                                        "details": f"Redirecionamento POST Confirmado: Parâmetro '{param}' redirecionou para {final_url}",
+                                        "payload": payload,
+                                        "status": resp.status_code,
+                                        "request_raw": format_http_request(resp.request),
+                                        "response_raw": format_http_response(resp),
+                                    })
+                                    return findings  # Um achado por URL basta
+                            except: pass
             except Exception:
                 pass
     return findings
@@ -152,7 +188,7 @@ def _test_redirect_post(client: httpx.Client, url: str) -> list:
 def run(context: dict):
     """Executa o scan de open redirect."""
     import httpx
-    from core.config import DEFAULT_USER_AGENT, DEFAULT_TIMEOUT, MAX_WORKERS, REQUEST_DELAY
+    from core.config import DEFAULT_USER_AGENT, DEFAULT_TIMEOUT, REQUEST_DELAY
 
     target = context.get("target")
     stealth = context.get("stealth", False)

@@ -44,7 +44,7 @@ def httpx_validate(in_file: Path, out_file: Path, want_status: str = WANT_STATUS
 
     info(f"   CMD: {' '.join(cmd)}")
 
-    result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=1800)
     
     if result.stderr:
         stderr_clean = result.stderr.strip()[:500]
@@ -70,7 +70,7 @@ def httpx_validate(in_file: Path, out_file: Path, want_status: str = WANT_STATUS
             "-follow-redirects",
             "-silent",
         ]
-        result2 = subprocess.run(cmd_pipe, capture_output=True, text=True, timeout=600)
+        result2 = subprocess.run(cmd_pipe, capture_output=True, text=True, timeout=1200)
         if result2.stdout and result2.stdout.strip():
             out_file.write_text(result2.stdout)
             info(f"   ✅ Fallback via pipe funcionou!")

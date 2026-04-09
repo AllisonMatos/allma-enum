@@ -67,7 +67,10 @@ def scan_sqli(client, url: str) -> list[dict]:
         pass
     return findings
 
-def run(target: str, **kwargs) -> list[str]:
+def run(context: dict) -> list[str]:
+    target = context.get("target")
+    if not target:
+        raise ValueError("Target required")
     print(f"\n{C.BOLD}{C.CYAN}▰▰▰ INJETANDO SQL (SQLi) ▰▰▰{C.END}\n")
     
     outdir = Path("output") / target / "sqli"

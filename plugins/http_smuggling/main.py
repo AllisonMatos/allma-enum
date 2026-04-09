@@ -4,6 +4,7 @@ HTTP Request Smuggling Scanner (CL.TE & TE.CL)
 Detects Desync vulnerabilities via timing analysis using raw sockets.
 """
 import json
+import base64
 import socket
 import ssl
 import time
@@ -101,7 +102,9 @@ def test_smuggling(url):
             "type": "CL.TE Smuggling",
             "risk": "HIGH",
             "details": f"Possível CL.TE vulnerability (delay de {clte_time:.2f}s vs {baseline_time:.2f}s base, threshold: {timing_threshold:.2f}s).",
-            "payload": cl_te_payload
+            "payload": cl_te_payload,
+            "raw_request": base64.b64encode(cl_te_payload.encode()).decode(),
+            "raw_response": base64.b64encode(clte_resp.encode()).decode()
         })
 
     # 2. TE.CL Timeout Payload
@@ -126,7 +129,9 @@ def test_smuggling(url):
             "type": "TE.CL Smuggling",
             "risk": "HIGH",
             "details": f"Possível TE.CL vulnerability (delay de {tecl_time:.2f}s vs {baseline_time:.2f}s base, threshold: {timing_threshold:.2f}s).",
-            "payload": te_cl_payload
+            "payload": te_cl_payload,
+            "raw_request": base64.b64encode(te_cl_payload.encode()).decode(),
+            "raw_response": base64.b64encode(tecl_resp.encode()).decode()
         })
 
     return findings

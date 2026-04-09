@@ -115,9 +115,11 @@ def _find_spiderfoot_cli() -> str | None:
 def _start_server(sf_bin: str, port: int = 5009) -> subprocess.Popen | None:
     """Inicia servidor SpiderFoot em background."""
     try:
-        cmd = [sf_bin, "-l", f"127.0.0.1:{port}"]
+        cmd = [sf_bin, "-l", f"0.0.0.0:{port}"]
         if sf_bin.startswith("python3"):
-            cmd = ["python3", "-m", "spiderfoot", "-l", f"127.0.0.1:{port}"]
+            cmd = ["python3", "-m", "spiderfoot", "-l", f"0.0.0.0:{port}"]
+        elif sf_bin.endswith(".py"):
+            cmd = ["python3", sf_bin, "-l", f"0.0.0.0:{port}"]
 
         proc = subprocess.Popen(
             cmd,
@@ -126,10 +128,10 @@ def _start_server(sf_bin: str, port: int = 5009) -> subprocess.Popen | None:
             preexec_fn=lambda: signal.signal(signal.SIGINT, signal.SIG_IGN),
         )
 
-        # Aguardar servidor subir (máx 30s)
+        # Aguardar servidor subir (máx 60s)
         info(f"   [⏳] Aguardando servidor SpiderFoot na porta {port}...")
         import httpx
-        for i in range(30):
+        for i in range(60):
             try:
                 r = httpx.get(f"http://127.0.0.1:{port}/", timeout=2)
                 if r.status_code < 500:
@@ -139,7 +141,7 @@ def _start_server(sf_bin: str, port: int = 5009) -> subprocess.Popen | None:
                 pass
             time.sleep(1)
 
-        warn("   [!] Servidor SpiderFoot não respondeu em 30s.")
+        warn("   [!] Servidor SpiderFoot não respondeu em 60s.")
         proc.terminate()
         return None
 

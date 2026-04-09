@@ -60,19 +60,21 @@ def test_endpoint(client, url):
             method_used = "GET"
 
         if resp.status_code == 200 and "__schema" in body:
+            try:
+                data = resp.json()
+                if "data" not in data and "errors" not in data:
+                    raise ValueError("Not GraphQL FP")  # Não é um erro JSON padrão ou resposta graphql (FP)
+                types_count = len(data.get("data", {}).get("__schema", {}).get("types", []))
+            except Exception:
+                # Se não for JSON parseable, é uma página HTML de Soft-404/WAF e não um endpoint
+                raise ValueError("Soft-404 FP")
+                
             if method_used == "POST":
                 raw_req = format_raw_request("POST", url, dict(resp.request.headers), INTROSPECTION_QUERY)
             else:
                 raw_req = format_raw_request("GET", req_url, dict(resp.request.headers))
                 
             raw_res = format_raw_response(resp.status_code, dict(resp.headers), body[:3000])
-            
-            # Contar types
-            try:
-                data = resp.json()
-                types_count = len(data.get("data", {}).get("__schema", {}).get("types", []))
-            except Exception:
-                types_count = 0
             
             findings.append({
                 "url": url,
@@ -174,7 +176,14 @@ def test_endpoint(client, url):
             body = resp.text
             method_used = "GET"
             
-        if "Did you mean" in body or "suggestions" in body.lower():
+        if resp.status_code == 200 and ("Did you mean" in body or "suggestions" in body.lower()):
+            try:
+                data = resp.json()
+                if "errors" not in data:
+                    raise ValueError("Not error FP")
+            except Exception:
+                raise ValueError("Soft-404 FP")
+                
             if method_used == "POST":
                 raw_req = format_raw_request("POST", url, dict(resp.request.headers), SUGGESTIONS_QUERY)
             else:

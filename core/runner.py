@@ -4,7 +4,7 @@ import time
 from pathlib import Path
 from datetime import datetime
 from importlib import import_module
-from core.output import info, error, success, warn
+from core.output import info, error, success, warn, set_target_logfile
 from menu import C
 
 
@@ -81,6 +81,9 @@ def execute_chain(target: str, chain: list, params: dict, deep: bool = False, st
         "42": "spiderfoot",
         "99": "intelligence",
     }
+
+    # Set logger to write to specific output folder
+    set_target_logfile(target)
 
     # ==========================================
     #  CHECKPOINT: Resume / Skip

@@ -211,15 +211,18 @@ def run(context: dict):
 
     valid_urls = [l.strip() for l in urls_file.read_text().splitlines() if l.strip()]
 
-    # Deduplicar por base URL
+    # Deduplicar agressivamente por Hostname (para evitar duplicatas do mesmo domínio em HTTP/HTTPS/Ports)
     seen = set()
     unique_urls = []
     for u in valid_urls:
         parsed = urlparse(u)
-        base = f"{parsed.scheme}://{parsed.netloc}"
-        if base not in seen:
-            seen.add(base)
-            unique_urls.append(base)
+        host = parsed.hostname
+        if not host:
+            continue
+            
+        if host not in seen:
+            seen.add(host)
+            unique_urls.append(f"{parsed.scheme}://{host}")
 
     info(f"   📋 Analisando {len(unique_urls)} hosts para WAF...")
 
