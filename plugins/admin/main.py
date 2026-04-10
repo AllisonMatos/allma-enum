@@ -304,6 +304,20 @@ def check_admin_path(client, base_url: str, path: str, baseline: dict = None) ->
 
         # Verificar se é página real (não redirect genérico para home)
         final_url = str(resp.url)
+        parsed_base = urlparse(base_url)
+        parsed_final = urlparse(final_url)
+        
+        # V10.5: Anti-SSO False Positive (Google, Microsoft, Okta)
+        # Se ocorreu um redirecionamento para um domínio externo de SSO, ignorar.
+        if parsed_base.netloc.lower() != parsed_final.netloc.lower():
+            sso_domains = [
+                "accounts.google.com", "sites.google.com", "login.microsoftonline.com", 
+                "okta.com", "auth0.com", "cloudflareaccess.com", "pingidentity.com", 
+                "onelogin.com", "awsapps.com", "salesforce.com", "github.com"
+            ]
+            if any(sso in parsed_final.netloc.lower() for sso in sso_domains):
+                return None
+
         content_lower = content.lower()
         
         # Soft-404 Strict HTML Redirect Checks

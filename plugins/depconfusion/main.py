@@ -38,25 +38,38 @@ IMPORT_PATTERNS = [
 
 
 def extract_packages_from_content(content: str, source: str) -> list:
-    """Extrai nomes de pacotes de conteúdo JavaScript."""
+    """Extrai nomes de pacotes de conteúdo JavaScript ou package.json."""
     packages = []
     seen = set()
 
+    # 3. Solução: Verificar package.json (cruzar com manifesto real)
+    if "package.json" in source.lower():
+        try:
+            data = json.loads(content)
+            keys = list(data.get("dependencies", {}).keys()) + list(data.get("devDependencies", {}).keys())
+            for pkg in keys:
+                if pkg not in seen and pkg not in NODE_BUILTINS:
+                    seen.add(pkg)
+                    packages.append({
+                        "package": pkg,
+                        "found_in": source,
+                        "context": "manifest" # 4. Solução: Contexto específico
+                    })
+            return packages
+        except Exception:
+            pass
+
+    # Extração de código JS (Webpack/Bundles)
     for pattern in IMPORT_PATTERNS:
         for match in pattern.finditer(content):
             pkg_name = match.group(1)
 
-            # Ignorar aliases de bundlers e paths absolutos
             if pkg_name.startswith("@/") or pkg_name.startswith("~/") or pkg_name.startswith("/"):
                 continue
             
-            # Ignorar arquivos locais com extensões (mesmo que importados globalmente)
             if pkg_name.endswith((".js", ".ts", ".jsx", ".tsx", ".vue", ".json", ".css", ".scss", ".less")):
                 continue
 
-            # Normalizar: pegar apenas o pacote (não subpaths)
-            # @scope/name/subpath → @scope/name
-            # name/subpath → name
             if pkg_name.startswith("@"):
                 parts = pkg_name.split("/")
                 if len(parts) >= 2:
@@ -66,20 +79,23 @@ def extract_packages_from_content(content: str, source: str) -> list:
             else:
                 pkg_name = pkg_name.split("/")[0]
 
-            # Filtrar
-            if pkg_name in seen:
+            if pkg_name in seen or pkg_name in NODE_BUILTINS or pkg_name.startswith(".") or len(pkg_name) < 2:
                 continue
-            if pkg_name in NODE_BUILTINS:
-                continue
-            if pkg_name.startswith("."):  # relative import
-                continue
-            if len(pkg_name) < 2:
+
+            # 1. Solução: Ignorar camelCase interno (ex: ReactPropTypes, VueRouter)
+            # Pacotes NPM quase sempre usam hifens (react-prop-types), raro usarem CamelCase no nome do package.
+            if re.search(r'[a-z][A-Z]', pkg_name) and not pkg_name.startswith('@'):
                 continue
 
             seen.add(pkg_name)
+            
+            # 4. Solução: Analisar contexto do arquivo
+            ctx = "node_modules" if "node_modules" in source.lower() else "build/bundle"
+
             packages.append({
                 "package": pkg_name,
                 "found_in": source,
+                "context": ctx
             })
 
     return packages
@@ -91,6 +107,9 @@ def check_npm_exists(package_name: str) -> dict:
     Retorna info sobre existência e detalhes.
     """
     import httpx
+    
+    # 2. Solução: Generic Internal Packages that are commonly squatting targets
+    GENERIC_INTERNAL = {"core", "delta", "common", "utils", "shared", "api", "auth", "config", "types", "ui-components", "helpers", "base", "frontend", "backend"}
 
     try:
         with httpx.Client(timeout=10, follow_redirects=True) as client:
@@ -101,13 +120,17 @@ def check_npm_exists(package_name: str) -> dict:
                 latest = data.get("dist-tags", {}).get("latest", "unknown")
                 maintainers = data.get("maintainers", [])
                 maintainer_names = [m.get("name", "") for m in maintainers[:3]]
+                
+                # Se for genérico e existir no NPM, ainda é muito perigoso (Pode ser Squatting Dependency Confusion)
+                risk_lvl = "HIGH" if package_name in GENERIC_INTERNAL else "LOW"
+                note_str = f"Pacote existe no npm (v{latest}) - {risk_lvl} Risk (Generic Name Squatting)" if risk_lvl == "HIGH" else f"Pacote existe no npm (v{latest})"
 
                 return {
                     "npm_exists": True,
                     "latest_version": latest,
                     "maintainers": maintainer_names,
-                    "risk": "LOW",
-                    "note": f"Pacote existe no npm (v{latest})",
+                    "risk": risk_lvl,
+                    "note": note_str,
                 }
             elif resp.status_code == 404:
                 return {

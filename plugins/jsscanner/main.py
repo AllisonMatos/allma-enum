@@ -66,19 +66,41 @@ async def analyze_js_file_async(client, url, semaphore):
                 return None
             
             text = r.text
-            # Basic analysis
-            found_urls = RE_URL.findall(text)
             
-            from plugins.extractors.keys import extract_keys
+            # Limite máximo de 2MB para evitar gargalos absurdos em minified vendor bundlers
+            if len(text) > 2_000_000:
+                text = text[:2_000_000]
+                
+            def sync_analysis(txt, current_url):
+                found_urls = RE_URL.findall(txt)
+                
+                from plugins.extractors.keys import extract_keys
+                try:
+                    extracted = extract_keys(txt, source_url=current_url)
+                    found_keys = [f"{k['type']}: {k['match']}" for k in extracted if k['confidence']['total_score'] >= 30]
+                except Exception:
+                    found_keys = []
+                
+                from plugins.extractors.js_analyzer import extract_js_logic
+                try:
+                    logic_data = extract_js_logic(txt, current_url)
+                except Exception:
+                    logic_data = {}
+                    
+                return found_urls, found_keys, logic_data
+
             try:
-                extracted = extract_keys(text, source_url=url)
-                # Formatar para compatibilidade com o JSScanner (apenas as top-tier)
-                found_keys = [f"{k['type']}: {k['match']}" for k in extracted if k["confidence"]["total_score"] >= 30]
+                # Isolar carga intensa de CPU(Regex) do EventLoop 
+                if hasattr(asyncio, "to_thread"):
+                    task = asyncio.to_thread(sync_analysis, text, url)
+                    found_urls, found_keys, logic_data = await asyncio.wait_for(task, timeout=12.0)
+                else:
+                    found_urls, found_keys, logic_data = sync_analysis(text, url)
+            except asyncio.TimeoutError:
+                # Ignora arquivo se travar no regex
+                return None
             except Exception:
-                found_keys = []
-            
-            # Bug Bounty 2026: Deep JS Analysis (Routes & Parameters)
-            logic_data = extract_js_logic(text, url)
+                return None
             
             return {
                 "url": url,
@@ -190,15 +212,27 @@ async def run_async_scan(target, outdir, report_file, raw_file):
     if urls_200_path.exists():
         html_pages = [l.strip() for l in urls_200_path.read_text().splitlines() if l.strip()]
         if html_pages:
-            info(f"   - Analisando {len(html_pages)} páginas HTML para descobrir novos JS...")
+            # Amostra máxima de 500 para evitar que 30mil+ URLs de subdomínios soterrem o scanner por horas
+            if len(html_pages) > 500:
+                html_pages = html_pages[:500]
+                
+            info(f"   - Analisando amostra de {len(html_pages)} páginas HTML para descobrir novos JS...")
             
             sem = asyncio.Semaphore(CONCURRENCY_LIMIT)
             async with httpx.AsyncClient(verify=False, follow_redirects=True) as client:
                 tasks = [extract_js_from_html_async(client, u, sem) for u in html_pages]
-                results = await asyncio.gather(*tasks)
                 
-                for res in results:
-                    js_urls.extend(res)
+                total_html = len(tasks)
+                completed_html = 0
+                for coro in asyncio.as_completed(tasks):
+                    res = await coro
+                    completed_html += 1
+                    if completed_html % 10 == 0:
+                        print(f"      HTMLs analisados: {completed_html}/{total_html}", end="\r")
+                        
+                    if res:
+                        js_urls.extend(res)
+                print("") # Nova linha
             
             js_urls = sorted(set(js_urls))
             success(f"   - Total de JS para análise: {len(js_urls)}")
