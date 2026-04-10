@@ -525,8 +525,8 @@ def run(context: dict):
     baselines = {}
     valid_bases = set()
     
-    # httpx configs
-    limits = httpx.Limits(max_keepalive_connections=50, max_connections=100)
+    # httpx configs — V10.6: Thread-safe limits com pool grande o suficiente para workers
+    limits = httpx.Limits(max_keepalive_connections=80, max_connections=150)
     with httpx.Client(timeout=4, verify=False, follow_redirects=True, limits=limits) as client:
         client.headers.update({"User-Agent": DEFAULT_USER_AGENT})
         

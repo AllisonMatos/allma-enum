@@ -269,39 +269,54 @@ def run(context: dict):
     param_results = []
     found_urls = set()  # V10.3: Dedup resultados
     
-    # V10.3: Uma única sessão httpx para todos os testes
-    with httpx.Client(timeout=DEFAULT_TIMEOUT, verify=False, follow_redirects=True) as client:
+    # V10.6: Thread-safe client — um client por thread via threading.local()
+    import threading
+    _thread_local = threading.local()
+    
+    def _get_thread_client():
+        if not hasattr(_thread_local, "client"):
+            _thread_local.client = httpx.Client(timeout=DEFAULT_TIMEOUT, verify=False, follow_redirects=True)
+        return _thread_local.client
+    
+    def _test_pollution_safe(url):
+        client = _get_thread_client()
+        return _test_pollution(client, url)
+    
+    def _test_pollution_json_safe(url):
+        client = _get_thread_client()
+        return _test_pollution_json(client, url)
+    
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {executor.submit(_test_pollution_safe, url): url for url in candidates}
+        for future in as_completed(futures):
+            res = future.result()
+            if res:
+                for f in res:
+                    if f["url"] not in found_urls:
+                        found_urls.add(f["url"])
+                        param_results.append(f)
+                        info(f"   🔴 {C.RED}[POLLUTION]{C.END} Confirmado em {f['url']}")
+
+    # 3. V10.2: Dynamic (JSON Body) — somente deep mode
+    json_results = []
+    if deep:
+        info(f"   🔎 [DEEP] Testando Prototype Pollution via JSON body...")
+        api_candidates = []
+        if urls_file.exists():
+            urls = [l.strip() for l in urls_file.read_text().splitlines() if l.strip()]
+            api_candidates = [u for u in urls if any(kw in u.lower() for kw in ["/api/", "/graphql", "/rest/", "/v1/", "/v2/"])]
+        
+        api_candidates = list(set(u.rstrip("/") for u in api_candidates))[:30]
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            futures = {executor.submit(_test_pollution, client, url): url for url in candidates}
+            futures = {executor.submit(_test_pollution_json_safe, url): url for url in api_candidates}
             for future in as_completed(futures):
                 res = future.result()
                 if res:
                     for f in res:
                         if f["url"] not in found_urls:
                             found_urls.add(f["url"])
-                            param_results.append(f)
-                            info(f"   🔴 {C.RED}[POLLUTION]{C.END} Confirmado em {f['url']}")
-
-        # 3. V10.2: Dynamic (JSON Body) — somente deep mode (reusa sessão)
-        json_results = []
-        if deep:
-            info(f"   🔎 [DEEP] Testando Prototype Pollution via JSON body...")
-            api_candidates = []
-            if urls_file.exists():
-                urls = [l.strip() for l in urls_file.read_text().splitlines() if l.strip()]
-                api_candidates = [u for u in urls if any(kw in u.lower() for kw in ["/api/", "/graphql", "/rest/", "/v1/", "/v2/"])]
-            
-            api_candidates = list(set(u.rstrip("/") for u in api_candidates))[:30]
-            with ThreadPoolExecutor(max_workers=max_workers) as executor:
-                futures = {executor.submit(_test_pollution_json, client, url): url for url in api_candidates}
-                for future in as_completed(futures):
-                    res = future.result()
-                    if res:
-                        for f in res:
-                            if f["url"] not in found_urls:
-                                found_urls.add(f["url"])
-                                json_results.append(f)
-                                info(f"   🔴 {C.RED}[POLLUTION JSON]{C.END} Confirmado em {f['url']}")
+                            json_results.append(f)
+                            info(f"   🔴 {C.RED}[POLLUTION JSON]{C.END} Confirmado em {f['url']}")
 
     all_results = param_results + json_results + js_hints
     output_file = outdir / "prototype_pollution_results.json"

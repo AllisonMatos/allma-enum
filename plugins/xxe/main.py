@@ -46,9 +46,25 @@ WAF_STRINGS = [
 ]
 
 def _test_xxe(client: httpx.Client, url: str, oast_url: str = None) -> list:
-    """Testa XXE com payloads avançados e filtros cirúrgicos. Reutiliza sessão."""
+    """Testa XXE com payloads avançados e filtros cirúrgicos. Reutiliza sessão.
+    V10.6: Baseline check para eliminar FPs de páginas que já contêm indicadores."""
     findings = []
     found_urls = set()  # V10.3: Dedup por URL + content-type
+    
+    # V10.6: Baseline check — buscar quais indicadores já existem no endpoint SEM payload XXE
+    baseline_indicators = set()
+    benign_xml = '<?xml version="1.0"?><root>test</root>'
+    for ctype in ["application/xml", "text/xml", "application/soap+xml"]:
+        try:
+            baseline_resp = client.post(url, content=benign_xml, headers={"Content-Type": ctype, "User-Agent": DEFAULT_USER_AGENT})
+            if baseline_resp.status_code not in [403, 405, 429]:
+                bl_body = baseline_resp.text.lower()
+                for indicator in ["root:x:", "daemon:", "/bin/bash", "[fonts]", "[extensions]"]:
+                    if indicator in bl_body:
+                        baseline_indicators.add(indicator)
+                break  # Um baseline basta
+        except Exception:
+            pass
     
     # Combinar payloads V10.1 + V10.2
     payloads = list(XXE_PAYLOADS) + list(XXE_PAYLOADS_V10_2)
@@ -80,11 +96,14 @@ def _test_xxe(client: httpx.Client, url: str, oast_url: str = None) -> list:
                 reason = ""
                 risk = "MEDIUM"
 
-                if "root:x:" in body or "daemon:" in body or "/bin/bash" in body:
+                # V10.6: Only flag if indicator NOT in baseline
+                if ("root:x:" in body or "daemon:" in body or "/bin/bash" in body) and \
+                   not any(ind in baseline_indicators for ind in ["root:x:", "daemon:", "/bin/bash"] if ind in body):
                     is_vuln = True
                     reason = "Indício real de leitura de arquivo (/etc/passwd) detectado no body."
                     risk = "CRITICAL"
-                elif "[fonts]" in body or "[extensions]" in body:
+                elif ("[fonts]" in body or "[extensions]" in body) and \
+                     not any(ind in baseline_indicators for ind in ["[fonts]", "[extensions]"] if ind in body):
                     is_vuln = True
                     reason = "Indício real de leitura de arquivo (win.ini) detectado no body."
                     risk = "CRITICAL"

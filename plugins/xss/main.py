@@ -468,6 +468,7 @@ class XSSPatterns:
                 taint_start = max(0, idx - 500)
                 taint_end = min(len(js_code), idx + 500)
                 taint_context = js_code[taint_start:taint_end]
+                has_taint_source = bool(TAINT_SOURCES.search(taint_context))
                 if has_taint_source:
                     findings.append(XSSFinding(
                         url="",

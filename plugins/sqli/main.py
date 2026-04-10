@@ -13,9 +13,9 @@ SQLI_PAYLOADS = [
     "\" OR \"1\"=\"1\"",
     "1' ORDER BY 1--+",
     "1' UNION SELECT NULL--+",
-    "' OR sleep(10)='",
-    "1 AND (SELECT * FROM (SELECT(SLEEP(5)))a)",
-    "' WAITFOR DELAY '0:0:5'--",
+    "' OR sleep(8)='",
+    "1 AND (SELECT * FROM (SELECT(SLEEP(8)))a)",
+    "' WAITFOR DELAY '0:0:8'--",
 ]
 
 SQLI_ERRORS = [
@@ -25,6 +25,13 @@ SQLI_ERRORS = [
     "quoted string not properly terminated",
     "pdoexception",
     "postgresql query failed",
+    "microsoft ole db provider for sql server",
+    "odbc sql server driver",
+    "ora-01756",
+    "ora-00933",
+    "sqlite3.operationalerror",
+    "syntax error in string in query expression",
+    "pg::syntaxerror:",
 ]
 
 def scan_sqli(client, url: str) -> list[dict]:
@@ -35,13 +42,27 @@ def scan_sqli(client, url: str) -> list[dict]:
         if not params:
             return findings
 
-        # Test Error-based
+        # V10.6: Baseline check — fetch original URL to know which errors already exist
+        baseline_errors = set()
+        baseline_time = 0
+        try:
+            baseline_resp = client.get(url, timeout=15)
+            baseline_time = baseline_resp.elapsed.total_seconds()
+            baseline_body = baseline_resp.text.lower()
+            for err in SQLI_ERRORS:
+                if err in baseline_body:
+                    baseline_errors.add(err)
+        except Exception:
+            pass
+
+        # Test payloads
         for key, value in params:
             for payload in SQLI_PAYLOADS:
                 test_params = []
                 for k, v in params:
                     if k == key:
-                        test_params.append((k, v + payload))
+                        val = v.replace("FUZZ", "") if "FUZZ" in v else v
+                        test_params.append((k, val + payload))
                     else:
                         test_params.append((k, v))
                 
@@ -49,10 +70,14 @@ def scan_sqli(client, url: str) -> list[dict]:
                 test_url = parsed._replace(query=test_query).geturl()
                 
                 try:
-                    resp = client.get(test_url, timeout=10)
+                    resp = client.get(test_url, timeout=12)
+                    test_time = resp.elapsed.total_seconds()
                     body = resp.text.lower()
+                    
+                    found = False
+                    # Check Error-based
                     for err in SQLI_ERRORS:
-                        if err in body:
+                        if err in body and err not in baseline_errors:
                             findings.append({
                                 "url": test_url,
                                 "type": "SQL_INJECTION",
@@ -60,9 +85,30 @@ def scan_sqli(client, url: str) -> list[dict]:
                                 "details": f"Possível SQLi via {key} (Error-based: {err})",
                                 "payload": payload,
                             })
+                            found = True
                             break
-                except Exception:
-                    pass
+                    
+                    # Check Time-based (Waitfor/Sleep payload -> > 7 seconds and baseline < 5)
+                    if not found and ("sleep" in payload.lower() or "waitfor delay" in payload.lower()):
+                        if test_time > 7 and baseline_time < 3:
+                            findings.append({
+                                "url": test_url,
+                                "type": "SQL_INJECTION",
+                                "risk": "CRITICAL",
+                                "details": f"Possível SQLi via {key} (Time-based: demorou {test_time:.2f}s, baseline: {baseline_time:.2f}s)",
+                                "payload": payload,
+                            })
+                            
+                except Exception as e:
+                    # Timeout exception could also mean time-based success
+                    if "timeout" in str(e).lower() and ("sleep" in payload.lower() or "waitfor delay" in payload.lower()):
+                        findings.append({
+                            "url": test_url,
+                            "type": "SQL_INJECTION",
+                            "risk": "CRITICAL",
+                            "details": f"Possível SQLi via {key} (Time-based timeout excedido)",
+                            "payload": payload,
+                        })
     except Exception:
         pass
     return findings
@@ -84,9 +130,9 @@ def run(context: dict) -> list[str]:
         return []
     
     all_findings = []
-    urls_file = Path("output") / target / "urls" / "urls_params.txt"
+    urls_file = Path("output") / target / "urls" / "patterns" / "sqli_ready.txt"
     if not urls_file.exists():
-        urls_file = Path("output") / target / "urls" / "urls_valid.txt"
+        urls_file = Path("output") / target / "urls" / "urls_200.txt"
         if not urls_file.exists():
             warn("Nenhuma URL com parâmetros encontrada para teste de SQLi.")
             return [str(results_file)]

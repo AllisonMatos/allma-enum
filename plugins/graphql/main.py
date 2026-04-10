@@ -257,9 +257,10 @@ def run(context: dict):
     
     all_findings = []
     
-    limits = httpx.Limits(max_keepalive_connections=50, max_connections=100)
+    # V10.6: Thread-safe limits com pool grande o suficiente para workers
+    limits = httpx.Limits(max_keepalive_connections=80, max_connections=150)
     with httpx.Client(verify=False, follow_redirects=True, timeout=15, limits=limits) as client:
-        with ThreadPoolExecutor(max_workers=35) as executor:
+        with ThreadPoolExecutor(max_workers=20) as executor:
             futures = {executor.submit(test_endpoint, client, url): url for url in test_urls}
             
             done_count = 0
@@ -294,7 +295,10 @@ def run(context: dict):
                     
                     if resp.status_code == 200:
                         body = resp.text.lower()
-                        if "error" not in body and "data" in body:
+                        # V10.6: Check mais preciso — ignorar se "errors" está presente (depth limiting ativo)
+                        has_errors = '"errors"' in body
+                        has_data = '"data"' in body
+                        if not has_errors and has_data:
                             all_findings.append({
                                 "url": url,
                                 "type": "NO_DEPTH_LIMITING",

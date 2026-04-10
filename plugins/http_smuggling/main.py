@@ -96,16 +96,31 @@ def test_smuggling(url):
     )
 
     clte_time, clte_resp = raw_request(host, port, is_https, cl_te_payload, timeout=TIMEOUT)
-    if clte_time > (baseline_time + timing_threshold) and ("500" not in clte_resp and "400" not in clte_resp):
-        findings.append({
-            "url": url,
-            "type": "CL.TE Smuggling",
-            "risk": "HIGH",
-            "details": f"Possível CL.TE vulnerability (delay de {clte_time:.2f}s vs {baseline_time:.2f}s base, threshold: {timing_threshold:.2f}s).",
-            "payload": cl_te_payload,
-            "raw_request": base64.b64encode(cl_te_payload.encode()).decode(),
-            "raw_response": base64.b64encode(clte_resp.encode()).decode()
-        })
+    
+    # V10.6: Multi-sample timing — confirmar com 3 amostras para reduzir FPs de jitter de rede
+    if clte_time > (baseline_time + timing_threshold):
+        # Coletar mais 2 amostras
+        clte_times = [clte_time]
+        for _ in range(2):
+            t, _ = raw_request(host, port, is_https, cl_te_payload, timeout=TIMEOUT)
+            if t > 0:
+                clte_times.append(t)
+        
+        clte_times.sort()
+        median_time = clte_times[len(clte_times) // 2]
+        hits = sum(1 for t in clte_times if t > (baseline_time + timing_threshold))
+        
+        # Requer pelo menos 2 de 3 amostras acima do threshold
+        if hits >= 2 and median_time > (baseline_time + timing_threshold) and ("500" not in clte_resp and "400" not in clte_resp):
+            findings.append({
+                "url": url,
+                "type": "CL.TE Smuggling",
+                "risk": "HIGH",
+                "details": f"Possível CL.TE vulnerability (median {median_time:.2f}s em {len(clte_times)} amostras vs {baseline_time:.2f}s base, {hits}/{len(clte_times)} hits)",
+                "payload": cl_te_payload,
+                "raw_request": base64.b64encode(cl_te_payload.encode()).decode(),
+                "raw_response": base64.b64encode(clte_resp.encode()).decode()
+            })
 
     # 2. TE.CL Timeout Payload
     te_cl_payload = (
@@ -123,16 +138,29 @@ def test_smuggling(url):
     )
 
     tecl_time, tecl_resp = raw_request(host, port, is_https, te_cl_payload, timeout=TIMEOUT)
-    if tecl_time > (baseline_time + timing_threshold) and ("500" not in tecl_resp and "400" not in tecl_resp):
-        findings.append({
-            "url": url,
-            "type": "TE.CL Smuggling",
-            "risk": "HIGH",
-            "details": f"Possível TE.CL vulnerability (delay de {tecl_time:.2f}s vs {baseline_time:.2f}s base, threshold: {timing_threshold:.2f}s).",
-            "payload": te_cl_payload,
-            "raw_request": base64.b64encode(te_cl_payload.encode()).decode(),
-            "raw_response": base64.b64encode(tecl_resp.encode()).decode()
-        })
+    
+    # V10.6: Multi-sample timing para TE.CL
+    if tecl_time > (baseline_time + timing_threshold):
+        tecl_times = [tecl_time]
+        for _ in range(2):
+            t, _ = raw_request(host, port, is_https, te_cl_payload, timeout=TIMEOUT)
+            if t > 0:
+                tecl_times.append(t)
+        
+        tecl_times.sort()
+        median_time = tecl_times[len(tecl_times) // 2]
+        hits = sum(1 for t in tecl_times if t > (baseline_time + timing_threshold))
+        
+        if hits >= 2 and median_time > (baseline_time + timing_threshold) and ("500" not in tecl_resp and "400" not in tecl_resp):
+            findings.append({
+                "url": url,
+                "type": "TE.CL Smuggling",
+                "risk": "HIGH",
+                "details": f"Possível TE.CL vulnerability (median {median_time:.2f}s em {len(tecl_times)} amostras vs {baseline_time:.2f}s base, {hits}/{len(tecl_times)} hits)",
+                "payload": te_cl_payload,
+                "raw_request": base64.b64encode(te_cl_payload.encode()).decode(),
+                "raw_response": base64.b64encode(tecl_resp.encode()).decode()
+            })
 
     return findings
 

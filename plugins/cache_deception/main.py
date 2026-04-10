@@ -63,8 +63,15 @@ def test_cache_deception(client, url, auth_headers):
                 return [] 
                 
         # 3. Ataque: OCDN State Poisoning
+        # V10.6: Testar extensões normais + delimiter confusion payloads
+        all_payloads = []
         for ext in CACHE_EXTENSIONS[:3]:
-            test_url = url.rstrip("/") + f"/wcd_test{ext}"
+            all_payloads.append(f"/wcd_test{ext}")
+        for delim in CACHE_DELIMITER_PAYLOADS:
+            all_payloads.append(f"/wcd_test{delim}")
+        
+        for payload_path in all_payloads:
+            test_url = url.rstrip("/") + payload_path
             
             # 3.A: Vítima (logada) acessa link falso, forçando o CDN edge a cachear seus dados como arquivo estático
             try:

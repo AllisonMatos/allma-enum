@@ -116,6 +116,10 @@ def _test_ssti(client: httpx.Client, url: str, param: str, deep: bool = False, t
 
             # Confirmação V10: Resultado esperado surge no body e NÃO estava no baseline
             if expected.lower() in body.lower() and expected.lower() not in baseline_body.lower():
+                # V10.6: Anti-Reflection Filter (If expected is part of the payload, ensure raw payload isn't just cleanly reflected)
+                if expected.lower() in payload.lower() and payload.lower() in body.lower():
+                    continue
+                    
                 # V10.5: Para expected genéricos (< 5 chars), exigir double-check
                 needs_confirmation = len(expected) < 5
 

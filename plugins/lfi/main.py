@@ -30,6 +30,20 @@ def scan_lfi(client, url: str) -> list[dict]:
         if not params:
             return findings
 
+        # V10.6: Baseline check — fetch original URL to know which indicators already exist
+        baseline_indicators = set()
+        baseline_has_b64 = False
+        try:
+            baseline_resp = client.get(url, timeout=10)
+            baseline_body = baseline_resp.text.lower()
+            for ind in LFI_INDICATORS:
+                if ind in baseline_body:
+                    baseline_indicators.add(ind)
+            if "pd9wa" in baseline_body:
+                baseline_has_b64 = True
+        except Exception:
+            pass
+
         for key, value in params:
             for payload in LFI_PAYLOADS:
                 test_params = []
@@ -46,7 +60,8 @@ def scan_lfi(client, url: str) -> list[dict]:
                     resp = client.get(test_url, timeout=10)
                     body = resp.text.lower()
                     for ind in LFI_INDICATORS:
-                        if ind in body:
+                        # V10.6: Only flag if indicator was NOT in baseline
+                        if ind in body and ind not in baseline_indicators:
                             findings.append({
                                 "url": test_url,
                                 "type": "LOCAL_FILE_INCLUSION",
@@ -55,7 +70,8 @@ def scan_lfi(client, url: str) -> list[dict]:
                                 "payload": payload,
                             })
                             break
-                    if "PD9wa" in body: # base64 config/php tags
+                    # V10.6: Only flag base64 if NOT in baseline
+                    if "pd9wa" in body and not baseline_has_b64:
                         findings.append({
                             "url": test_url,
                             "type": "LOCAL_FILE_INCLUSION",
@@ -86,9 +102,9 @@ def run(context: dict) -> list[str]:
         return []
     
     all_findings = []
-    urls_file = Path("output") / target / "urls" / "urls_params.txt"
+    urls_file = Path("output") / target / "urls" / "patterns" / "lfi_ready.txt"
     if not urls_file.exists():
-        urls_file = Path("output") / target / "urls" / "urls_valid.txt"
+        urls_file = Path("output") / target / "urls" / "urls_200.txt"
         if not urls_file.exists():
             warn("Nenhuma URL com parâmetros encontrada para teste de LFI.")
             return [str(results_file)]

@@ -264,10 +264,19 @@ def analyze_jwt(token, source):
 
 
 def test_jwt_on_target(client, url, original_token, none_token):
-    """Testa se o target aceita tokens manipulados"""
+    """Testa se o target aceita tokens manipulados.
+    V10.6: Compara resposta com token vs sem token para evitar FPs em páginas públicas."""
     findings = []
     
     if not none_token:
+        return []
+    
+    # V10.6: Fetch baseline (sem nenhum token) para comparar
+    try:
+        baseline_resp = client.get(url, headers={"User-Agent": DEFAULT_USER_AGENT}, timeout=10)
+        baseline_body = baseline_resp.text[:3000]
+        baseline_status = baseline_resp.status_code
+    except Exception:
         return []
     
     # Testar com alg:none
@@ -276,16 +285,26 @@ def test_jwt_on_target(client, url, original_token, none_token):
             try:
                 resp = client.get(url, headers={header_name: value, "User-Agent": DEFAULT_USER_AGENT}, timeout=10)
                 if resp.status_code == 200:
-                    raw_req = format_raw_request("GET", url, {**dict(resp.request.headers), header_name: value})
-                    raw_res = format_raw_response(resp.status_code, dict(resp.headers), resp.text[:2000])
-                    findings.append({
-                        "url": url,
-                        "type": "ALG_NONE_ACCEPTED",
-                        "risk": "HIGH",
-                        "details": f"Servidor aceitou token com alg:none via {header_name}",
-                        "request_raw": raw_req,
-                        "response_raw": raw_res,
-                    })
+                    # V10.6: Comparar corpo da resposta com baseline
+                    # Se o body é idêntico ao sem token, a página é pública (NÃO é bypass)
+                    token_body = resp.text[:3000]
+                    
+                    import difflib
+                    similarity = difflib.SequenceMatcher(None, baseline_body, token_body).ratio()
+                    
+                    # Só considerar bypass se a resposta COM token for significativamente diferente
+                    # (contém dados extras que a baseline não tem)
+                    if similarity < 0.90 and len(token_body) > len(baseline_body) * 1.1:
+                        raw_req = format_raw_request("GET", url, {**dict(resp.request.headers), header_name: value})
+                        raw_res = format_raw_response(resp.status_code, dict(resp.headers), resp.text[:2000])
+                        findings.append({
+                            "url": url,
+                            "type": "ALG_NONE_ACCEPTED",
+                            "risk": "HIGH",
+                            "details": f"Servidor aceitou token com alg:none via {header_name} — resposta difere da baseline ({similarity:.0%} similar, +{len(token_body)-len(baseline_body)} bytes)",
+                            "request_raw": raw_req,
+                            "response_raw": raw_res,
+                        })
             except Exception:
                 pass
     

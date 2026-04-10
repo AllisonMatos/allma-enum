@@ -89,7 +89,8 @@ def _test_upload_endpoint(url: str) -> dict | None:
             resp_post = client.post(url, files={"file": ("test.txt", b"test", "text/plain")},
                                      headers={"User-Agent": DEFAULT_USER_AGENT})
 
-            if resp_post.status_code < 405:
+            # V10.6: Fix — status < 400 (was < 405, which incorrectly included 400 Bad Request)
+            if resp_post.status_code < 400:
                 body = resp_post.text[:3000].lower()
                 details = f"Endpoint aceita POST (status {resp_post.status_code})"
                 risk = "MEDIUM"

@@ -48,11 +48,16 @@ A versão **V10.5 Pro** oferece um padrão de qualidade elitizado em ferramentas
 - Go 1.19+
 
 ```bash
-# Clone e Setup
+# Clone e Setup das Dependências Python
 git clone https://github.com/AllisonMatos/allma-enum.git
 cd allma-enum
 pip install -r requirements.txt
+
+# Verificação de Ferramentas Nativas
+python3 check_install.py
 ```
+
+> **Aviso Importante**: Bibliotecas (`httpx`, `aiohttp`, etc) são instaladas nativamente pelo `requirements.txt`. O arquivo **`check_install.py`** serve especificamente para validar quais ferramentas de Sistema Externo (como `katana`, `kiterunner`, `trufflehog`, `interactsh`...) estão instaladas no seu Linux/OS. Por favor, sempre verifique esse arquivo para saber quais utilitários binários ainda faltam instalar na sua máquina para que a ferramenta explore 100% de sua capacidade!
 
 ---
 

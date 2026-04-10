@@ -32,7 +32,8 @@ SERIALIZATION_PATTERNS = {
         "desc": "Java ObjectInputStream — vulnerável a RCE via gadget chains",
     },
     "PHP Serialized": {
-        "regex": re.compile(r'[OaCsi]:\d+:', re.I),
+        # V10.6: Regex mais precisa — requer marcador + conteúdo + terminador ou marcador duplo
+        "regex": re.compile(r'(?:[OaCsi]:\d+:(?:"[^"]*"|{|\d+;))', re.I),
         "risk": "HIGH",
         "desc": "PHP serialize() — vulnerável a property injection e RCE",
     },
