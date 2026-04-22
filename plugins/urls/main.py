@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-import shutil
 """
 plugins/urls/main.py - Coleta URLs a partir das URLs válidas do módulo domain
 e valida novamente com httpx.
@@ -9,6 +8,7 @@ Saídas:
   output/<target>/urls/urls_200.txt
 """
 
+import shutil
 from pathlib import Path
 import subprocess
 
@@ -121,9 +121,9 @@ def run_historical_discovery(target: str, out_file: Path):
         try:
             with out_file.open("w", encoding="utf-8", errors="ignore") as fout:
                 if "waybackurls" in tool_name:
-                    subprocess.run(cmd, input=target.encode(), stdout=fout, stderr=subprocess.DEVNULL, timeout=300)
+                    subprocess.run(cmd, input=target.encode(), stdout=fout, stderr=subprocess.DEVNULL, timeout=600)  # V11: 10min
                 else:
-                    subprocess.run(cmd, stdout=fout, stderr=subprocess.DEVNULL, timeout=300)
+                    subprocess.run(cmd, stdout=fout, stderr=subprocess.DEVNULL, timeout=600)  # V11: 10min
         except Exception as e:
             error(f"Erro na coleta histórica ({tool_name}): {e}")
 
@@ -180,7 +180,7 @@ def run_katana_discovery(target: str, out_file: Path):
         # Timeout otimizado para 600s (10 minutos)
         subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=600)
     except subprocess.TimeoutExpired:
-        warn(f"   [!] Katana atingiu o timeout de 20 min. Processando o que foi encontrado até agora...")
+        warn(f"   [!] Katana atingiu o timeout de 10 min. Processando o que foi encontrado até agora...")
     except Exception as e:
         error(f"Erro inesperado no Katana: {e}")
         
@@ -227,7 +227,8 @@ def run_paramspider_discovery(target: str, out_file: Path):
         results_file.unlink(missing_ok=True)
         
     if out_file.exists() and out_file.stat().st_size > 0:
-        found = [l.strip() for l in out_file.read_text(errors="ignore").splitlines() if l.strip() and "http" in l]
+        # V11: Filtro mais preciso — exige que a URL comece com http (evita substrings)
+        found = [l.strip() for l in out_file.read_text(errors="ignore").splitlines() if l.strip() and l.strip().startswith("http")]
         # Rewrite limpo
         out_file.write_text("\n".join(found))
         success(f"   🕷️  {len(found)} URLs com parâmetros recuperadas.")
@@ -349,7 +350,7 @@ def run(context: dict):
             p = _urlparse(u)
             base = f"{p.scheme}://{p.netloc}"
             base_seeds.add(base)
-        except:
+        except Exception:
             pass
     
     urlfinder_seeds = sorted(base_seeds)
@@ -374,14 +375,15 @@ def run(context: dict):
         """Runs urlfinder for a batch of seeds and returns unique URLs found."""
         if not batch_seeds:
             return []
-            
+
         found_lines = []
+        temp_in = None
         try:
             # Input file for this batch
             fd_in, temp_in = _tempfile.mkstemp(suffix=".txt", text=True)
             with os.fdopen(fd_in, 'w') as f:
                 f.write("\n".join(batch_seeds) + "\n")
-            
+
             # Run urlfinder
             cmd = [urlfinder, "-list", temp_in, "-silent", "-timeout", "10"]
             proc = subprocess.run(
@@ -391,17 +393,17 @@ def run(context: dict):
                 text=True,
                 timeout=300
             )
-            
+
             if proc.stdout:
                 found_lines = [l for l in proc.stdout.splitlines() if l.strip()]
-                
-        except Exception as e:
-            # Silently fail for batch? or log?
+
+        except Exception:
             pass
         finally:
-            if os.path.exists(temp_in):
+            # V11: Proteger contra UnboundLocalError se mkstemp falhar
+            if temp_in and os.path.exists(temp_in):
                 os.unlink(temp_in)
-                
+
         return found_lines
 
     try:

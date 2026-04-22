@@ -14,7 +14,7 @@ def format_http_request(request: httpx.Request) -> str:
     if request.content:
         try:
             body = "\n\n" + request.content.decode('utf-8', errors='replace')
-        except:
+        except Exception:
             body = "\n\n[Binary Content]"
             
     method = request.method
@@ -39,7 +39,7 @@ def format_http_response(response: httpx.Response) -> str:
             if len(content) > 10000:
                 content = content[:10000] + "\n... [Truncated]"
             body = "\n\n" + content
-        except:
+        except Exception:
             body = "\n\n[Binary Content]"
 
     return f"{http_version} {status_code} {reason_phrase}\n{headers}{body}"

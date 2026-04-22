@@ -308,7 +308,8 @@ class XSSPatterns:
             re.compile(r'\bfetch\s*\(', re.I),
             re.compile(r'\baxios\.', re.I),
             re.compile(r'\bXMLHttpRequest\b', re.I),
-            re.compile(r'(?=[A-Za-z0-9\-_]*[A-Z])(?=[A-Za-z0-9\-_]*[a-z])(?=[A-Za-z0-9\-_]*[0-9])[A-Za-z0-9\-_]{32,}'),  # Mix of upper+lower+digits, 32+ chars (likely tokens)
+            # V11: Removida regex genérica de tokens (32+ chars alfanuméricos)
+            # Gerava falsos positivos massivos em JS minificado (UUIDs, build hashes, commit SHAs)
         ]
         
         self.param_min_len = 2 # Aumentado para reduzir FP em params muito curtos
@@ -509,7 +510,7 @@ class XSSCrawler:
                 return True
             return (parsed.netloc == self.base_netloc or 
                    parsed.netloc.endswith("." + self.base_netloc))
-        except:
+        except Exception:
             return False
     
     async def crawl(self):
@@ -630,7 +631,7 @@ class XSSCrawler:
                 for finding in js_findings:
                     finding.url = script_url
                     self.findings.append(finding)
-        except:
+        except Exception:
             pass
 
 # ============================================================
@@ -676,7 +677,7 @@ async def run_async(context: dict):
         async with aiofiles.open(urls200, 'r') as f:
             content = await f.read()
             seed_urls = [u.strip() for u in content.splitlines() if u.strip()]
-    except:
+    except Exception:
         # Fallback síncrono
         seed_urls = [u.strip() for u in urls200.read_text().splitlines() if u.strip()]
     
@@ -805,7 +806,9 @@ async def save_reports(outdir, crawler, reflections, dom_findings, valid_finding
     summary.append("")
     
     # Adicionar top findings
-    all_findings_sorted = sorted(valid_findings, key=lambda x: x.severity, reverse=True)
+    # V11: Ordenar por severidade numérica (string sort colocava 'critical' depois de 'medium')
+    _SEV_MAP = {"critical": 4, "high": 3, "medium": 2, "low": 1, "info": 0}
+    all_findings_sorted = sorted(valid_findings, key=lambda x: _SEV_MAP.get(x.severity, 0), reverse=True)
     for i, finding in enumerate(all_findings_sorted[:10]):
         summary.append(f"{i+1}. [{finding.severity.upper()}] {finding.url}")
         summary.append(f"   Padrão: {finding.pattern[:50]}")
@@ -933,30 +936,172 @@ def run(context: dict):
         # Executar
         reports = asyncio.run(run_async(context))
         
-        # Post-processing Dalfox
+        # Post-processing Dalfox (V11: Reescrita completa para rodar até o fim)
         target = context.get("target", "")
         if target:
             from plugins import ensure_outdir
-            from plugins.http_utils import check_tool_installed
+            import shutil
             import subprocess
             outdir = ensure_outdir(target, "xss")
-            dalfox_targets = outdir / "dalfox_targets.txt"
             
-            if dalfox_targets.exists() and check_tool_installed("dalfox"):
-                info(f"\n   🦊 {C.CYAN}Executando Dalfox (Active XSS Scan)...{C.END}")
-                dalfox_out = outdir / "dalfox_results.txt"
-                cmd = ["dalfox", "file", str(dalfox_targets), "--skip-bav", "--silence", "-w", "20", "-o", str(dalfox_out)]
-                try:
-                    subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=1200)
-                    if dalfox_out.exists():
-                        success(f"   🦊 Resultados do Dalfox salvos em {dalfox_out}")
-                except subprocess.TimeoutExpired:
-                    warn("   🦊 Dalfox demorou muito e foi interrompido.")
+            dalfox_bin = shutil.which("dalfox")
+            if dalfox_bin:
+                # V11: Gerar arquivo de targets com parâmetros (Dalfox precisa de URLs com ?param=)
+                urls_200 = Path("output") / target / "urls" / "urls_200.txt"
+                dalfox_targets = outdir / "dalfox_targets.txt"
+                
+                param_urls = set()
+                if urls_200.exists():
+                    for u in urls_200.read_text(errors="ignore").splitlines():
+                        u = u.strip()
+                        if u and "?" in u and target in u:
+                            param_urls.add(u)
+                
+                # Também incluir URLs do crawler que tinham reflexões
+                reflections_file = outdir / "reflections.txt"
+                if reflections_file.exists():
+                    for block in reflections_file.read_text(errors="ignore").split("---"):
+                        lines = block.strip().splitlines()
+                        if lines:
+                            parts = lines[0].split("\t")
+                            if parts and "?" in parts[0]:
+                                param_urls.add(parts[0])
+                
+                if param_urls:
+                    dalfox_targets.write_text("\n".join(sorted(param_urls)))
+                    
+                    info(f"\n   🦊 {C.BOLD}{C.CYAN}Executando Dalfox v2.12 (Active XSS Scan) em {len(param_urls)} URLs com parâmetros...{C.END}")
+                    
+                    dalfox_json = outdir / "dalfox_results.json"
+                    dalfox_txt = outdir / "dalfox_results.txt"
+                    
+                    # V11: Configurar Dalfox com flags corretas
+                    from core.config import REQUEST_DELAY as _delay
+                    delay_ms = max(100, int(_delay * 1000))  # Converter seconds → ms
+                    
+                    cmd = [
+                        dalfox_bin, "file", str(dalfox_targets),
+                        "-w", "10",                    # 10 workers (balanceado)
+                        "--delay", str(delay_ms),       # Respeitar rate limit do config
+                        "--timeout", "10",              # 10s por request
+                        "--skip-bav",                   # Pular Browser-based verification
+                        "--no-color",                   # Sem ANSI codes no output
+                        "--no-spinner",                 # Sem spinner (limpa o output)
+                        "--format", "jsonl",            # Output em JSON Lines (um JSON por linha)
+                        "-o", str(dalfox_json),         # Arquivo de saída
+                        "--output-all",                 # Incluir todos os logs (não só PoC)
+                        "--output-request",             # Incluir raw HTTP request nas evidências
+                        "--output-response",            # Incluir raw HTTP response nas evidências
+                        "--skip-mining-all",            # Pular mining para velocidade
+                        "--waf-evasion",                # Auto-slowdown se WAF detectado
+                        "-F",                           # Follow redirects
+                    ]
+                    
+                    info(f"   🦊 CMD: {' '.join(cmd[:6])}... (timeout: 45min)")
+                    
+                    try:
+                        # V11: Executar com stderr visível para feedback em tempo real
+                        proc = subprocess.run(
+                            cmd,
+                            stdout=subprocess.PIPE,
+                            stderr=subprocess.PIPE,
+                            timeout=2700,  # 45 minutos
+                            text=True,
+                        )
+                        
+                        # Mostrar erros se houver
+                        if proc.returncode != 0 and proc.stderr:
+                            stderr_clean = proc.stderr.strip()[:500]
+                            if stderr_clean:
+                                warn(f"   🦊 Dalfox stderr: {stderr_clean}")
+                        
+                        # V11: Parsear resultados JSON do Dalfox
+                        dalfox_findings = []
+                        if dalfox_json.exists() and dalfox_json.stat().st_size > 0:
+                            try:
+                                raw = dalfox_json.read_text(errors="ignore")
+                                # Dalfox pode outputar JSON lines (um JSON por linha)
+                                for line in raw.strip().splitlines():
+                                    line = line.strip()
+                                    if not line:
+                                        continue
+                                    try:
+                                        finding = json.loads(line)
+                                        dalfox_findings.append(finding)
+                                    except json.JSONDecodeError:
+                                        continue
+                                
+                                if dalfox_findings:
+                                    success(f"   🦊 {C.RED}{C.BOLD}{len(dalfox_findings)} XSS confirmados pelo Dalfox!{C.END}")
+                                    for df in dalfox_findings[:10]:
+                                        xss_type = df.get("type", "unknown")
+                                        poc = df.get("poc", df.get("data", ""))[:100]
+                                        info(f"      🔴 [{xss_type}] {poc}")
+                                    if len(dalfox_findings) > 10:
+                                        info(f"      ... e mais {len(dalfox_findings) - 10} findings")
+                                else:
+                                    info(f"   🦊 Dalfox finalizou sem encontrar XSS confirmados.")
+                            except Exception as e:
+                                warn(f"   🦊 Erro ao parsear resultados: {e}")
+                        else:
+                            info(f"   🦊 Dalfox finalizou sem output. (0 findings)")
+                        
+                        # Salvar também em TXT legível
+                        if dalfox_findings:
+                            txt_lines = []
+                            for df in dalfox_findings:
+                                txt_lines.append(f"[{df.get('type', '?')}] {df.get('inject_type', '?')}")
+                                txt_lines.append(f"  URL: {df.get('data', df.get('poc', '?'))}")
+                                txt_lines.append(f"  Param: {df.get('param', '?')}")
+                                txt_lines.append(f"  Payload: {df.get('payload', '?')}")
+                                txt_lines.append(f"  PoC: {df.get('poc', '?')}")
+                                txt_lines.append("")
+                            dalfox_txt.write_text("\n".join(txt_lines))
+                            success(f"   📂 Resultados Dalfox salvos em {dalfox_json}")
+                        
+                    except subprocess.TimeoutExpired:
+                        warn(f"   🦊 Dalfox atingiu timeout de 45min. Parseando resultados parciais...")
+                        # V11: Parsear resultados parciais que o Dalfox já gravou no disco
+                        if dalfox_json.exists() and dalfox_json.stat().st_size > 0:
+                            try:
+                                raw = dalfox_json.read_text(errors="ignore")
+                                partial_findings = []
+                                for line in raw.strip().splitlines():
+                                    line = line.strip()
+                                    if not line:
+                                        continue
+                                    try:
+                                        partial_findings.append(json.loads(line))
+                                    except json.JSONDecodeError:
+                                        continue
+                                if partial_findings:
+                                    success(f"   🦊 {len(partial_findings)} XSS encontrados antes do timeout!")
+                                    for df in partial_findings[:5]:
+                                        poc = df.get("poc", df.get("data", ""))[:100]
+                                        info(f"      🔴 [{df.get('type', '?')}] {poc}")
+                                    # Salvar TXT legível dos parciais
+                                    txt_lines = []
+                                    for df in partial_findings:
+                                        txt_lines.append(f"[{df.get('type', '?')}] {df.get('inject_type', '?')}")
+                                        txt_lines.append(f"  URL: {df.get('data', df.get('poc', '?'))}")
+                                        txt_lines.append(f"  Param: {df.get('param', '?')}")
+                                        txt_lines.append(f"  PoC: {df.get('poc', '?')}")
+                                        txt_lines.append("")
+                                    dalfox_txt.write_text("\n".join(txt_lines))
+                                else:
+                                    info(f"   🦊 Timeout sem findings parciais.")
+                            except Exception:
+                                pass
+                    except FileNotFoundError:
+                        warn("   🦊 Dalfox não encontrado no PATH.")
+                    except Exception as e:
+                        warn(f"   🦊 Erro ao executar Dalfox: {e}")
+                else:
+                    info(f"   🦊 Nenhuma URL com parâmetros para testar com Dalfox.")
             
-            # V10.4: Active XSS Validation Test
+            # V10.4: Active XSS Validation Test (complementar ao Dalfox)
             info(f"\n   🎭 {C.BOLD}{C.CYAN}[V10.4] Iniciando Active XSS Validation...{C.END}")
             reflections_file = outdir / "reflections.txt"
-            # Reconstruir lista de reflexões para teste ativo
             active_reflections = []
             if reflections_file.exists():
                 content = reflections_file.read_text(errors="ignore")

@@ -187,6 +187,10 @@ def check_subdomain(subdomain: str, known_cnames: dict = None) -> dict | None:
             has_fingerprint = check_http_fingerprint(subdomain, fingerprints)
 
             if is_nxdomain or has_fingerprint:
+                # V11: Para serviços com fingerprints genéricos, exigir NXDOMAIN
+                generic_services = {"Azure CloudApp", "Firebase", "Fly.io", "Vercel (Now)"}
+                if service in generic_services and not is_nxdomain:
+                    return None  # Fingerprint genérico sem NXDOMAIN = FP
                 # Verify if the service is actually available for claiming
                 verification = verify_service_available(cname, service, subdomain)
                 
@@ -280,10 +284,8 @@ def run(context: dict):
     print("")
 
     # Salvar
-    output_file = outdir / "takeover_results.json"
-    output_file.write_text(json.dumps(all_findings, indent=2, ensure_ascii=False))
+    # V11: Removida escrita duplicada (results_file é salvo no final após NS/MX checks)
     results_file = outdir / "takeover_results.json"
-    results_file.write_text(json.dumps(all_findings, indent=2, ensure_ascii=False))
 
     if all_findings:
         confirmed = sum(1 for v in all_findings if v["status"] == "VULNERABLE")

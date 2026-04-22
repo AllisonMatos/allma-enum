@@ -106,12 +106,12 @@ def discover_gau(target: str) -> set:
     try:
         result = subprocess.run(
             [gau_bin, "--subs", target],
-            capture_output=True, text=True, timeout=180
+            capture_output=True, text=True, timeout=600  # V11: 10min (domínios grandes)
         )
         subs = _extract_hostnames_from_urls(result.stdout.splitlines(), target)
         info(f"   🌐 gau: {len(subs)} subdomínios de URLs históricas")
     except subprocess.TimeoutExpired:
-        warn("   gau: timeout (180s)")
+        warn("   gau: timeout (600s)")
     except Exception as e:
         warn(f"   gau: erro — {e}")
     return subs
@@ -131,12 +131,12 @@ def discover_waybackurls(target: str) -> set:
     try:
         proc = subprocess.run(
             ["bash", "-c", f"echo {target} | {wayback_bin}"],
-            capture_output=True, text=True, timeout=180
+            capture_output=True, text=True, timeout=600  # V11: 10min (domínios grandes)
         )
         subs = _extract_hostnames_from_urls(proc.stdout.splitlines(), target)
         info(f"   📦 waybackurls: {len(subs)} subdomínios do Wayback Machine")
     except subprocess.TimeoutExpired:
-        warn("   waybackurls: timeout (180s)")
+        warn("   waybackurls: timeout (600s)")
     except Exception as e:
         warn(f"   waybackurls: erro — {e}")
     return subs

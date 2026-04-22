@@ -24,55 +24,49 @@ UPLOAD_PATTERNS = [
 
 DANGEROUS_EXTENSIONS = [".php", ".jsp", ".asp", ".aspx", ".exe", ".sh", ".py", ".pl", ".cgi", ".svg", ".html"]
 
-# V10.2: Payloads reais de upload com XSS/RCE markers
-UPLOAD_TEST_FILES = [
+# V11: Arquivo SEGURO para teste básico (não trigga WAF, não polui dados)
+SAFE_UPLOAD_FILE = {
+    "filename": "allma_test.txt",
+    "content": b"allma_upload_test_v11",
+    "mime": "text/plain",
+    "marker": "allma_upload_test_v11",
+    "risk_if_exec": "INFO",
+}
+
+# V11: Payloads AGRESSIVOS — apenas com --deep
+DEEP_UPLOAD_FILES = [
     {
         "filename": "allma_test.php",
-        "content": b"<?php echo 'allma_rce_test_v10_2'; ?>",
+        "content": b"<?php echo 'allma_rce_test_v11'; ?>",
         "mime": "application/x-php",
-        "marker": "allma_rce_test_v10_2",
+        "marker": "allma_rce_test_v11",
         "risk_if_exec": "CRITICAL",
     },
     {
         "filename": "allma_test.html",
-        "content": b"<html><body><script>document.write('allma_xss_test_v10_2')</script></body></html>",
+        "content": b"<html><body><script>document.write('allma_xss_test_v11')</script></body></html>",
         "mime": "text/html",
-        "marker": "allma_xss_test_v10_2",
+        "marker": "allma_xss_test_v11",
         "risk_if_exec": "HIGH",
     },
     {
         "filename": "allma_test.svg",
-        "content": b'<svg xmlns="http://www.w3.org/2000/svg"><script>alert("allma_svg_xss_v10_2")</script></svg>',
+        "content": b'<svg xmlns="http://www.w3.org/2000/svg"><script>alert("allma_svg_xss_v11")</script></svg>',
         "mime": "image/svg+xml",
-        "marker": "allma_svg_xss_v10_2",
+        "marker": "allma_svg_xss_v11",
         "risk_if_exec": "HIGH",
-    },
-    {
-        "filename": "allma_test.txt",
-        "content": b"allma_upload_test_v10_2",
-        "mime": "text/plain",
-        "marker": "allma_upload_test_v10_2",
-        "risk_if_exec": "LOW",
     },
 ]
 
-UPLOAD_FILES = [
-    {"filename": "test.php", "content": "<?php echo 'allma_v10_upload_test'; ?>", "content_type": "application/x-php"},
-    {"filename": "test.html", "content": "<script>alert('allma_v10_xss')</script>", "content_type": "text/html"},
-    {"filename": "test.svg", "content": '<svg xmlns="http://www.w3.org/2000/svg" onload="alert(1)"/>', "content_type": "image/svg+xml"},
-    {"filename": "test.shtml", "content": '<!--#exec cmd="id"-->', "content_type": "text/html"},
-    {"filename": ".htaccess", "content": "AddType application/x-httpd-php .jpg", "content_type": "text/plain"},
-    {"filename": "test.jsp", "content": "<%= Runtime.getRuntime().exec('id') %>", "content_type": "text/html"},
-    # V10.4: Double extension bypass
-    {"filename": "test.php.jpg", "content": "<?php echo 'allma_v10_double_ext'; ?>", "content_type": "image/jpeg"},
-    {"filename": "test.php5.png", "content": "<?php echo 'allma_v10_php5'; ?>", "content_type": "image/png"},
-    {"filename": "test.phtml.gif", "content": "<?php echo 'allma_v10_phtml'; ?>", "content_type": "image/gif"},
-    # V10.4: Null byte bypass  
-    {"filename": "test.php%00.jpg", "content": "<?php echo 'allma_v10_null'; ?>", "content_type": "image/jpeg"},
-    {"filename": "test.php\x00.png", "content": "<?php echo 'allma_v10_null2'; ?>", "content_type": "image/png"},
-    # V10.4: Content-Type mismatch (enviar PHP com Content-Type de imagem)
-    {"filename": "test.php", "content": "<?php echo 'allma_v10_ct_mismatch'; ?>", "content_type": "image/jpeg"},
-    {"filename": "test.aspx", "content": "<%= System.IO.File.ReadAllText(@'c:\\windows\\win.ini') %>", "content_type": "image/png"},
+# V11: Indicadores de que o body confirma upload real (reduz falsos positivos)
+UPLOAD_SUCCESS_INDICATORS = [
+    "uploaded", "success", "file_url", "file_path", "filename",
+    "url", "location", "stored", "saved", "created",
+]
+# V11: Indicadores de que a resposta é uma página de login/erro (falso positivo)
+FALSE_POSITIVE_INDICATORS = [
+    "login", "sign in", "authenticate", "unauthorized", "csrf",
+    "403 forbidden", "access denied", "not allowed",
 ]
 
 def _test_upload_endpoint(url: str) -> dict | None:
@@ -89,19 +83,27 @@ def _test_upload_endpoint(url: str) -> dict | None:
             resp_post = client.post(url, files={"file": ("test.txt", b"test", "text/plain")},
                                      headers={"User-Agent": DEFAULT_USER_AGENT})
 
-            # V10.6: Fix — status < 400 (was < 405, which incorrectly included 400 Bad Request)
-            if resp_post.status_code < 400:
+            # V11: Aceitar apenas 200/201/202 (removido 204 — CORS preflight falso positivo)
+            if resp_post.status_code in (200, 201, 202):
                 body = resp_post.text[:3000].lower()
-                details = f"Endpoint aceita POST (status {resp_post.status_code})"
-                risk = "MEDIUM"
 
-                if resp_post.status_code in (200, 201, 202):
-                    risk = "HIGH"
-                    details += " — upload possivelmente aceito"
+                # V11: Detectar falsos positivos — páginas de login/erro retornando 200
+                if any(fp in body for fp in FALSE_POSITIVE_INDICATORS):
+                    return None  # Não é upload real
 
-                if any(ext in body for ext in [".php", ".jsp", ".asp"]):
+                # V11: Validar se o body indica upload real, não apenas POST 200 genérico
+                has_upload_indicator = any(ind in body for ind in UPLOAD_SUCCESS_INDICATORS)
+                has_dangerous_ext = any(ext in body for ext in [".php", ".jsp", ".asp"])
+
+                if has_dangerous_ext:
                     risk = "CRITICAL"
-                    details += " — extensões perigosas detectadas no response"
+                    details = f"Endpoint aceita POST (status {resp_post.status_code}) — extensões perigosas detectadas no response"
+                elif has_upload_indicator:
+                    risk = "HIGH"
+                    details = f"Endpoint aceita POST (status {resp_post.status_code}) — indicadores de upload confirmados no body"
+                else:
+                    risk = "MEDIUM"
+                    details = f"Endpoint aceita POST (status {resp_post.status_code}) — sem confirmação explícita de upload no body"
 
                 return {
                     "url": url,
@@ -110,6 +112,7 @@ def _test_upload_endpoint(url: str) -> dict | None:
                     "risk": risk,
                     "type": "FILE_UPLOAD",
                     "details": details,
+                    "upload_confirmed": has_upload_indicator,
                     "request_raw": format_http_request(resp_post.request),
                     "response_raw": format_http_response(resp_post),
                 }
@@ -118,11 +121,11 @@ def _test_upload_endpoint(url: str) -> dict | None:
     return None
 
 
-def _test_real_upload(url: str) -> list:
-    """V10.2: Tenta upload real de arquivos maliciosos e verifica execução."""
+def _test_real_upload(url: str, test_files: list) -> list:
+    """V11: Tenta upload real e verifica execução. Recebe lista de arquivos para testar."""
     findings = []
     
-    for test_file in UPLOAD_TEST_FILES:
+    for test_file in test_files:
         time.sleep(REQUEST_DELAY)
         try:
             with httpx.Client(timeout=DEFAULT_TIMEOUT, verify=False) as client:
@@ -140,7 +143,6 @@ def _test_real_upload(url: str) -> list:
                 uploaded_url = None
                 
                 # Tentar extrair URL do arquivo uploadado do response
-                # Heurística: procurar path ou URL no response body
                 import re as _re
                 url_matches = _re.findall(r'(?:https?://[^\s"\'<>]+|/[^\s"\'<>]*' + _re.escape(test_file["filename"]) + r')', body)
                 if url_matches:
@@ -150,10 +152,10 @@ def _test_real_upload(url: str) -> list:
                         uploaded_url = f"{parsed.scheme}://{parsed.netloc}{uploaded_url}"
                 
                 details = f"Upload de '{test_file['filename']}' aceito (status {resp.status_code})"
-                risk = "HIGH"
+                risk = "MEDIUM" if test_file["filename"].endswith(".txt") else "HIGH"
                 executed = False
                 
-                # V10.2: Tentar acessar o arquivo uploadado para verificar execução
+                # Tentar acessar o arquivo uploadado para verificar execução
                 if uploaded_url:
                     time.sleep(REQUEST_DELAY)
                     try:
@@ -244,14 +246,22 @@ def run(context: dict):
             except Exception:
                 pass
 
-    # V10.2 Fase 2: Upload real com payloads maliciosos (somente em deep mode ou em endpoints que aceitaram upload)
+    # V11 Fase 2: Upload real para confirmar se o endpoint aceita arquivos
     upload_accepting = [r["url"] for r in results if r.get("status") in (200, 201, 202)]
-    if upload_accepting or deep:
-        test_urls = upload_accepting if upload_accepting else candidates[:10]
-        info(f"   🔎 [V10.2] Testando upload real de arquivos maliciosos em {len(test_urls)} endpoints...")
+    test_urls = upload_accepting if upload_accepting else candidates[:10]
+    
+    if test_urls:
+        if deep:
+            # DEEP MODE: Testa com PHP/HTML/SVG (agressivo)
+            test_files = DEEP_UPLOAD_FILES
+            warn(f"   ⚠️  [DEEP MODE] Testando upload de .php/.html/.svg em {len(test_urls)} endpoints...")
+        else:
+            # MODO NORMAL: Apenas .txt inofensivo para confirmar upload
+            test_files = [SAFE_UPLOAD_FILE]
+            info(f"   📄 Testando upload de arquivo .txt seguro em {len(test_urls)} endpoints...")
         
         with ThreadPoolExecutor(max_workers=3) as executor:
-            futures = {executor.submit(_test_real_upload, url): url for url in test_urls}
+            futures = {executor.submit(_test_real_upload, url, test_files): url for url in test_urls}
             for future in as_completed(futures):
                 try:
                     res = future.result()
@@ -264,6 +274,10 @@ def run(context: dict):
                                 info(f"   🟡 {C.YELLOW}[{f['risk']}]{C.END} Upload aceito: {f['filename']} em {f['url']}")
                 except Exception:
                     pass
+        
+        # Sugerir --deep se encontrou endpoints que aceitam upload no modo normal
+        if not deep and any(r.get("filename", "").endswith(".txt") for r in results):
+            info(f"   ℹ️  Use --deep para testar com payloads reais (.php/.html/.svg).")
 
     output_file = outdir / "file_upload_results.json"
     output_file.write_text(json.dumps(results, indent=2, ensure_ascii=False))

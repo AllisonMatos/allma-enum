@@ -11,7 +11,7 @@ import httpx
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from core.config import DEFAULT_USER_AGENT, REQUEST_DELAY, DEFAULT_TIMEOUT
+from core.config import DEFAULT_USER_AGENT, REQUEST_DELAY, DEFAULT_TIMEOUT, get_user_agent
 from menu import C
 from plugins import ensure_outdir
 from ..output import info, success, warn, error
@@ -149,11 +149,13 @@ def run(context: dict):
     candidates = []
     if urls_file.exists():
         urls = [l.strip() for l in urls_file.read_text().splitlines() if l.strip()]
-        candidates = [u for u in urls if any(x in u.lower() for x in [".xml", "/api/", "/graphql", "/soap"])]
+        # V11: Expandir heurística para capturar mais endpoints que aceitam XML
+        candidates = [u for u in urls if any(x in u.lower() for x in [".xml", "/api/", "/graphql", "/soap", "/upload", "/import", "/webhook", "/callback", "/feed", "/rss"])]
     
     # V10.3: Dedup
     candidates = list(set(u.rstrip("/") for u in candidates))[:50]
-    max_workers = 3 if stealth else 10
+    # V11: Reduzir workers para thread-safety com httpx.Client compartilhado
+    max_workers = 2 if stealth else 5
     
     results = []
     

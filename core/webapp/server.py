@@ -73,7 +73,8 @@ def import_target(target: str):
         build_oauth_content, build_file_upload_content,
         build_api_versioning_content, build_email_security_content,
         build_google_dorks_content, build_ssrf_content,
-        build_cache_deception_content, build_spiderfoot_content
+        build_cache_deception_content, build_spiderfoot_content,
+        build_login_pages_content
     )
 
     print(f"  [+] Importing: {target}")
@@ -190,6 +191,7 @@ def import_target(target: str):
         "security": build_security_content(target),
         "services": build_services_content(target),
         "urls": build_urls_content(subdomains, target),
+        "login_pages": build_login_pages_content(subdomains, target),
         "keys": build_keys_content(target),
         "routes": build_routes_content(target),
         "js": build_js_content(target),

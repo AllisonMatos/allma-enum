@@ -130,6 +130,7 @@ def check_cors(url: str, target: str) -> dict | None:
                     pass
 
             # 4) Preflight OPTIONS — testar métodos perigosos permitidos
+            # V11: Só reportar se o origin malicioso foi aceito no ACAO (REST APIs legítimas usam PUT/DELETE)
             for origin in EVIL_ORIGINS[:1]:  # Apenas o primeiro origin para reduzir requests
                 try:
                     resp = client.options(url, headers={
@@ -140,17 +141,20 @@ def check_cors(url: str, target: str) -> dict | None:
                     })
                     acam = resp.headers.get("access-control-allow-methods", "")
                     acao = resp.headers.get("access-control-allow-origin", "")
+                    acac = resp.headers.get("access-control-allow-credentials", "").lower()
+                    # V11: Métodos perigosos + origin aceito = real finding
                     if acam and any(m in acam.upper() for m in ["PUT", "DELETE", "PATCH"]):
-                        results.append({
-                            "url": url,
-                            "tested_origin": origin,
-                            "acao": acao,
-                            "credentials": resp.headers.get("access-control-allow-credentials", "").lower() == "true",
-                            "severity": "high",
-                            "issue": f"Dangerous methods allowed via preflight: {acam}",
-                            "response_raw": format_http_response(resp),
-                            "request_raw": format_http_request(resp.request)
-                        })
+                        if acao == origin:  # Origin malicioso ACEITO
+                            results.append({
+                                "url": url,
+                                "tested_origin": origin,
+                                "acao": acao,
+                                "credentials": acac == "true",
+                                "severity": "critical" if acac == "true" else "high",
+                                "issue": f"Origin reflected + dangerous methods allowed: {acam}",
+                                "response_raw": format_http_response(resp),
+                                "request_raw": format_http_request(resp.request)
+                            })
                 except Exception:
                     pass
 

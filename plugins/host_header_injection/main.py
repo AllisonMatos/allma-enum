@@ -13,7 +13,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from core.config import DEFAULT_USER_AGENT, REQUEST_DELAY, DEFAULT_TIMEOUT
+from core.config import DEFAULT_USER_AGENT, REQUEST_DELAY, DEFAULT_TIMEOUT, get_user_agent
 from menu import C
 from plugins import ensure_outdir
 from ..output import info, success, warn, error
@@ -109,9 +109,9 @@ def _test_host_injection(client: httpx.Client, url: str) -> list:
                     # V10.4: Reflexão em contexto seguro — NÃO reportar como vuln
                     continue
                 else:
-                    is_vuln = True
-                    risk_context = "UNKNOWN"
-                    details = f"Domínio injetado refletido no corpo da resposta ({resp.status_code})"
+                    # V11: Contexto desconhecido — ignorar para evitar falsos positivos
+                    # Sites frequentemente refletem Host em meta tags, og:url, canonical etc.
+                    continue
 
             # V10.2: Detectar cache poisoning
             cache_poisoned = False
@@ -164,7 +164,8 @@ def run(context: dict):
             deduped.append(url)
     
     candidates = deduped[:80]
-    max_workers = 5 if stealth else 15
+    # V11: Reduzir workers para thread-safety com httpx.Client compartilhado
+    max_workers = 3 if stealth else 5
     
     results = []
     

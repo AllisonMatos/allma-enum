@@ -52,12 +52,9 @@ def raw_request(host, port, is_https, payload, timeout=TIMEOUT):
 def test_smuggling(url):
     throttle()
     parsed = urlparse(url)
-    host = parsed.netloc
-    if ':' in host:
-        host, port = host.split(':', 1)
-        port = int(port)
-    else:
-        port = 443 if parsed.scheme == "https" else 80
+    # V11: Usar urlparse para extrair host/port (suporta IPv6)
+    host = parsed.hostname
+    port = parsed.port or (443 if parsed.scheme == "https" else 80)
     
     is_https = parsed.scheme == "https"
     path = parsed.path or "/"
@@ -110,8 +107,14 @@ def test_smuggling(url):
         median_time = clte_times[len(clte_times) // 2]
         hits = sum(1 for t in clte_times if t > (baseline_time + timing_threshold))
         
-        # Requer pelo menos 2 de 3 amostras acima do threshold
-        if hits >= 2 and median_time > (baseline_time + timing_threshold) and ("500" not in clte_resp and "400" not in clte_resp):
+        # V11: Parsear status code numericamente (evita FP se URL contiver '500' ou '400')
+        clte_status = 0
+        if clte_resp:
+            try:
+                clte_status = int(clte_resp.split(" ")[1])
+            except (IndexError, ValueError):
+                pass
+        if hits >= 2 and median_time > (baseline_time + timing_threshold) and clte_status not in (400, 500, 501, 502, 503):
             findings.append({
                 "url": url,
                 "type": "CL.TE Smuggling",
@@ -151,7 +154,14 @@ def test_smuggling(url):
         median_time = tecl_times[len(tecl_times) // 2]
         hits = sum(1 for t in tecl_times if t > (baseline_time + timing_threshold))
         
-        if hits >= 2 and median_time > (baseline_time + timing_threshold) and ("500" not in tecl_resp and "400" not in tecl_resp):
+        # V11: Parsear status code numericamente
+        tecl_status = 0
+        if tecl_resp:
+            try:
+                tecl_status = int(tecl_resp.split(" ")[1])
+            except (IndexError, ValueError):
+                pass
+        if hits >= 2 and median_time > (baseline_time + timing_threshold) and tecl_status not in (400, 500, 501, 502, 503):
             findings.append({
                 "url": url,
                 "type": "TE.CL Smuggling",
@@ -160,6 +170,50 @@ def test_smuggling(url):
                 "payload": te_cl_payload,
                 "raw_request": base64.b64encode(te_cl_payload.encode()).decode(),
                 "raw_response": base64.b64encode(tecl_resp.encode()).decode()
+            })
+
+    # 3. V11: TE.TE Obfuscation Payload
+    tete_payload = (
+        f"POST {path} HTTP/1.1\r\n"
+        f"Host: {host}\r\n"
+        f"User-Agent: {DEFAULT_USER_AGENT}\r\n"
+        "Connection: keep-alive\r\n"
+        "Content-Type: application/x-www-form-urlencoded\r\n"
+        "Content-Length: 4\r\n"
+        "Transfer-Encoding: chunked\r\n"
+        "Transfer-Encoding: x\r\n"
+        "\r\n"
+        "1\r\n"
+        "Z\r\n"
+        "Q\r\n"
+        "\r\n"
+    )
+
+    tete_time, tete_resp = raw_request(host, port, is_https, tete_payload, timeout=TIMEOUT)
+    if tete_time > (baseline_time + timing_threshold):
+        tete_times = [tete_time]
+        for _ in range(2):
+            t, _ = raw_request(host, port, is_https, tete_payload, timeout=TIMEOUT)
+            if t > 0:
+                tete_times.append(t)
+        tete_times.sort()
+        median_time = tete_times[len(tete_times) // 2]
+        hits = sum(1 for t in tete_times if t > (baseline_time + timing_threshold))
+        tete_status = 0
+        if tete_resp:
+            try:
+                tete_status = int(tete_resp.split(" ")[1])
+            except (IndexError, ValueError):
+                pass
+        if hits >= 2 and median_time > (baseline_time + timing_threshold) and tete_status not in (400, 500, 501, 502, 503):
+            findings.append({
+                "url": url,
+                "type": "TE.TE Smuggling (Obfuscation)",
+                "risk": "HIGH",
+                "details": f"Possível TE.TE vulnerability (median {median_time:.2f}s em {len(tete_times)} amostras vs {baseline_time:.2f}s base, {hits}/{len(tete_times)} hits)",
+                "payload": tete_payload,
+                "raw_request": base64.b64encode(tete_payload.encode()).decode(),
+                "raw_response": base64.b64encode(tete_resp.encode()).decode()
             })
 
     return findings
@@ -196,7 +250,8 @@ def run(context: dict):
     info(f"   📊 Testando {len(testable_urls)} endpoints base via RAW Sockets (CL.TE / TE.CL)...")
     
     all_findings = []
-    with ThreadPoolExecutor(max_workers=10) as executor:
+    # V11: Reduzido de 10 para 5 workers para evitar distorção de timing por rate limiting
+    with ThreadPoolExecutor(max_workers=5) as executor:
         futures = {executor.submit(test_smuggling, url): url for url in testable_urls}
         for future in as_completed(futures):
             try:

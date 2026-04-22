@@ -43,7 +43,9 @@ def extract_packages_from_content(content: str, source: str) -> list:
     seen = set()
 
     # 3. Solução: Verificar package.json (cruzar com manifesto real)
-    if "package.json" in source.lower():
+    # V11: Match mais preciso — nome do arquivo deve ser package.json, não substring
+    source_basename = source.rsplit("/", 1)[-1].lower() if "/" in source else source.lower()
+    if source_basename == "package.json":
         try:
             data = json.loads(content)
             keys = list(data.get("dependencies", {}).keys()) + list(data.get("devDependencies", {}).keys())
@@ -82,9 +84,10 @@ def extract_packages_from_content(content: str, source: str) -> list:
             if pkg_name in seen or pkg_name in NODE_BUILTINS or pkg_name.startswith(".") or len(pkg_name) < 2:
                 continue
 
-            # 1. Solução: Ignorar camelCase interno (ex: ReactPropTypes, VueRouter)
-            # Pacotes NPM quase sempre usam hifens (react-prop-types), raro usarem CamelCase no nome do package.
-            if re.search(r'[a-z][A-Z]', pkg_name) and not pkg_name.startswith('@'):
+            # 1. Solução: Ignorar PureCamelCase interno (ex: ReactPropTypes, VueRouter)
+            # Pacotes NPM usam hifens (react-prop-types). Apenas PureCamelCase é filtrado,
+            # pois nomes como "xmlbuilder2" ou "base64-js" contêm transição min>MAI mas são legítimos.
+            if re.match(r'^[A-Z][a-z]+(?:[A-Z][a-z]+)+$', pkg_name) and not pkg_name.startswith('@'):
                 continue
 
             seen.add(pkg_name)
@@ -187,6 +190,9 @@ def run(context: dict):
                 js_url = js_entry.get("url", "")
                 if js_url:
                     js_sources[js_url] = "extracted_js"
+        except (json.JSONDecodeError, ValueError) as e:
+            # V11: Avisar sobre JSON malformado em vez de silenciar
+            warn(f"   ⚠️ extracted_js.json malformado (possivelmente truncado): {str(e)[:80]}")
         except Exception:
             pass
 
@@ -199,9 +205,16 @@ def run(context: dict):
     def fetch_and_extract(url):
         import httpx
         try:
-            with httpx.Client(timeout=10, verify=False, follow_redirects=True) as client:
+            # V11: TLS habilitado para evitar MITM injetando pacotes falsos
+            with httpx.Client(timeout=10, verify=True, follow_redirects=True) as client:
                 resp = client.get(url)
-                if resp.status_code == 200 and len(resp.text) > 10:
+                # V11: Verificar content-type e status para evitar parsear páginas de erro WAF
+                if resp.status_code != 200:
+                    return []
+                ct = resp.headers.get("content-type", "").lower()
+                if ct and "javascript" not in ct and "json" not in ct and "text/plain" not in ct:
+                    return []
+                if len(resp.text) > 10:
                     return extract_packages_from_content(resp.text, url)
         except Exception:
             pass

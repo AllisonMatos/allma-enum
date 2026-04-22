@@ -99,8 +99,9 @@ def check_bucket(name: str):
     aws_url = f"https://s3.amazonaws.com/{name}"
     try:
         r = httpx.head(aws_url, timeout=3)
-        # O 400 Bad Request também significa que o bucket existe (region error do head), mas o 403 e 200 são absolutos
-        if r.status_code != 404:
+        # V11: Aceitar SOMENTE 200 (aberto) ou 403 (existe mas protegido)
+        # Outros códigos (400, 500, etc) são ruído
+        if r.status_code in (200, 403):
             status = "OPEN" if r.status_code == 200 else "PROTECTED"
             results.append({"provider": "AWS", "name": name, "status": status, "url": aws_url})
     except Exception:

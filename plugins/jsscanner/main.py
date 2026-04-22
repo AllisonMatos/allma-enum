@@ -120,8 +120,16 @@ def run_trufflehog(js_dir: Path) -> list:
         warn("⚠️ TruffleHog não encontrado no PATH. Usando apenas Regex para segredos.")
         return []
     
+    # V11: Timeout para evitar bloqueio indefinido em arquivos grandes
     cmd = [th, "filesystem", str(js_dir), "--json", "--no-update"]
-    res = subprocess.run(cmd, capture_output=True, text=True)
+    try:
+        res = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+    except subprocess.TimeoutExpired:
+        warn("   ⚠️ TruffleHog atingiu timeout (120s). Resultados parciais.")
+        return []
+    except Exception as e:
+        warn(f"   ⚠️ Erro no TruffleHog: {e}")
+        return []
     
     secrets = []
     import json
@@ -142,7 +150,7 @@ def run_trufflehog(js_dir: Path) -> list:
                         "type": secret_type,
                         "verified": verified
                     })
-        except:
+        except Exception:
             pass
     return secrets
 
@@ -272,7 +280,8 @@ async def run_async_scan(target, outdir, report_file, raw_file):
     for i, item in enumerate(results_data):
         safe_name = f"jsfile_{i}.js"
         item['safe_name'] = safe_name
-        (raw_js_dir / safe_name).write_text(item['text'], errors="ignore")
+        # V11: write_bytes para evitar truncamento em encoding inválido
+        (raw_js_dir / safe_name).write_bytes(item['text'].encode('utf-8', errors='replace'))
         
     info(f"{C.BOLD}{C.BLUE}🐷 Executando TruffleHog para detecção de segredos por Entropia...{C.END}")
     th_secrets = run_trufflehog(raw_js_dir)
@@ -289,7 +298,7 @@ async def run_async_scan(target, outdir, report_file, raw_file):
     
     # Limpa arquivos temporários do Trufflehog
     if raw_js_dir.exists():
-        shutil.rmtree(raw_js_dir)
+        shutil.rmtree(raw_js_dir, ignore_errors=True)
 
     # 4. Save Results
     info("💾 Salvando relatório...")

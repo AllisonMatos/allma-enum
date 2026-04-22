@@ -460,6 +460,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Enum-Allma Report: {target}</title>
     <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
         :root {{
             --bg-primary: #0d1117;
             --bg-secondary: #161b22;
@@ -475,6 +476,29 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             --accent-purple: #a371f7;
             --sidebar-width: 64px;
             --sidebar-width-expanded: 240px;
+            --radius-sm: 8px;
+            --radius-md: 12px;
+            --radius-lg: 16px;
+            --shadow-sm: 0 1px 3px rgba(0,0,0,0.2);
+            --shadow-md: 0 4px 12px rgba(0,0,0,0.25);
+            --shadow-lg: 0 8px 24px rgba(0,0,0,0.3);
+        }}
+        [data-theme="light"] {{
+            --bg-primary: #f0f2f5;
+            --bg-secondary: #ffffff;
+            --bg-tertiary: #f6f8fa;
+            --border-color: #d8dee4;
+            --text-primary: #1f2328;
+            --text-secondary: #656d76;
+            --text-muted: #8c959f;
+            --accent-blue: #0969da;
+            --accent-green: #1a7f37;
+            --accent-red: #cf222e;
+            --accent-orange: #9a6700;
+            --accent-purple: #8250df;
+            --shadow-sm: 0 1px 3px rgba(0,0,0,0.08);
+            --shadow-md: 0 4px 12px rgba(0,0,0,0.1);
+            --shadow-lg: 0 8px 24px rgba(0,0,0,0.12);
         }}
         
         * {{
@@ -484,13 +508,14 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }}
         
         body {{
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', Helvetica, Arial, sans-serif;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', Helvetica, Arial, sans-serif;
             background: var(--bg-primary);
             color: var(--text-primary);
             line-height: 1.5;
             height: 100vh;
             display: flex;
             overflow: hidden;
+            transition: background 0.3s ease, color 0.3s ease;
         }}
         
         /* SIDEBAR */
@@ -507,6 +532,22 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             overflow-x: hidden;
             overflow-y: auto;
             flex-shrink: 0;
+        }}
+        .sidebar.collapsed {{
+            width: var(--sidebar-width);
+        }}
+        .sidebar.collapsed .nav-label {{
+            opacity: 0;
+            width: 0;
+            overflow: hidden;
+        }}
+        .sidebar.collapsed .sidebar-category {{
+            font-size: 0;
+            padding: 8px 0;
+            text-align: center;
+        }}
+        .sidebar.collapsed .sidebar-category svg {{
+            width: 16px; height: 16px;
         }}
         
         .sidebar {{
@@ -675,9 +716,10 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         .stat-card {{
             background: var(--bg-secondary);
             border: 1px solid var(--border-color);
-            border-radius: 6px;
+            border-radius: var(--radius-md);
             padding: 16px;
-            transition: transform 0.2s;
+            transition: transform 0.2s, box-shadow 0.2s;
+            box-shadow: var(--shadow-sm);
         }}
         
         .stat-card:hover {{
@@ -748,8 +790,13 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         .card {{
             background: var(--bg-secondary);
             border: 1px solid var(--border-color);
-            border-radius: 6px;
+            border-radius: var(--radius-md);
             margin-bottom: 16px;
+            box-shadow: var(--shadow-sm);
+            transition: box-shadow 0.2s;
+        }}
+        .card:hover {{
+            box-shadow: var(--shadow-md);
         }}
         
         .card-header {{
@@ -912,10 +959,32 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             font-weight: 600;
             text-transform: uppercase;
             letter-spacing: 0.5px;
-            font-family: system-ui, sans-serif;
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
             border-bottom: 1px solid rgba(255,255,255,0.05);
             margin-bottom: 5px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
         }}
+        .sidebar-category svg {{
+            width: 14px; height: 14px; flex-shrink: 0;
+        }}
+        /* Sidebar Toggle */
+        .sidebar-toggle {{
+            width: 100%; height: 40px; display: flex; align-items: center; justify-content: center;
+            background: transparent; border: none; color: var(--text-secondary); cursor: pointer;
+            margin-bottom: 8px; transition: color 0.2s;
+        }}
+        .sidebar-toggle:hover {{ color: var(--text-primary); }}
+        .sidebar-toggle svg {{ width: 20px; height: 20px; }}
+        /* Theme Toggle */
+        .theme-toggle {{
+            background: var(--bg-tertiary); border: 1px solid var(--border-color);
+            color: var(--text-secondary); cursor: pointer; padding: 6px 12px;
+            border-radius: var(--radius-sm); font-size: 13px; display: flex;
+            align-items: center; gap: 6px; transition: all 0.2s;
+        }}
+        .theme-toggle:hover {{ color: var(--text-primary); border-color: var(--text-muted); }}
     </style>
     <script>const BURP_DATA = {{}};</script>
 </head>
@@ -960,143 +1029,150 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             </svg>
         </div>
         
+        <button class="sidebar-toggle" onclick="document.querySelector('.sidebar').classList.toggle('collapsed'); localStorage.setItem('sidebar_collapsed', document.querySelector('.sidebar').classList.contains('collapsed'))">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+        </button>
+        
         <button class="nav-btn active" data-section="dashboard" data-always-show="true">
-            <div class="nav-icon">&#9679;</div><div class="nav-label">Dashboard</div>
+            <div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"//></svg></div><div class="nav-label">Dashboard</div>
         </button>
         <button class="nav-btn" data-section="quickwins_attack" data-always-show="true">
-            <div class="nav-icon">&#9679;</div><div class="nav-label">Quick Wins <span class="count">{stats_quickwins}</span></div>
+            <div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"//></svg></div><div class="nav-label">Quick Wins <span class="count">{stats_quickwins}</span></div>
         </button>
 
-        <div class="sidebar-category">🌍 ASSETS & SURFACE</div>
+        <div class="sidebar-category"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg> SUPERFÍCIE</div>
         <button class="nav-btn" data-section="spiderfoot_sec" data-always-show="true">
-            <div class="nav-icon">&#9679;</div><div class="nav-label">SpiderFoot <span class="count">{stats_spiderfoot}</span></div>
+            <div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"//></svg></div><div class="nav-label">SpiderFoot <span class="count">{stats_spiderfoot}</span></div>
         </button>
         <button class="nav-btn" data-section="subdomains" data-always-show="true">
-            <div class="nav-icon">&#9679;</div><div class="nav-label">Subdomains <span class="count">{stats_subdomains}</span></div>
+            <div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"//></svg></div><div class="nav-label">Subdomains <span class="count">{stats_subdomains}</span></div>
         </button>
         <button class="nav-btn" data-section="urls" data-always-show="true">
-            <div class="nav-icon">&#9679;</div><div class="nav-label">URLs <span class="count">{stats_urls_combined}</span></div>
+            <div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"//></svg></div><div class="nav-label">URLs <span class="count">{stats_urls_combined}</span></div>
+        </button>
+        <button class="nav-btn" data-section="login_pages">
+            <div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"//></svg></div><div class="nav-label">Login Pages <span class="count">{stats_login}</span></div>
         </button>
         <button class="nav-btn" data-section="routes">
-            <div class="nav-icon">&#9679;</div><div class="nav-label">Endpoints <span class="count">{stats_endpoints}</span></div>
+            <div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="2"/><path d="M16.24 7.76a6 6 0 0 1 0 8.49m-8.48-.01a6 6 0 0 1 0-8.49m11.31-2.82a10 10 0 0 1 0 14.14m-14.14 0a10 10 0 0 1 0-14.14"//></svg></div><div class="nav-label">Endpoints <span class="count">{stats_endpoints}</span></div>
         </button>
         <button class="nav-btn" data-section="files">
-            <div class="nav-icon">&#9679;</div><div class="nav-label">Files</div>
+            <div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"//></svg></div><div class="nav-label">Files</div>
         </button>
         <button class="nav-btn" data-section="params">
-            <div class="nav-icon">&#9679;</div><div class="nav-label">Params <span class="count">{stats_params}</span></div>
+            <div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"//></svg></div><div class="nav-label">Params <span class="count">{stats_params}</span></div>
         </button>
         <button class="nav-btn" data-section="surfacemap">
-            <div class="nav-icon">&#9679;</div><div class="nav-label">Surface Map</div>
+            <div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"//></svg></div><div class="nav-label">Surface Map</div>
         </button>
         <button class="nav-btn" data-section="js">
-            <div class="nav-icon">&#9679;</div><div class="nav-label">JS Files <span class="count">{stats_js}</span></div>
+            <div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"//></svg></div><div class="nav-label">JS Files <span class="count">{stats_js}</span></div>
         </button>
         <button class="nav-btn" data-section="jsroutes">
-            <div class="nav-icon">&#9679;</div><div class="nav-label">API & JS <span class="count">{stats_js_routes}</span></div>
+            <div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"//></svg></div><div class="nav-label">API & JS <span class="count">{stats_js_routes}</span></div>
         </button>
         <button class="nav-btn" data-section="sourcemaps">
-            <div class="nav-icon">&#9679;</div><div class="nav-label">Source Maps <span class="count">{stats_sourcemaps}</span></div>
+            <div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7"/><path d="M11 18H8a2 2 0 0 1-2-2V9"//></svg></div><div class="nav-label">Source Maps <span class="count">{stats_sourcemaps}</span></div>
         </button>
 
-        <div class="sidebar-category">🔥 VULNERABILITIES</div>
+        <div class="sidebar-category"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg> VULNS</div>
         <button class="nav-btn" data-section="security">
-            <div class="nav-icon">&#9679;</div><div class="nav-label">Security <span class="count">{stats_xss}</span></div>
+            <div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"//></svg></div><div class="nav-label">Security <span class="count">{stats_xss}</span></div>
         </button>
         <button class="nav-btn" data-section="api_sec">
-            <div class="nav-icon">&#9679;</div><div class="nav-label">API Security <span class="count">{stats_api_security}</span></div>
+            <div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"//></svg></div><div class="nav-label">API Security <span class="count">{stats_api_security}</span></div>
         </button>
         <button class="nav-btn" data-section="logic">
-            <div class="nav-icon">&#9679;</div><div class="nav-label">Logic & Smug. <span class="count">{stats_logic}</span></div>
+            <div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"//></svg></div><div class="nav-label">Logic & Smug. <span class="count">{stats_logic}</span></div>
         </button>
         <button class="nav-btn" data-section="takeover">
-            <div class="nav-icon">&#9679;</div><div class="nav-label">Takeover <span class="count">{stats_takeover}</span></div>
+            <div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"//></svg></div><div class="nav-label">Takeover <span class="count">{stats_takeover}</span></div>
         </button>
         <button class="nav-btn" data-section="cve">
-            <div class="nav-icon">&#9679;</div><div class="nav-label">CVEs <span class="count">{stats_cves}</span></div>
+            <div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19.69 14a6.9 6.9 0 0 0 .31-2V5l-8-3-3.16 1.18"/><path d="M4.73 4.73L4 5v7c0 6 8 10 8 10a20.29 20.29 0 0 0 5.62-4.38"/><line x1="1" y1="1" x2="23" y2="23"//></svg></div><div class="nav-label">CVEs <span class="count">{stats_cves}</span></div>
         </button>
         <button class="nav-btn" data-section="depconfusion">
-            <div class="nav-icon">&#9679;</div><div class="nav-label">Dep. Conf. <span class="count">{stats_depconfusion}</span></div>
+            <div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"//></svg></div><div class="nav-label">Dep. Conf. <span class="count">{stats_depconfusion}</span></div>
         </button>
         <button class="nav-btn" data-section="ssrf_sec">
-            <div class="nav-icon">&#9679;</div><div class="nav-label">SSRF <span class="count">{stats_ssrf}</span></div>
+            <div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"//></svg></div><div class="nav-label">SSRF <span class="count">{stats_ssrf}</span></div>
         </button>
         <button class="nav-btn" data-section="open_redirect_sec">
-            <div class="nav-icon">&#9679;</div><div class="nav-label">Open Redir <span class="count">{stats_open_redirect}</span></div>
+            <div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><path d="M21 3l-7 7"/><path d="M10 14L3 21"//></svg></div><div class="nav-label">Open Redir <span class="count">{stats_open_redirect}</span></div>
         </button>
         <button class="nav-btn" data-section="crlf_sec">
-            <div class="nav-icon">&#9679;</div><div class="nav-label">CRLF <span class="count">{stats_crlf}</span></div>
+            <div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"//></svg></div><div class="nav-label">CRLF <span class="count">{stats_crlf}</span></div>
         </button>
         <button class="nav-btn" data-section="smuggling_sec">
-            <div class="nav-icon">&#9679;</div><div class="nav-label">Smuggling <span class="count">{stats_smuggling}</span></div>
+            <div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"//></svg></div><div class="nav-label">Smuggling <span class="count">{stats_smuggling}</span></div>
         </button>
         <button class="nav-btn" data-section="deser_sec">
-            <div class="nav-icon">&#9679;</div><div class="nav-label">Deserial. <span class="count">{stats_deser}</span></div>
+            <div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"//></svg></div><div class="nav-label">Deserial. <span class="count">{stats_deser}</span></div>
         </button>
         <button class="nav-btn" data-section="host_inj_sec">
-            <div class="nav-icon">&#9679;</div><div class="nav-label">Host Inj <span class="count">{stats_host_injection}</span></div>
+            <div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"//></svg></div><div class="nav-label">Host Inj <span class="count">{stats_host_injection}</span></div>
         </button>
         <button class="nav-btn" data-section="ssti_sec">
-            <div class="nav-icon">&#9679;</div><div class="nav-label">SSTI <span class="count">{stats_ssti}</span></div>
+            <div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"//></svg></div><div class="nav-label">SSTI <span class="count">{stats_ssti}</span></div>
         </button>
         <button class="nav-btn" data-section="xxe_sec">
-            <div class="nav-icon">&#9679;</div><div class="nav-label">XXE <span class="count">{stats_xxe}</span></div>
+            <div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"//></svg></div><div class="nav-label">XXE <span class="count">{stats_xxe}</span></div>
         </button>
         <button class="nav-btn" data-section="proto_sec">
-            <div class="nav-icon">&#9679;</div><div class="nav-label">Proto Poll <span class="count">{stats_proto_pollution}</span></div>
+            <div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"//></svg></div><div class="nav-label">Proto Poll <span class="count">{stats_proto_pollution}</span></div>
         </button>
         <button class="nav-btn" data-section="oauth_sec">
-            <div class="nav-icon">&#9679;</div><div class="nav-label">OAuth <span class="count">{stats_oauth}</span></div>
+            <div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"//></svg></div><div class="nav-label">OAuth <span class="count">{stats_oauth}</span></div>
         </button>
         <button class="nav-btn" data-section="api_ver_sec">
-            <div class="nav-icon">&#9679;</div><div class="nav-label">API Ver <span class="count">{stats_api_versioning}</span></div>
+            <div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"//></svg></div><div class="nav-label">API Ver <span class="count">{stats_api_versioning}</span></div>
         </button>
         <button class="nav-btn" data-section="file_upload_sec">
-            <div class="nav-icon">&#9679;</div><div class="nav-label">Upload <span class="count">{stats_file_upload}</span></div>
+            <div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"//></svg></div><div class="nav-label">Upload <span class="count">{stats_file_upload}</span></div>
         </button>
 
-        <div class="sidebar-category">⚙️ EXPOSURES</div>
+        <div class="sidebar-category"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg> EXPOSURES</div>
         <button class="nav-btn" data-section="admin">
-            <div class="nav-icon">&#9679;</div><div class="nav-label">Admin Panels <span class="count">{stats_admin}</span></div>
+            <div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"//></svg></div><div class="nav-label">Admin Panels <span class="count">{stats_admin}</span></div>
         </button>
         <button class="nav-btn" data-section="keys">
-            <div class="nav-icon">&#9679;</div><div class="nav-label">Keys & Secrets <span class="count">{stats_keys}</span></div>
+            <div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"//></svg></div><div class="nav-label">Keys & Secrets <span class="count">{stats_keys}</span></div>
         </button>
         <button class="nav-btn" data-section="emails">
-            <div class="nav-icon">&#9679;</div><div class="nav-label">Emails <span class="count">{stats_emails}</span></div>
+            <div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"//></svg></div><div class="nav-label">Emails <span class="count">{stats_emails}</span></div>
         </button>
         <button class="nav-btn" data-section="git">
-            <div class="nav-icon">&#9679;</div><div class="nav-label">Git Exposed <span class="count">{stats_git}</span></div>
+            <div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><line x1="1.05" y1="12" x2="7" y2="12"/><line x1="17.01" y1="12" x2="22.96" y2="12"//></svg></div><div class="nav-label">Git Exposed <span class="count">{stats_git}</span></div>
         </button>
         <button class="nav-btn" data-section="cloud">
-            <div class="nav-icon">&#9679;</div><div class="nav-label">Cloud Storage <span class="count">{stats_buckets}</span></div>
+            <div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"//></svg></div><div class="nav-label">Cloud Storage <span class="count">{stats_buckets}</span></div>
         </button>
         <button class="nav-btn" data-section="graphql_scan">
-            <div class="nav-icon">&#9679;</div><div class="nav-label">GraphQL <span class="count">{stats_graphql}</span></div>
+            <div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="2"/><path d="M16.24 7.76a6 6 0 0 1 0 8.49m-8.48-.01a6 6 0 0 1 0-8.49"//></svg></div><div class="nav-label">GraphQL <span class="count">{stats_graphql}</span></div>
         </button>
         <button class="nav-btn" data-section="swagger">
-            <div class="nav-icon">&#9679;</div><div class="nav-label">Swagger UI <span class="count">{stats_swagger}</span></div>
+            <div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"//></svg></div><div class="nav-label">Swagger UI <span class="count">{stats_swagger}</span></div>
         </button>
         <button class="nav-btn" data-section="jwt_sec">
-            <div class="nav-icon">&#9679;</div><div class="nav-label">JWT <span class="count">{stats_jwt}</span></div>
+            <div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"//></svg></div><div class="nav-label">JWT <span class="count">{stats_jwt}</span></div>
         </button>
         <button class="nav-btn" data-section="services">
-            <div class="nav-icon">&#9679;</div><div class="nav-label">Ports/Services <span class="count">{stats_ports}</span></div>
+            <div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"//></svg></div><div class="nav-label">Ports/Services <span class="count">{stats_ports}</span></div>
         </button>
         <button class="nav-btn" data-section="waf">
-            <div class="nav-icon">&#9679;</div><div class="nav-label">WAF Detection <span class="count">{stats_waf}</span></div>
+            <div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"//></svg></div><div class="nav-label">WAF Detection <span class="count">{stats_waf}</span></div>
         </button>
         <button class="nav-btn" data-section="email_sec">
-            <div class="nav-icon">&#9679;</div><div class="nav-label">Email Sec</div>
+            <div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"//></svg></div><div class="nav-label">Email Sec</div>
         </button>
         <button class="nav-btn" data-section="oast_sec">
-            <div class="nav-icon">&#9679;</div><div class="nav-label" style="color:#ff7b72">Blind Bugs <span class="count">{stats_oast}</span></div>
+            <div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"//></svg></div><div class="nav-label" style="color:#ff7b72">Blind Bugs <span class="count">{stats_oast}</span></div>
         </button>
         <button class="nav-btn" data-section="wordlist_sec">
-            <div class="nav-icon">&#9679;</div><div class="nav-label">Wordlists <span class="count">{stats_wordlist}</span></div>
+            <div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"//></svg></div><div class="nav-label">Wordlists <span class="count">{stats_wordlist}</span></div>
         </button>
         <button class="nav-btn" data-section="dorks_sec">
-            <div class="nav-icon">&#9679;</div><div class="nav-label">Dorks <span class="count">{stats_google_dorks}</span></div>
+            <div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"//></svg></div><div class="nav-label">Dorks <span class="count">{stats_google_dorks}</span></div>
         </button>
     </nav>
     
@@ -1105,8 +1181,11 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             <div class="page-title">
                 <h1>Enum-Allma: <span>{target}</span></h1>
             </div>
-            <div class="meta-info">
-                {date} &nbsp; {time}
+            <div style="display:flex;align-items:center;gap:12px;">
+                <button class="theme-toggle" onclick="toggleTheme()" id="themeBtn">🌙 Dark</button>
+                <div class="meta-info">
+                    {date} &nbsp; {time}
+                </div>
             </div>
         </header>
         
@@ -1163,8 +1242,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                     </div>
                 </div>
 
-                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:20px; margin-top:20px;">
-                    <div>{hvt_dashboard}</div>
+                <div style="margin-top:20px;">
                     <div class="card open" style="border-left: 4px solid var(--accent-blue);">
                          <div class="card-header">
                             <span class="card-title"> Dicas de Hacking (Recon Intelligence)</span>
@@ -1184,6 +1262,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 
             <section class="section" id="services">{services_content}</section>
             <section class="section" id="urls">{urls_content}</section>
+            <section class="section" id="login_pages">{login_pages_content}</section>
             <section class="section" id="keys">{keys_content}</section>
             <section class="section" id="routes">{routes_content}</section>
             <section class="section" id="js">{js_content}</section>
@@ -1483,6 +1562,28 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             renderPaginatedTable(containerId);
         }}
         
+
+        // Theme Toggle
+        function toggleTheme() {
+            const html = document.documentElement;
+            const isDark = html.getAttribute('data-theme') !== 'light';
+            html.setAttribute('data-theme', isDark ? 'light' : 'dark');
+            localStorage.setItem('theme', isDark ? 'light' : 'dark');
+            document.getElementById('themeBtn').textContent = isDark ? '☀️ Light' : '🌙 Dark';
+        }
+        // Restore preferences
+        (function() {
+            const savedTheme = localStorage.getItem('theme');
+            if (savedTheme === 'light') {
+                document.documentElement.setAttribute('data-theme', 'light');
+                setTimeout(() => { const btn = document.getElementById('themeBtn'); if(btn) btn.textContent = '☀️ Light'; }, 0);
+            }
+            const collapsed = localStorage.getItem('sidebar_collapsed');
+            if (collapsed === 'true') {
+                setTimeout(() => document.querySelector('.sidebar')?.classList.add('collapsed'), 0);
+            }
+        })();
+
         // ==========================================
         // AUTO-HIDE EMPTY SECTIONS IN SIDEBAR
         // ==========================================
@@ -2009,16 +2110,7 @@ def build_subdomains_content(subdomains: Dict, target: str) -> str:
                 </div>
             </div>''')
             
-        if data["urls"]:
-            urls_list_items = []
-            for u in data["urls"]:
-                is_log = u in data.get("login_urls", set())
-                style = "color:var(--accent-orange);font-weight:bold;" if is_log else "color:var(--accent-green);"
-                url_badge = ' <span class="tag tag-medium" style="font-size:10px;">LOGIN</span>' if is_log else ""
-                urls_list_items.append(f'<a href="{u}" target="_blank" style="{style}">{html.escape(u)}</a>{url_badge}')
-            
-            urls_list = "<br>".join(urls_list_items)
-            content_parts.append(f'<p><strong>Validated URLs ({urls_count}):</strong><br>{urls_list}</p>')
+        # URLs removed from subdomain cards (shown in URLs section with filter)
         
         content = "".join(content_parts) if content_parts else "<p>No additional data</p>"
         
@@ -2142,21 +2234,27 @@ def build_urls_content(subdomains: Dict, target: str) -> str:
     all_urls = sorted(all_urls, key=lambda x: (x["host"], 0 if x["type"] == "validated" else 1, x["url"]))
     json_data = json.dumps(all_urls).replace("</", "<\\/")
     
+    # Build subdomain dropdown options
+    url_hosts = sorted(set(u["host"] for u in all_urls))
+    host_options = "".join(f'<option value="{html.escape(h)}">{html.escape(h)} ({sum(1 for u in all_urls if u["host"]==h)})</option>' for h in url_hosts)
+    
     return f'''
-    <div class="card open" style="margin-top:20px;">
+    <div style="margin-bottom:16px;">
+        <select id="urlSubdomainFilter" onchange="window._filterUrlsBySub(this.value)" style="width:100%;max-width:400px;background:var(--bg-secondary);border:1px solid var(--border-color);border-radius:var(--radius-sm,8px);padding:10px 14px;color:var(--text-primary);font-size:13px;font-family:Inter,sans-serif;">
+            <option value="">All Subdomains ({len(all_urls)} URLs)</option>
+            {host_options}
+        </select>
+    </div>
+    <div class="card open">
         <div class="card-header">
-            <span class="card-title"> All Found URLs</span>
-            <span class="card-badge">{len(all_urls)} URLs</span>
+            <span class="card-title">Found URLs</span>
+            <span class="card-badge" id="urlCountBadge">{len(all_urls)} URLs</span>
         </div>
         <div class="card-content" id="urls_container" style="display:block;"></div>
     </div>
     <script>
-        setTimeout(function() {{
-            initPaginatedTable(
-                "urls_container", 
-                {json_data}, 
-                ["Host", "URL", "Type", "Tags", "Login"], 
-                function(row) {{
+        var _allUrlsData = {json_data};
+        window._urlRenderFn = function(row) {{
                     let style = row.type === "validated" ? "color:var(--text-primary);" : "color:var(--text-muted);";
                     let type_badge = row.type === "validated" ? '<span class="tag tag-high" style="background:#23863630; color:#3fb950; font-size:10px;"> Validated</span>' : '<span class="tag tag-low" style="background:#d2992230; color:#d29922; font-size:10px;"> Discovered</span>';
                     let login_badge = row.is_login ? '<span class="tag tag-medium"> LOGIN</span>' : "";
@@ -2169,9 +2267,14 @@ def build_urls_content(subdomains: Dict, target: str) -> str:
                         <td>${{tags_html}}</td>
                         <td>${{login_badge}}</td>
                     </tr>`;
-                }},
-                100 // 100 per page layout
-            );
+                }};
+        window._filterUrlsBySub = function(host) {{
+            var filtered = host ? _allUrlsData.filter(function(r){{ return r.host === host; }}) : _allUrlsData;
+            document.getElementById("urlCountBadge").textContent = filtered.length + " URLs";
+            initPaginatedTable("urls_container", filtered, ["Host", "URL", "Type", "Tags", "Login"], window._urlRenderFn, 100);
+        }};
+        setTimeout(function() {{
+            initPaginatedTable("urls_container", _allUrlsData, ["Host", "URL", "Type", "Tags", "Login"], window._urlRenderFn, 100);
         }}, 0);
     </script>
     '''
@@ -2397,6 +2500,58 @@ def build_keys_content(target: str) -> str:
     return "".join(html_parts)
 
 
+def build_login_pages_content(subdomains: Dict, target: str) -> str:
+    """Build dedicated Login Pages section."""
+    from pathlib import Path
+    from urllib.parse import urlparse
+    
+    base = Path("output") / target
+    login_urls = []
+    
+    for url in read_file_lines(base / "domain" / "login_pages.txt"):
+        try:
+            host = urlparse(url).netloc.split(":")[0]
+        except:
+            host = "Unknown"
+        login_urls.append({"url": url, "host": host, "source": "detected"})
+    
+    for host, data in subdomains.items():
+        for url in data.get("login_urls", set()):
+            if not any(l["url"] == url for l in login_urls):
+                login_urls.append({"url": url, "host": host, "source": "heuristic"})
+    
+    if not login_urls:
+        return '<div class="empty-state"><p>No login pages found.</p></div>'
+    
+    login_urls.sort(key=lambda x: (x["host"], x["url"]))
+    
+    rows = ""
+    for item in login_urls:
+        rows += '<tr>'
+        rows += f'<td><a href="{html.escape(item["url"])}" target="_blank" style="color:var(--accent-orange);font-weight:600;">{html.escape(item["url"][:80])}</a></td>'
+        rows += f'<td>{html.escape(item["host"])}</td>'
+        rows += f'<td><span class="tag tag-medium">{html.escape(item["source"])}</span></td>'
+        rows += '</tr>'
+    
+    return f"""
+    <div class="card open" style="border-left: 4px solid var(--accent-orange);">
+        <div class="card-header">
+            <span class="card-title">Authentication & Login Pages</span>
+            <span class="card-badge">{len(login_urls)} pages</span>
+        </div>
+        <div class="card-content" style="display:block;">
+            <p style="color:var(--text-secondary); margin-bottom:12px;">All pages detected as authentication endpoints, login forms, or access portals.</p>
+            <div class="table-wrapper">
+                <table>
+                    <thead><tr><th>URL</th><th>Subdomain</th><th>Source</th></tr></thead>
+                    <tbody>{rows}</tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    """
+
+
 def build_files_content(target: str) -> str:
     base = Path("output") / target
     files_content = read_file_raw(base / "files" / "files_by_extension.txt")
@@ -2422,17 +2577,69 @@ def build_files_content(target: str) -> str:
         </div>
         '''
     
-    return f'''
+    # Parse files_by_extension.txt into structured data
+    ext_data = {}
+    current_ext = None
+    for line in files_content.splitlines():
+        line_s = line.strip()
+        if line_s.startswith("=== ") and line_s.endswith(" ==="):
+            current_ext = line_s[4:-4].strip()
+            ext_data[current_ext] = []
+        elif line_s and current_ext:
+            ext_data[current_ext].append(line_s)
+    
+    if not ext_data:
+        return sensitive_html + '<div class="empty-state"><p>No files categorized</p></div>'
+    
+    ext_json = json.dumps(ext_data).replace("</", "<\\/")
+    total_files = sum(len(v) for v in ext_data.values())
+    
+    ext_chips_script = """
+    <script>
+        (function() {
+            var extData = """ + ext_json + """;
+            var activeExt = "";
+            var chips = document.getElementById("extChips");
+            var container = document.getElementById("files_ext_container");
+            
+            function renderChips() {
+                var total = Object.values(extData).reduce(function(a,b){return a+b.length;}, 0);
+                var h = '<button class="burp-btn" style="border-radius:20px;padding:4px 14px;' + (activeExt === "" ? "background:var(--accent-blue);color:#fff;" : "") + '" onclick="window._fExt(\'\')">All (' + total + ')</button>';
+                Object.keys(extData).sort(function(a,b){return extData[b].length-extData[a].length;}).forEach(function(ext) {
+                    var active = activeExt === ext;
+                    h += '<button class="burp-btn" style="border-radius:20px;padding:4px 14px;' + (active ? "background:var(--accent-blue);color:#fff;" : "") + '" onclick="window._fExt(\'' + ext.replace(/'/g,"\\'") + '\')">' + ext + ' (' + extData[ext].length + ')</button>';
+                });
+                chips.innerHTML = h;
+            }
+            function renderFiles() {
+                var exts = activeExt ? [activeExt] : Object.keys(extData).sort(function(a,b){return extData[b].length-extData[a].length;});
+                var rows = [];
+                exts.forEach(function(ext){extData[ext].forEach(function(url){rows.push({ext:ext,url:url});});});
+                if(typeof initPaginatedTable==="function"){
+                    initPaginatedTable("files_ext_container", rows, ["Extension","URL"], function(row){
+                        return '<tr><td><span class="tag tag-low">'+escapeHtml(row.ext)+'</span></td><td style="word-break:break-all;"><a href="'+escapeHtml(row.url)+'" target="_blank">'+escapeHtml(row.url)+'</a></td></tr>';
+                    }, 100);
+                }
+            }
+            window._fExt = function(ext){ activeExt=ext; renderChips(); renderFiles(); };
+            setTimeout(function(){ renderChips(); renderFiles(); }, 100);
+        })();
+    </script>"""
+    
+    return f"""
     {sensitive_html}
     <div class="card open">
         <div class="card-header">
             <span class="card-title">Files by Extension</span>
+            <span class="card-badge">{total_files} files in {len(ext_data)} types</span>
         </div>
-        <div class="card-content">
-            <pre>{html.escape(files_content)}</pre>
+        <div class="card-content" style="display:block;">
+            <div id="extChips" style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:16px;"></div>
+            <div id="files_ext_container"></div>
         </div>
     </div>
-    '''
+    {ext_chips_script}
+    """
 
 
 def build_services_content(target: str) -> str:
@@ -4551,6 +4758,7 @@ def run(context: Dict[str, Any]) -> List[str]:
         "subdomains_content": build_subdomains_content(subdomains, target),
         "ports_content": build_ports_content(target),
         "urls_content": build_urls_content(subdomains, target),
+        "login_pages_content": build_login_pages_content(subdomains, target),
         "technologies_content": build_technologies_content(target),
         "keys_content": build_keys_content(target),
         "routes_content": build_routes_content(target),
@@ -4606,6 +4814,7 @@ def run(context: Dict[str, Any]) -> List[str]:
         "deser_content": build_deser_content(target),
         "quickwins_attack_content": build_quick_wins_content(target),
         "stats_quickwins": len(read_json_file(Path("output") / target / "intelligence" / "quick_wins.json") or []),
+        "stats_ssrf": 0,  # SSRF stats placeholder
         "stats_oast": len(read_file_lines(Path("output") / target / "interactsh.json")),
         "oast_content": build_oast_content(target),
         "stats_wordlist": stats.get("wordlist_count", 0),

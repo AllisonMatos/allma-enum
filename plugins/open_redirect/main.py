@@ -12,7 +12,7 @@ from pathlib import Path
 from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from core.config import DEFAULT_USER_AGENT, REQUEST_DELAY, DEFAULT_TIMEOUT
+from core.config import DEFAULT_USER_AGENT, REQUEST_DELAY, DEFAULT_TIMEOUT, get_user_agent
 from menu import C
 from plugins import ensure_outdir
 from ..output import info, success, warn, error
@@ -224,7 +224,8 @@ def run(context: dict):
             deduped.append((url, param))
     
     candidates = deduped[:80]
-    max_workers = 5 if stealth else 15
+    # V11: Reduzir workers para thread-safety com httpx.Client compartilhado
+    max_workers = 3 if stealth else 5
     
     results = []
     found_keys = set()  # V10.3: Dedup resultados

@@ -2,7 +2,7 @@
 Admin Panel Discovery — Descobre painéis administrativos expostos.
 Testa 80+ paths comuns em URLs válidas + portas alternativas.
 """
-from core.config import DEFAULT_USER_AGENT, REQUEST_DELAY
+from core.config import DEFAULT_USER_AGENT, REQUEST_DELAY, get_user_agent
 import json
 import re
 import shutil
@@ -554,7 +554,8 @@ def run(context: dict):
 
         total_bases = len(extended_bases)
         done_bases = 0
-        with ThreadPoolExecutor(max_workers=35) as base_executor:
+        # V11: Reduzir workers para thread-safety com httpx.Client compartilhado
+        with ThreadPoolExecutor(max_workers=15) as base_executor:
             base_futures = [base_executor.submit(check_baseline, b) for b in extended_bases]
             for fut in as_completed(base_futures):
                 done_bases += 1
@@ -585,7 +586,8 @@ def run(context: dict):
         seen_hashes = set()
         seen_titles_per_host = set()
 
-        with ThreadPoolExecutor(max_workers=35) as executor:
+        # V11: Reduzir workers para thread-safety
+        with ThreadPoolExecutor(max_workers=15) as executor:
             futures = {}
             for base in valid_bases:
                 for path in ADMIN_PATHS:

@@ -26,11 +26,12 @@ def _probe_versions(base_url: str) -> list:
     parsed = urlparse(base_url)
     origin = f"{parsed.scheme}://{parsed.netloc}"
 
-    for vpath in VERSION_PATHS:
-        test_url = f"{origin}{vpath}"
-        time.sleep(REQUEST_DELAY)
-        try:
-            with httpx.Client(timeout=DEFAULT_TIMEOUT, verify=False, follow_redirects=True) as client:
+    # V11: Client por função (antes era client por request = N×11 TLS handshakes)
+    with httpx.Client(timeout=DEFAULT_TIMEOUT, verify=False, follow_redirects=True) as client:
+        for vpath in VERSION_PATHS:
+            test_url = f"{origin}{vpath}"
+            time.sleep(REQUEST_DELAY)
+            try:
                 resp = client.get(test_url, headers={"User-Agent": DEFAULT_USER_AGENT})
                 # Evitar 403 (WAF block common FP), 404, e outros erros 5xx
                 if resp.status_code < 400 or resp.status_code == 401:
@@ -57,8 +58,8 @@ def _probe_versions(base_url: str) -> list:
                         "request_raw": format_http_request(resp.request),
                         "response_raw": format_http_response(resp),
                     })
-        except Exception:
-            pass
+            except Exception:
+                pass
 
     return results
 
@@ -86,15 +87,19 @@ def run(context: dict):
 
     valid_urls = [l.strip() for l in urls_file.read_text().splitlines() if l.strip()]
 
-    # Dedup por host
+    # V11: Dedup por host (normaliza www. para evitar duplicatas)
     seen = set()
     unique = []
     for u in valid_urls:
         p = urlparse(u)
-        h = f"{p.scheme}://{p.netloc}"
+        host = p.netloc.lower()
+        # Normalizar: www.example.com → example.com
+        if host.startswith("www."):
+            host = host[4:]
+        h = f"{p.scheme}://{host}"
         if h not in seen:
             seen.add(h)
-            unique.append(h)
+            unique.append(f"{p.scheme}://{p.netloc}")  # Manter URL original para request
 
     info(f"   📋 Testando {len(unique)} hosts com {len(VERSION_PATHS)} versões...")
 

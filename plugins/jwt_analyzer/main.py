@@ -260,6 +260,40 @@ def analyze_jwt(token, source):
             "source": source,
         })
     
+    # 6) V11: jku (JWK Set URL) header — permite apontar para chave pública externa
+    jku = header.get("jku")
+    if jku:
+        findings.append({
+            "type": "JKU_HEADER_PRESENT",
+            "risk": "HIGH",
+            "details": f"Token contém header 'jku': {jku} — atacante pode redirecionar para sua própria JWKS URL",
+            "token_preview": token[:50] + "...",
+            "header": header,
+            "payload": payload,
+            "source": source,
+            "jku_url": jku,
+        })
+    
+    # 7) V11: kid (Key ID) header — pode ser explorado via SQLi ou path traversal
+    kid = header.get("kid")
+    if kid:
+        risk = "MEDIUM"
+        details = f"Token contém header 'kid': {kid} — testar SQLi e path traversal no kid"
+        # Indicadores de kid vulnerável
+        if any(c in str(kid) for c in ["'", "/", "..", "\\"]):
+            risk = "HIGH"
+            details += " — CARACTERES SUSPEITOS no kid!"
+        findings.append({
+            "type": "KID_HEADER_PRESENT",
+            "risk": risk,
+            "details": details,
+            "token_preview": token[:50] + "...",
+            "header": header,
+            "payload": payload,
+            "source": source,
+            "kid_value": kid,
+        })
+    
     return findings if findings else None
 
 
@@ -376,8 +410,8 @@ def run(context: dict):
                                 key_info = json.dumps(first_key)
                                 public_key = key_info
                                 all_findings.append({
-                                    "type": "KEY_CONFUSION_POTENTIAL",
-                                    "risk": "HIGH",
+                                    "type": "JWKS_ENDPOINT_FOUND",
+                                    "risk": "INFO",
                                     "details": f"Chave pública encontrada em {ep} — testar Key Confusion (RS256→HS256) com esta chave como secret HMAC",
                                     "endpoint": ep,
                                     "key_preview": key_info[:200],
@@ -409,9 +443,9 @@ def run(context: dict):
                         confused_token = f"{signing_input}.{signature}"
                         
                         all_findings.append({
-                            "type": "KEY_CONFUSION_TOKEN",
-                            "risk": "CRITICAL",
-                            "details": "Token HS256 gerado com public key como HMAC secret — testar em endpoints autenticados",
+                            "type": "KEY_CONFUSION_CANDIDATE",
+                            "risk": "MEDIUM",
+                            "details": "Token HS256 gerado com public key como HMAC secret — PRECISA ser testado contra endpoints autenticados",
                             "original_alg": header.get("alg"),
                             "confused_token_preview": confused_token[:80] + "...",
                             "source": source,

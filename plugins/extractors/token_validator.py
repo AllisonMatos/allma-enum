@@ -6,7 +6,7 @@ Enhanced: Suporte a Vercel, Discord, Telegram, NPM, Supabase, além dos originai
 import json
 import base64
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 
 from ..output import info, warn
 
@@ -57,7 +57,15 @@ def validate_token(key_type: str, token_value: str) -> dict:
     validator = validators.get(key_type)
     if validator:
         try:
-            return validator(token_value)
+            # V11: Sanitizar input — remover whitespace/newlines
+            clean_token = token_value.strip() if token_value else ""
+            if not clean_token:
+                return {
+                    "validated": False,
+                    "validation_info": "Token vazio ou nulo",
+                    "validation_type": "error",
+                }
+            return validator(clean_token)
         except Exception as e:
             return {
                 "validated": None,
@@ -67,7 +75,9 @@ def validate_token(key_type: str, token_value: str) -> dict:
 
     # JWT decode
     if key_type == "JWT Token":
-        return _validate_jwt(token_value)
+        clean_token = token_value.strip() if token_value else ""
+        return _validate_jwt(clean_token) if clean_token else {
+            "validated": False, "validation_info": "Token vazio", "validation_type": "error"}
 
     # Tipo não suportado para validação
     return {
@@ -164,8 +174,8 @@ def _validate_google(token: str) -> dict:
                     }
                 elif data.get("status") == "OVER_QUERY_LIMIT":
                      return {
-                        "validated": True,
-                        "validation_info": "Google API Key ATIVA (Quota Exceeded)",
+                        "validated": None,
+                        "validation_info": "Google API Key possivelmente ativa (Quota Exceeded — não confirmada)",
                         "validation_type": "api_check",
                     }
 
@@ -237,9 +247,10 @@ def _validate_stripe(token: str) -> dict:
     if not clean:
         if "sk_test_" in token or "rk_test_" in token:
             return {
-                "validated": True,
-                "validation_info": "Stripe TEST Key (não é produção)",
-                "validation_type": "format_check",
+                # V11: Test keys NÃO devem ser validated=True (enganoso para consumers)
+                "validated": None,
+                "validation_info": "Stripe TEST Key (ambiente de testes, não produção)",
+                "validation_type": "test_key",
             }
         return {"validated": False, "validation_info": "Formato inválido", "validation_type": "format_check"}
 
@@ -294,10 +305,12 @@ def _validate_twilio_sid(token: str) -> dict:
 
 def _validate_twitter_bearer(token: str) -> dict:
     """Valida formato de Twitter Bearer Token."""
-    if token.startswith('AAAA') and len(token) > 100 and '%' not in token:
+    # V11: Validação mais restritiva — exige charset base64 válido
+    if (token.startswith('AAAA') and len(token) > 100 and '%' not in token
+            and re.fullmatch(r'[A-Za-z0-9%+/=]+', token)):
         return {
             "validated": None,
-            "validation_info": "Formato provável de Twitter Bearer Token (Length/Prefix OK)",
+            "validation_info": "Formato provável de Twitter Bearer Token (Length/Prefix/Charset OK)",
             "validation_type": "format_check",
         }
     return {"validated": False, "validation_info": "Falso positivo provável (Prefix/Length/Chars inválidos)", "validation_type": "format_check"}
@@ -373,7 +386,8 @@ def _validate_vercel(token: str) -> dict:
 
 def _validate_telegram(token: str) -> dict:
     """Valida Telegram Bot token via getMe."""
-    clean = re.search(r'([0-9]+:AA[0-9A-Za-z_-]{33})', token)
+    # V11: Telegram bots antigos podem usar prefixos AB, AC, etc (não apenas AA)
+    clean = re.search(r'([0-9]+:A[A-Za-z][0-9A-Za-z_-]{33})', token)
     if not clean:
         return {"validated": False, "validation_info": "Formato inválido", "validation_type": "format_check"}
 
@@ -498,8 +512,9 @@ def _validate_jwt(token: str) -> dict:
 
         exp = payload.get("exp")
         if exp:
-            exp_date = datetime.fromtimestamp(exp)
-            if exp_date < datetime.now():
+            # V11: Usar UTC para evitar erros de fuso horário
+            exp_date = datetime.fromtimestamp(exp, tz=timezone.utc)
+            if exp_date < datetime.now(tz=timezone.utc):
                 return {
                     "validated": False,
                     "validation_info": f"JWT EXPIRADO em {exp_date.strftime('%Y-%m-%d %H:%M')}",

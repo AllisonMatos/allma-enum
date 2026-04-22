@@ -32,8 +32,9 @@ SERIALIZATION_PATTERNS = {
         "desc": "Java ObjectInputStream — vulnerável a RCE via gadget chains",
     },
     "PHP Serialized": {
-        # V10.6: Regex mais precisa — requer marcador + conteúdo + terminador ou marcador duplo
-        "regex": re.compile(r'(?:[OaCsi]:\d+:(?:"[^"]*"|{|\d+;))', re.I),
+        # V11: Regex mais precisa — requer marcador + conteúdo substancial + terminador
+        # Evita FPs de strings curtas como 'a:0:' que aparecem em cookies/HTML
+        "regex": re.compile(r'(?:[OaCsi]:\d+:(?:"[^"]{2,}"|{[^}]+}|\d+;)){2,}', re.I),
         "risk": "HIGH",
         "desc": "PHP serialize() — vulnerável a property injection e RCE",
     },
@@ -88,7 +89,9 @@ def check_value_for_serialization(value, source_type, source_name):
     # Tentar decodificar base64 para buscar magic bytes
     if len(value) > 20:
         try:
-            decoded = base64.b64decode(value + "==")
+            # V11: Calcular padding base64 correto em vez de adicionar '==' cegamente
+            padded = value + '=' * (-len(value) % 4)
+            decoded = base64.b64decode(padded)
             hex_str = decoded[:5].hex()
             
             # Java
@@ -180,6 +183,9 @@ def scan_url(client, url):
             # Verificar se MAC está presente
             mac_match = re.search(r'name="__VIEWSTATEGENERATOR"[^>]*value="([^"]+)"', body, re.I)
             
+            # V11: Verificar __EVENTVALIDATION (complemento do ViewState)
+            event_validation = re.search(r'name="__EVENTVALIDATION"[^>]*value="([^"]+)"', body, re.I)
+
             all_findings.append({
                 "url": url,
                 "pattern": ".NET ViewState",
@@ -188,7 +194,9 @@ def scan_url(client, url):
                 "source_type": "form_field",
                 "source_name": "__VIEWSTATE",
                 "value_preview": vs_value[:100],
-                "details": f".NET ViewState encontrado — {'MAC present (verificar se pode ser bypassed)' if mac_match else 'Sem MAC validation — possível RCE'}",
+                "has_mac": bool(mac_match),
+                "has_event_validation": bool(event_validation),
+                "details": f".NET ViewState encontrado — {'MAC present (verificar se pode ser bypassed)' if mac_match else 'Sem MAC validation — possível RCE'}{' | EventValidation: presente' if event_validation else ''}",
                 "request_raw": raw_req,
                 "response_raw": raw_res,
             })
@@ -237,20 +245,24 @@ def run(context: dict):
     
     all_findings = []
     
-    with httpx.Client(verify=False, follow_redirects=True, timeout=15) as client:
-        with ThreadPoolExecutor(max_workers=10) as executor:
-            futures = {executor.submit(scan_url, client, url): url for url in all_urls}
-            
-            for future in as_completed(futures):
-                try:
-                    results = future.result()
-                    if results:
-                        all_findings.extend(results)
-                        url = futures[future]
-                        for r in results:
-                            info(f"   🚨 {C.RED}{r.get('pattern', 'DESER')}: {url}{C.END}")
-                except Exception:
-                    pass
+    # V11: Thread-safe — scan_url cria seu próprio client internamente
+    def scan_url_safe(url):
+        with httpx.Client(verify=False, follow_redirects=True, timeout=15) as client:
+            return scan_url(client, url)
+    
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        futures = {executor.submit(scan_url_safe, url): url for url in all_urls}
+        
+        for future in as_completed(futures):
+            try:
+                results = future.result()
+                if results:
+                    all_findings.extend(results)
+                    url = futures[future]
+                    for r in results:
+                        info(f"   🚨 {C.RED}{r.get('pattern', 'DESER')}: {url}{C.END}")
+            except Exception:
+                pass
     
     results_file.write_text(json.dumps(all_findings, indent=2, ensure_ascii=False))
     

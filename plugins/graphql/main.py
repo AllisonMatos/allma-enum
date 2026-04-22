@@ -24,6 +24,8 @@ GRAPHQL_PATHS = [
     "/graphql", "/graphiql", "/gql", "/query",
     "/api/graphql", "/api/gql", "/v1/graphql", "/v2/graphql",
     "/graphql/v1", "/playground", "/__graphql",
+    # V11: Paths adicionais
+    "/api/v1/gql", "/graphql/console", "/graphql/playground",
 ]
 
 INTROSPECTION_QUERY = '{"query": "{ __schema { types { name fields { name } } } }"}'
@@ -257,32 +259,35 @@ def run(context: dict):
     
     all_findings = []
     
-    # V10.6: Thread-safe limits com pool grande o suficiente para workers
-    limits = httpx.Limits(max_keepalive_connections=80, max_connections=150)
-    with httpx.Client(verify=False, follow_redirects=True, timeout=15, limits=limits) as client:
-        with ThreadPoolExecutor(max_workers=20) as executor:
-            futures = {executor.submit(test_endpoint, client, url): url for url in test_urls}
-            
-            done_count = 0
-            for future in as_completed(futures):
-                done_count += 1
-                if done_count % 20 == 0 or done_count == total_urls:
-                    pct = int((done_count / total_urls) * 100) if total_urls > 0 else 100
-                    print(f"   [Total: {total_urls} | Atual: {done_count}] {pct}% completo... ({len(all_findings)} encontrados)", end="\r")
+    # V11: Thread-safe — cada thread cria seu próprio client (httpx.Client NÃO é thread-safe)
+    def test_endpoint_safe(url):
+        with httpx.Client(verify=False, follow_redirects=True, timeout=15) as thread_client:
+            return test_endpoint(thread_client, url)
 
-                try:
-                    findings = future.result()
-                    if findings:
-                        all_findings.extend(findings)
-                        print(" " * 80, end="\r")
-                        for f in findings:
-                            info(f"   🚨 {C.RED}{f['type']}: {futures[future]}{C.END}")
-                except Exception:
-                    pass
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        futures = {executor.submit(test_endpoint_safe, url): url for url in test_urls}
         
-        # V10.4: Depth Limiting DoS Test
-        info(f"   🔄 {C.CYAN}[V10.4] Testando depth limiting em endpoints GraphQL...{C.END}")
-        for url in test_urls[:5]:  # Limitar a 5 endpoints
+        done_count = 0
+        for future in as_completed(futures):
+            done_count += 1
+            if done_count % 20 == 0 or done_count == total_urls:
+                pct = int((done_count / total_urls) * 100) if total_urls > 0 else 100
+                print(f"   [Total: {total_urls} | Atual: {done_count}] {pct}% completo... ({len(all_findings)} encontrados)", end="\r")
+
+            try:
+                findings = future.result()
+                if findings:
+                    all_findings.extend(findings)
+                    print(" " * 80, end="\r")
+                    for f in findings:
+                        info(f"   🚨 {C.RED}{f['type']}: {futures[future]}{C.END}")
+            except Exception:
+                pass
+    
+    # V10.4: Depth Limiting DoS Test
+    info(f"   🔄 {C.CYAN}[V10.4] Testando depth limiting em endpoints GraphQL...{C.END}")
+    with httpx.Client(verify=False, follow_redirects=True, timeout=15) as depth_client:
+        for url in test_urls[:5]:
             try:
                 # Gerar query recursiva com profundidade crescente
                 for depth in [10, 25, 50]:
@@ -291,7 +296,7 @@ def run(context: dict):
                         nested_field = f"__typename nodes {{ {nested_field} }}"
                     
                     depth_query = {"query": "{ " + nested_field + " }"}
-                    resp = client.post(url, json=depth_query, headers={"User-Agent": DEFAULT_USER_AGENT})
+                    resp = depth_client.post(url, json=depth_query, headers={"User-Agent": DEFAULT_USER_AGENT})
                     
                     if resp.status_code == 200:
                         body = resp.text.lower()

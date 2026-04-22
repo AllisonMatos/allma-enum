@@ -101,7 +101,8 @@ def _test_oauth_vulnerabilities(url: str, deep: bool = False) -> list:
         with httpx.Client(timeout=DEFAULT_TIMEOUT, verify=False, follow_redirects=False) as client:
             resp = client.get(url, headers={"User-Agent": DEFAULT_USER_AGENT})
             
-            if "state" not in qs:
+            # V11: Só reportar STATE_MISSING se a URL é realmente um fluxo OAuth
+            if "state" not in qs and ("client_id" in qs or "response_type" in qs):
                 findings.append({
                     "url": url,
                     "type": "STATE_MISSING",

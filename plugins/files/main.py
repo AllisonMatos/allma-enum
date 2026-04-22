@@ -26,6 +26,9 @@ def detect_extension_from_url(url: str) -> str:
         path = unquote(p.path or "")
 
         # ex: file.zip, file.tar.gz
+        # V11: Remover ;jsessionid e parâmetros de path antes de detectar extensão
+        path = re.sub(r';[^/]*', '', path)
+
         m = re.search(r"\.([a-zA-Z0-9]{1,10})(?:\.([a-zA-Z0-9]{1,10}))?$", path)
         if m:
             if m.group(2):
@@ -38,7 +41,7 @@ def detect_extension_from_url(url: str) -> str:
         if m2:
             return m2.group(1).split(".")[-1].lower()
 
-    except:
+    except Exception:
         pass
 
     return "others"
@@ -87,6 +90,7 @@ import json
 # ----------------------------------------------
 SENSITIVE_PATTERNS = [
     r"\.git(/|$)",        # Git repos
+    r"\.svn(/|$)",        # SVN repos
     r"\.env(\.[a-z]+)?$", # Env vars
     r"\.bak$",            # Backups
     r"\.old$",
@@ -96,6 +100,23 @@ SENSITIVE_PATTERNS = [
     r"config\.php$",
     r"wp-config\.php$",
     r"\.htpasswd$",
+    r"\.htaccess$",
+    # V11: Padrões adicionais de alto valor
+    r"\.DS_Store$",           # macOS metadata leak
+    r"\.npmrc$",              # NPM credentials
+    r"\.pypirc$",             # PyPI credentials
+    r"docker-compose\.ya?ml$",# Docker configs
+    r"\.dockerignore$",
+    r"Dockerfile$",
+    r"id_rsa$",              # SSH private keys
+    r"id_ed25519$",
+    r"\.pem$",               # Certificates/keys
+    r"\.key$",
+    r"credentials\.json$",   # Cloud credentials
+    r"service[_-]account.*\.json$",
+    r"firebase\.json$",
+    r"\.aws/credentials$",
+    r"\.(pfx|p12)$",        # Certificate bundles
 ]
 
 def extract_sensitive_files(urls: list) -> list:
@@ -169,6 +190,10 @@ def run(context: dict):
     # ======================================================
     info(f"{C.BOLD}{C.BLUE}💾 Salvando arquivo final...{C.END}")
     outfile = write_single_by_extension(groups, outdir)
+
+    # V11: Summary JSON com contagem por extensão (útil para report)
+    ext_summary = {ext: len(urls) for ext, urls in sorted(groups.items(), key=lambda x: -len(x[1]))}
+    (outdir / "extension_summary.json").write_text(json.dumps(ext_summary, indent=2, ensure_ascii=False))
 
     # ======================================================
     # 🎉 FINALIZAÇÃO

@@ -36,6 +36,12 @@ DORK_TEMPLATES = [
     ("GitHub leaks", '"{target}" (password OR secret OR token OR api_key) site:github.com'),
     ("Pastebin leaks", '"{target}" site:pastebin.com'),
     ("Trello boards", '"{target}" site:trello.com'),
+    ("StackOverflow leaks", '"{target}" (key OR token OR password OR secret) site:stackoverflow.com'),
+    ("Jira / Confluence", '"{target}" site:atlassian.net'),
+    # Cloud storage leaks
+    ("AWS S3 Buckets", 'site:s3.amazonaws.com "{target}"'),
+    ("Azure Blob Storage", 'site:blob.core.windows.net "{target}"'),
+    ("GCP Storage", 'site:storage.googleapis.com "{target}"'),
 ]
 
 

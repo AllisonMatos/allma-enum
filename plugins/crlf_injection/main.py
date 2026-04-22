@@ -47,8 +47,10 @@ def test_crlf(client, url, payload):
     # Teste em parâmetros existentes
     for param_name in list(params.keys()):
         new_params = params.copy()
-        new_params[param_name] = [payload]
-        new_query = urlencode(new_params, doseq=True, quote_via=lambda s, safe, encoding=None, errors=None: s)
+        # V11: Decodificar payload para enviar CRLF real, não %0d%0a literal
+        from urllib.parse import unquote
+        new_params[param_name] = [unquote(payload)]
+        new_query = urlencode(new_params, doseq=True)
         test_url = urlunparse(parsed._replace(query=new_query))
         
         try:
@@ -91,7 +93,9 @@ def test_crlf(client, url, payload):
     
     # Teste também no path
     try:
-        test_path = parsed.path + payload
+        from urllib.parse import unquote as _unquote
+        # V11: Decodificar payload no path também (httpx re-encoda %0d -> %250d)
+        test_path = parsed.path + _unquote(payload)
         test_url = urlunparse(parsed._replace(path=test_path))
         resp = client.get(test_url, timeout=10, follow_redirects=False)
         headers_lower = {k.lower(): v for k, v in resp.headers.items()}
@@ -187,7 +191,7 @@ def run(context: dict):
                 # Cap global de 3000 URLs pra evitar lentidão absurda
                 if len(all_urls) >= 3000:
                     break
-        except:
+        except Exception:
             pass
             
     info(f"   [i] URLs reduzidas via deduplicação agressiva: {len(raw_urls)} -> {len(all_urls)}")
@@ -280,12 +284,16 @@ def run(context: dict):
     
     all_findings = []
     
-    with httpx.Client(verify=False, follow_redirects=False, timeout=10) as client:
-        with ThreadPoolExecutor(max_workers=10) as executor:
+    # V11: Cada thread cria seu próprio client (httpx.Client NÃO é thread-safe)
+    def test_crlf_threadsafe(url, payload):
+        with httpx.Client(verify=False, follow_redirects=False, timeout=10) as thread_client:
+            return test_crlf(thread_client, url, payload)
+
+    with ThreadPoolExecutor(max_workers=10) as executor:
             futures = {}
             for url in testable:
                 for payload in local_payloads:
-                    future = executor.submit(test_crlf, client, url, payload)
+                    future = executor.submit(test_crlf_threadsafe, url, payload)
                     futures[future] = url
             
             total_tasks = len(futures)

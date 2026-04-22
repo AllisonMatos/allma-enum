@@ -1,11 +1,13 @@
 import os
 import re
+import threading
 from datetime import datetime
 from core.colors import C as Color
 
 ANSI_ESCAPE = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
 
 _GLOBAL_LOGFILE = "logs/enum_allma.log"
+_LOG_LOCK = threading.Lock()
 
 def set_target_logfile(target: str):
     global _GLOBAL_LOGFILE
@@ -13,16 +15,18 @@ def set_target_logfile(target: str):
     os.makedirs(f"output/{target}", exist_ok=True)
 
 def _log(level: str, msg: str):
-    try:
-        if _GLOBAL_LOGFILE.startswith("logs/"):
-            os.makedirs("logs", exist_ok=True)
-            
-        clean_msg = ANSI_ESCAPE.sub('', msg)
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        with open(_GLOBAL_LOGFILE, "a", encoding="utf-8") as f:
-            f.write(f"[{timestamp}] [{level}] {clean_msg}\n")
-    except Exception:
-        pass
+    # V11: Lock para thread-safety (múltiplos plugins usam ThreadPoolExecutor)
+    with _LOG_LOCK:
+        try:
+            if _GLOBAL_LOGFILE.startswith("logs/"):
+                os.makedirs("logs", exist_ok=True)
+
+            clean_msg = ANSI_ESCAPE.sub('', msg)
+            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            with open(_GLOBAL_LOGFILE, "a", encoding="utf-8") as f:
+                f.write(f"[{timestamp}] [{level}] {clean_msg}\n")
+        except Exception:
+            pass
 
 def info(msg: str):
     print(f"{Color.BLUE}[INFO]{Color.END} {msg}")

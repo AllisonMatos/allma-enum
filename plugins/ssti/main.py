@@ -12,7 +12,7 @@ from pathlib import Path
 from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from core.config import DEFAULT_USER_AGENT, REQUEST_DELAY, DEFAULT_TIMEOUT
+from core.config import DEFAULT_USER_AGENT, REQUEST_DELAY, DEFAULT_TIMEOUT, get_user_agent
 from menu import C
 from plugins import ensure_outdir
 from ..output import info, success, warn, error
@@ -76,7 +76,7 @@ def _test_ssti(client: httpx.Client, url: str, param: str, deep: bool = False, t
     
     # Baseline
     try:
-        baseline_resp = client.get(url, headers={"User-Agent": DEFAULT_USER_AGENT})
+        baseline_resp = client.get(url, headers={"User-Agent": get_user_agent()})
         baseline_body = baseline_resp.text
         baseline_hash = hashlib.sha256(baseline_body.encode(errors='ignore')).hexdigest()
     except Exception:
@@ -265,7 +265,8 @@ def run(context: dict):
             deduped_candidates.append((url, param))
     
     candidates = deduped_candidates[:80]
-    max_workers = 3 if stealth else 10
+    # V11: Reduzir workers para evitar race conditions com httpx.Client compartilhado
+    max_workers = 2 if stealth else 5
     
     info(f"   📋 Testando {len(candidates)} parâmetros com payloads reais de engines")
 
