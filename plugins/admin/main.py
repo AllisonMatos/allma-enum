@@ -366,10 +366,20 @@ def check_admin_path(client, base_url: str, path: str, baseline: dict = None) ->
                 break
 
         # Apenas retornar se parece ser algo real
+        # V11: Stricter validation — status 200 sem login form precisa
+        # de keyword admin real OU <form> no HTML
+        admin_keywords = ("admin", "panel", "console", "phpmyadmin", "pma",
+                          "manager", "cpanel", "wp-admin", "wp-login",
+                          ".git", "actuator", "jenkins", "grafana", "kibana")
+        path_lower = path.lower()
+        has_admin_keyword = any(k in path_lower for k in admin_keywords)
+        has_form = bool(re.search(r'<form[^>]*>', content, re.I))
+        
         is_interesting = (
             has_login or
             cms or
-            resp.status_code in (200, 401) or # Removido 403 puramente genérico
+            resp.status_code == 401 or
+            (resp.status_code == 200 and (has_admin_keyword or has_form or has_login)) or
             "dashboard" in content_lower or
             resp.headers.get("content-type", "").startswith("application/json")
         )

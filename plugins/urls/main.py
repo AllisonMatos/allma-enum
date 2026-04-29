@@ -28,6 +28,9 @@ def httpx_validate(in_file: Path, out_file: Path, want_status: str = WANT_STATUS
 
     httpx = require_binary("httpx")
 
+    # JSON output com status code para alimentar o report
+    json_out_file = out_file.with_suffix(".json")
+
     cmd = [
         httpx,
         "-l", str(in_file),
@@ -38,7 +41,9 @@ def httpx_validate(in_file: Path, out_file: Path, want_status: str = WANT_STATUS
         "-random-agent",
         "-no-color",
         "-follow-redirects",
-        "-o", str(out_file),
+        "-json",
+        "-sc",
+        "-o", str(json_out_file),
         "-silent",
     ]
 
@@ -54,9 +59,9 @@ def httpx_validate(in_file: Path, out_file: Path, want_status: str = WANT_STATUS
     if result.returncode != 0:
         warn(f"httpx exit code: {result.returncode}")
 
-    # Verificar se output existe e tem dados
-    if not out_file.exists() or out_file.stat().st_size == 0:
-        # Fallback: tentar via pipe (sem -o)
+    # Verificar se output JSON existe e tem dados
+    if not json_out_file.exists() or json_out_file.stat().st_size == 0:
+        # Fallback: tentar via pipe (sem -o, com -json -sc)
         warn("⚠️ httpx -o produziu arquivo vazio. Tentando via pipe...")
         cmd_pipe = [
             httpx,
@@ -68,11 +73,13 @@ def httpx_validate(in_file: Path, out_file: Path, want_status: str = WANT_STATUS
             "-random-agent",
             "-no-color",
             "-follow-redirects",
+            "-json",
+            "-sc",
             "-silent",
         ]
         result2 = subprocess.run(cmd_pipe, capture_output=True, text=True, timeout=1200)
         if result2.stdout and result2.stdout.strip():
-            out_file.write_text(result2.stdout)
+            json_out_file.write_text(result2.stdout)
             info(f"   ✅ Fallback via pipe funcionou!")
         else:
             if result2.stderr:
@@ -80,17 +87,44 @@ def httpx_validate(in_file: Path, out_file: Path, want_status: str = WANT_STATUS
             warn("⚠️ Nenhuma URL válida encontrada via httpx.")
             return []
 
-    urls = sorted(
-        set(
-            l.strip()
-            for l in out_file.read_text(errors="ignore").splitlines()
-            if l.strip()
-        )
-    )
+    # Parse JSONL e extrair URLs + status codes
+    import json as _json
+    urls = []
+    url_status_map = []
+    for line in json_out_file.read_text(errors="ignore").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            obj = _json.loads(line)
+            url = obj.get("url", obj.get("input", "")).strip()
+            status = obj.get("status_code", obj.get("status-code", 0))
+            if url:
+                urls.append(url)
+                url_status_map.append({"url": url, "status_code": status})
+        except _json.JSONDecodeError:
+            # Linha não é JSON (fallback: tratar como URL plain text)
+            if line.startswith("http"):
+                urls.append(line)
+                url_status_map.append({"url": line, "status_code": 0})
 
+    urls = sorted(set(urls))
+    
+    # Salvar plain text (retrocompatibilidade)
     out_file.write_text("\n".join(urls) + "\n")
+    
+    # Salvar JSON estruturado (deduplicado por URL, mantendo o status)
+    seen = set()
+    deduped = []
+    for item in url_status_map:
+        if item["url"] not in seen:
+            seen.add(item["url"])
+            deduped.append(item)
+    deduped.sort(key=lambda x: x["url"])
+    json_out_file.write_text(_json.dumps(deduped, indent=2, ensure_ascii=False))
 
     success(f"✨ {len(urls)} URLs válidas salvas em: {C.GREEN}{out_file}{C.END}")
+    success(f"   📊 Status codes salvos em: {C.GREEN}{json_out_file}{C.END}")
     return urls
 
 
@@ -299,8 +333,16 @@ def run(context: dict):
     if not seed_urls:
         error(f"❌ Nenhuma URL seed encontrada de nenhuma fonte!")
         return []
+    
+    # V11: Scope enforcement — filtrar URLs fora do escopo
+    from core.config import is_in_scope
+    before_scope = len(seed_urls)
+    seed_urls = {u for u in seed_urls if is_in_scope(u, target)}
+    filtered_out = before_scope - len(seed_urls)
+    if filtered_out > 0:
+        warn(f"   🔒 Scope filter: removidas {filtered_out} URLs fora do escopo ({target})")
         
-    info(f"   📊 {C.CYAN}Total de seeds coletadas: {len(seed_urls)}{C.END}")
+    info(f"   📊 {C.CYAN}Total de seeds (in-scope): {len(seed_urls)}{C.END}")
 
     # limpar arquivo anterior
     if url_completas.exists():

@@ -3,21 +3,19 @@ import sys
 import shutil
 import importlib
 
-# Define required python packages
+# V11: Dependências Python reais (sem aiohttp/aiofiles — removidos na V11)
 REQUIRED_PYTHON = [
     "httpx",
     "requests",
-    "dns", # dnspython
-    "aiohttp",
-    "aiofiles",
+    "dns",  # dnspython
 ]
 
-# Define required system tools
+# Ferramentas obrigatórias do sistema
 REQUIRED_TOOLS = [
     "git",
     "curl",
     "wget",
-    "nmap", 
+    "nmap",
     "naabu",
     "subfinder",
     "katana",
@@ -34,19 +32,15 @@ REQUIRED_TOOLS = [
 
 # Ferramentas opcionais (melhoram cobertura mas não são obrigatórias)
 OPTIONAL_TOOLS = [
-    "crlfuzz",
-    "corsy",
-    "ssrfmap",
+    "gowitness",      # V11: Screenshots
     "gitleaks",
     "git-dumper",
-    "dalfox",
     "gau",
     "gauplus",
     "waybackurls",
     "waymore",
     "haktrails",
     "masscan",
-    "spiderfoot",
 ]
 
 GREEN = "\033[92m"
@@ -61,19 +55,17 @@ INSTALL_CMDS = {
     "katana": "go install github.com/projectdiscovery/katana/cmd/katana@latest",
     "httpx": "go install -v github.com/projectdiscovery/httpx/cmd/httpx@latest",
     "interactsh-client": "go install -v github.com/projectdiscovery/interactsh/cmd/interactsh-client@latest",
-    "crlfuzz": "go install github.com/dwisiswant0/crlfuzz/cmd/crlfuzz@latest",
     "qsreplace": "go install github.com/tomnomnom/qsreplace@latest",
     "gf": "go install github.com/tomnomnom/gf@latest",
     "gospider": "go install github.com/jaeles-project/gospider@latest",
     "gau": "go install github.com/lc/gau/v2/cmd/gau@latest",
     "waybackurls": "go install github.com/tomnomnom/waybackurls@latest",
-    "dalfox": "go install github.com/hahwul/dalfox/v2@latest",
+    "gowitness": "go install github.com/sensepost/gowitness@latest",
     "nmap": "sudo apt install -y nmap",
     "curl": "sudo apt install -y curl",
     "wget": "sudo apt install -y wget",
     "git": "sudo apt install -y git",
     "searchsploit": "sudo apt install -y exploitdb",
-    "spiderfoot": "git clone https://github.com/smicallef/spiderfoot.git ~/spiderfoot && sudo apt install -y libxml2-dev libxslt1-dev && pip install --break-system-packages -r ~/spiderfoot/requirements.txt -U cryptography pyOpenSSL",
 }
 
 def check_python_modules():
@@ -110,7 +102,7 @@ def check_system_tools():
     return missing_req, missing_opt
 
 def main():
-    print(f"{YELLOW}=== Enum-Allma Environment Check ==={RESET}")
+    print(f"{YELLOW}=== Enum-Allma V11 Environment Check ==={RESET}")
     
     missing_py = check_python_modules()
     missing_sys, missing_opt = check_system_tools()

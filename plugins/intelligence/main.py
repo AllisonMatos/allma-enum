@@ -53,7 +53,7 @@ VulnPatterns = {
     }
 }
 
-# Attack Priority Weights
+# Attack Priority Weights (V11: cleaned — only active modules)
 ATTACK_WEIGHTS = {
     "login_page": 3,
     "admin_panel": 5,
@@ -69,21 +69,11 @@ ATTACK_WEIGHTS = {
     "git_exposed": 6,
     "takeover_vulnerable": 7,
     "open_admin_no_auth": 8,
-    "crlf_vulnerable": 5,
-    "cache_deception_vulnerable": 7,
     "insecure_headers": 2,
-    "deserialization_vulnerable": 8,
-    # V9 Module Weights
-    "open_redirect_vulnerable": 5,
     "host_injection_vulnerable": 6,
-    "ssti_vulnerable": 9,
-    "xxe_vulnerable": 8,
-    "prototype_pollution_vulnerable": 7,
-    "oauth_misconfig_vulnerable": 7,
-    "api_versioning_exposed": 4,
-    "file_upload_vulnerable": 8,
     "email_security_flaw": 3,
     "sensitive_files_exposed": 7,
+    "cookie_insecure": 4,
 }
 
 # Patterns to detect dev/staging/internal hosts
@@ -259,21 +249,10 @@ class IntelligenceEngine:
         self.params_data = self._load_json("domain/katana_params_all.json") or {}
         self.endpoints_data = self._load_json("endpoint/raw_endpoints.json") or []
         self.extracted_routes = self._load_json("domain/extracted_routes.json") or []
-        self.crlf_data = self._load_json("crlf_injection/crlf_results.json") or []
-        self.cache_deception_data = self._load_json("cache_deception/cache_deception_results.json") or []
         self.headers_data = self._load_json("headers/headers_results.json") or []
-        self.deserialization_data = self._load_json("insecure_deserialization/deserialization_results.json") or []
-        
-        # Load V9 Module data
-        self.open_redirect_data = self._load_json("open_redirect/open_redirect_results.json") or []
         self.host_injection_data = self._load_json("host_header_injection/host_injection_results.json") or []
-        self.ssti_data = self._load_json("ssti/ssti_results.json") or []
-        self.xxe_data = self._load_json("xxe/xxe_results.json") or []
-        self.proto_data = self._load_json("prototype_pollution/prototype_pollution_results.json") or []
-        self.oauth_data = self._load_json("oauth_misconfig/oauth_misconfig_results.json") or []
-        self.api_ver_data = self._load_json("api_versioning/api_versioning_results.json") or []
-        self.file_upload_data = self._load_json("file_upload/file_upload_results.json") or []
         self.sensitive_files_data = self._load_json("files/sensitive_files.json") or []
+        self.cookies_data = self._load_json("cookies/cookies_results.json") or []
 
         # Load subdomains
         subs_file = self.base_dir / "domain" / "subdomains.txt"
@@ -418,21 +397,6 @@ class IntelligenceEngine:
                 priority_data[sub]["factors"].append(f"Subdomain Takeover CONFIRMED ({tk.get('service')})")
                 priority_data[sub]["tags"].append("TAKEOVER")
                 
-        # CRLF Injection
-        for crlf in self.crlf_data:
-            host = urlparse(crlf.get("url", "")).netloc
-            priority_data[host]["score"] += ATTACK_WEIGHTS["crlf_vulnerable"]
-            priority_data[host]["factors"].append(f"CRLF Injection Susceptible")
-            priority_data[host]["tags"].append("CRLF")
-
-        # Cache Deception
-        for cache in self.cache_deception_data:
-            if cache.get("vulnerable"):
-                host = urlparse(cache.get("url", "")).netloc
-                priority_data[host]["score"] += ATTACK_WEIGHTS["cache_deception_vulnerable"]
-                priority_data[host]["factors"].append(f"Web Cache Deception Vulnerable: {cache.get('url')}")
-                priority_data[host]["tags"].append("CACHE_DECEPTION")
-
         # Insecure Headers
         for h in self.headers_data:
             host = urlparse(h.get("url", "")).netloc
@@ -441,75 +405,32 @@ class IntelligenceEngine:
                 priority_data[host]["factors"].append(f"Missing security headers detected")
                 priority_data[host]["tags"].append("HEADERS")
 
-        # Insecure Deserialization
-        for deser in self.deserialization_data:
-            host = urlparse(deser.get("url", "")).netloc
-            priority_data[host]["score"] += ATTACK_WEIGHTS["deserialization_vulnerable"]
-            priority_data[host]["factors"].append(f"Insecure Deserialization Susceptible: {deser.get('payload_type')}")
-            priority_data[host]["tags"].append("DESERIALIZATION")
-            
-        # V9: Open Redirect
-        for d in self.open_redirect_data:
-            host = urlparse(d.get("url", "")).netloc
-            priority_data[host]["score"] += ATTACK_WEIGHTS["open_redirect_vulnerable"]
-            priority_data[host]["factors"].append("Open Redirect Confirmed")
-            priority_data[host]["tags"].append("OPEN_REDIRECT")
-
-        # V9: Host Header Injection
+        # Host Header Injection (retained module)
         for d in self.host_injection_data:
             host = urlparse(d.get("url", "")).netloc
             priority_data[host]["score"] += ATTACK_WEIGHTS["host_injection_vulnerable"]
             priority_data[host]["factors"].append(f"Host Header Injection ({d.get('type')})")
             priority_data[host]["tags"].append("HOST_INJECTION")
 
-        # V9: SSTI
-        for d in self.ssti_data:
-            host = urlparse(d.get("url", "")).netloc
-            priority_data[host]["score"] += ATTACK_WEIGHTS["ssti_vulnerable"]
-            priority_data[host]["factors"].append("SSTI (Server-Side Template Injection) Detected")
-            priority_data[host]["tags"].append("SSTI")
-
-        # V9: XXE
-        for d in self.xxe_data:
-            host = urlparse(d.get("url", "")).netloc
-            priority_data[host]["score"] += ATTACK_WEIGHTS["xxe_vulnerable"]
-            priority_data[host]["factors"].append("XXE Detected")
-            priority_data[host]["tags"].append("XXE")
-
-        # V9: Prototype Pollution
-        for d in self.proto_data:
-            host = urlparse(d.get("url", "")).netloc
-            priority_data[host]["score"] += ATTACK_WEIGHTS["prototype_pollution_vulnerable"]
-            priority_data[host]["factors"].append("Prototype Pollution Reflected/Dom-based")
-            priority_data[host]["tags"].append("PROTO_POLLUTION")
-
-        # V9: OAuth Misconfig
-        for d in self.oauth_data:
-            host = urlparse(d.get("url", "")).netloc
-            priority_data[host]["score"] += ATTACK_WEIGHTS["oauth_misconfig_vulnerable"]
-            priority_data[host]["factors"].append(f"OAuth Flaw: {d.get('type')}")
-            priority_data[host]["tags"].append("OAUTH")
-
-        # V9: API Versioning Exposed
-        for d in self.api_ver_data:
-            host = urlparse(d.get("url", "")).netloc
-            priority_data[host]["score"] += ATTACK_WEIGHTS["api_versioning_exposed"]
-            priority_data[host]["factors"].append(f"Multiple API Versions Exposed: {d.get('status')}")
-            priority_data[host]["tags"].append("API_VERSIONS")
-
-        # V9: File Upload Susceptible
-        for d in self.file_upload_data:
-            host = urlparse(d.get("url", "")).netloc
-            priority_data[host]["score"] += ATTACK_WEIGHTS["file_upload_vulnerable"]
-            priority_data[host]["factors"].append("File Upload Endpoint Exposed")
-            priority_data[host]["tags"].append("FILE_UPLOAD")
-            
-        # V9: Sensitive Files
+        # Sensitive Files
         for f in self.sensitive_files_data:
-            host = urlparse(f).netloc
-            priority_data[host]["score"] += ATTACK_WEIGHTS["sensitive_files_exposed"]
-            priority_data[host]["factors"].append("Sensitive Files (Git/Env/Bak) Exposed")
-            priority_data[host]["tags"].append("SENSITIVE_FILES")
+            if isinstance(f, str):
+                host = urlparse(f).netloc
+            else:
+                host = urlparse(f.get("url", "")).netloc
+            if host:
+                priority_data[host]["score"] += ATTACK_WEIGHTS["sensitive_files_exposed"]
+                priority_data[host]["factors"].append("Sensitive Files (Git/Env/Bak) Exposed")
+                priority_data[host]["tags"].append("SENSITIVE_FILES")
+
+        # Cookie Security (V11)
+        for cookie in self.cookies_data:
+            if isinstance(cookie, dict) and cookie.get("risk") in ("CRITICAL", "HIGH"):
+                host = urlparse(cookie.get("url", "")).netloc
+                if host:
+                    priority_data[host]["score"] += ATTACK_WEIGHTS["cookie_insecure"]
+                    priority_data[host]["factors"].append(f"Insecure Cookie: {cookie.get('name', '')}")
+                    priority_data[host]["tags"].append("COOKIE")
         
         # Build final sorted list
         result = []
@@ -730,39 +651,17 @@ class IntelligenceEngine:
                     "icon": "\ud83e\uddec"
                 })
                 
-        # CRLF Injection
-        for crlf in self.crlf_data:
-            quick_wins.append({
-                "type": "CRLF Injection (Header Splitting)",
-                "severity": "MEDIUM",
-                "url": crlf.get("url", ""),
-                "detail": f"Inje\u00e7\u00e3o bem sucedida: {crlf.get('payload', '')}",
-                "action": "Teste de escalonamento para XSS ou Cache Poisoning",
-                "icon": "\ud83c\udfad"
-            })
-            
-        # Cache Deception
-        for cache in self.cache_deception_data:
-            if cache.get("vulnerable"):
+        # Cookie Security (V11)
+        for cookie in self.cookies_data:
+            if isinstance(cookie, dict) and cookie.get("risk") in ("CRITICAL", "HIGH"):
                 quick_wins.append({
-                    "type": "Web Cache Deception",
-                    "severity": "HIGH",
-                    "url": cache.get("url", ""),
-                    "detail": "Resposta din\u00e2mica sendo indexada em cache CDN",
-                    "action": "Verifique vazamento de informa\u00e7\u00f5es de sess\u00e3o em navega\u00e7\u00e3o real",
-                    "icon": "\ud83d\udc7b"
+                    "type": "Cookie Inseguro",
+                    "severity": cookie.get("risk", "HIGH"),
+                    "url": cookie.get("url", ""),
+                    "detail": f"{cookie.get('name', '')} — {', '.join(cookie.get('issues', []))}",
+                    "action": "Verifique flags HttpOnly, Secure, SameSite",
+                    "icon": "🍪"
                 })
-                
-        # Insecure Deserialization
-        for deser in self.deserialization_data:
-            quick_wins.append({
-                "type": "Insecure Deserialization Potencial",
-                "severity": "CRITICAL",
-                "url": deser.get("url", ""),
-                "detail": f"Anomalia detectada com objeto: {deser.get('payload_type', '')}",
-                "action": "Escalone para Execu\u00e7\u00e3o de Comandos (RCE) via ysoserial, etc",
-                "icon": "\ud83d\udca3"
-            })
         
         # Sort by severity
         severity_order = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3}

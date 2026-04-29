@@ -42,3 +42,56 @@ SUBPROCESS_TIMEOUT = 120
 # Limite de conexões por host para httpx
 MAX_CONNECTIONS_PER_HOST = 50
 MAX_CONNECTIONS_TOTAL = 100
+
+# ============================================================
+# V11: Scope Enforcement
+# ============================================================
+# Definido em runtime pelo menu.py
+SCOPE_TARGET = ""
+
+# Domínios que NUNCA são escopo (SSO, CDN, analytics)
+OUT_OF_SCOPE_DOMAINS = {
+    "accounts.google.com", "login.microsoftonline.com", "login.microsoft.com",
+    "login.live.com", "auth0.com", "okta.com", "onelogin.com",
+    "cloudflareaccess.com", "fonts.googleapis.com", "fonts.gstatic.com",
+    "cdn.jsdelivr.net", "cdnjs.cloudflare.com", "ajax.googleapis.com",
+    "www.google.com", "www.gstatic.com", "apis.google.com",
+    "play.google.com", "maps.googleapis.com",
+    "www.facebook.com", "connect.facebook.net",
+    "platform.twitter.com", "analytics.google.com",
+    "www.googletagmanager.com", "www.google-analytics.com",
+    "schema.org", "www.w3.org",
+    "github.com", "raw.githubusercontent.com",
+    "maxcdn.bootstrapcdn.com", "stackpath.bootstrapcdn.com",
+    "code.jquery.com", "unpkg.com",
+}
+
+def is_in_scope(url: str, target: str = "") -> bool:
+    """Check if a URL belongs to the target's scope.
+    Returns True if the URL is in scope, False if out of scope.
+    """
+    from urllib.parse import urlparse
+    t = target or SCOPE_TARGET
+    if not t:
+        return True  # No target set, allow everything
+    
+    try:
+        parsed = urlparse(url)
+        host = parsed.netloc.lower().split(":")[0]  # Remove port
+    except Exception:
+        return True
+    
+    if not host:
+        return True
+    
+    # Check against known out-of-scope domains
+    if host in OUT_OF_SCOPE_DOMAINS:
+        return False
+    
+    # Must belong to target domain
+    t_lower = t.lower()
+    if host == t_lower or host.endswith(f".{t_lower}"):
+        return True
+    
+    return False
+

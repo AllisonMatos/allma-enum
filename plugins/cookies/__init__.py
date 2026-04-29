@@ -1,0 +1,1 @@
+# Cookie Security Analyzer plugin

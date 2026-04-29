@@ -10,7 +10,7 @@ import re
 import time
 import json
 import asyncio
-import aiohttp
+import httpx
 import traceback
 from typing import List, Dict, Any, Tuple
 from urllib.parse import urlparse, urljoin
@@ -57,13 +57,12 @@ class SourceMapScanner:
         self.outdir.mkdir(parents=True, exist_ok=True)
         self.findings = []
         
-    async def fetch(self, session: aiohttp.ClientSession, url: str) -> Tuple[str, str]:
+    async def fetch(self, client: httpx.AsyncClient, url: str) -> Tuple[str, str]:
         """Fetch content from URL and return text/json."""
         try:
-            async with session.get(url, allow_redirects=True, timeout=CONFIG['timeout']) as response:
-                if response.status == 200:
-                    text = await response.text(errors='ignore')
-                    return url, text
+            response = await client.get(url, follow_redirects=True, timeout=CONFIG['timeout'])
+            if response.status_code == 200:
+                return url, response.text
         except Exception:
             pass
         return url, ""
@@ -72,13 +71,12 @@ class SourceMapScanner:
         """Scan a list of JS URLs for sourcemaps and unpack them."""
         info(f"{C.BOLD}{get_color('BLUE')}🔍 Scanning {len(js_urls)} JS files for Source Maps...{C.END}")
         
-        connector = aiohttp.TCPConnector(limit_per_host=CONFIG['max_conn_per_host'])
-        async with aiohttp.ClientSession(connector=connector) as session:
+        async with httpx.AsyncClient(verify=False, follow_redirects=True, timeout=CONFIG['timeout']) as client:
             
             # Step 1: Fetch JS to find sourceMappingURL or try .map
             tasks = []
             for js_url in js_urls:
-                tasks.append(self.process_js_file(session, js_url))
+                tasks.append(self.process_js_file(client, js_url))
                 
             results = await asyncio.gather(*tasks, return_exceptions=True)
             
@@ -86,8 +84,8 @@ class SourceMapScanner:
                  if isinstance(res, Exception):
                       warn(f"Failed to process {js_urls[index]}: {str(res)}")
 
-    async def process_js_file(self, session: aiohttp.ClientSession, js_url: str):
-        url, content = await self.fetch(session, js_url)
+    async def process_js_file(self, client: httpx.AsyncClient, js_url: str):
+        url, content = await self.fetch(client, js_url)
         map_url = None
         
         if content:
@@ -99,10 +97,10 @@ class SourceMapScanner:
                 map_url = js_url + ".map" # Fallback guess
                 
         if map_url:
-            await self.unpack_map(session, map_url, js_url)
+            await self.unpack_map(client, map_url, js_url)
 
-    async def unpack_map(self, session: aiohttp.ClientSession, map_url: str, original_js: str):
-         url, content = await self.fetch(session, map_url)
+    async def unpack_map(self, client: httpx.AsyncClient, map_url: str, original_js: str):
+         url, content = await self.fetch(client, map_url)
          if not content:
              return
              

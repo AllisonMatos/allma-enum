@@ -85,22 +85,54 @@ async def analyze_url_task(client, url, semaphore):
         # For simplicity, we run inline as regex on small pages is fast. 
         # But to be robust against huge JS files, we could wrap in loop.run_in_executor
         
-        # === DETECT LOGIN PAGES ===
+        # === DETECT LOGIN PAGES (V11: Enhanced) ===
         import re as _re
-        login_patterns = [
-            _re.compile(r'\b(login|signin|sign-in|logon|sso)\b', _re.I),
-        ]
         url_lower = final_url.lower()
-        content_lower = content[:3000].lower()
+        content_lower = content[:5000].lower()
         
         is_login = False
-        for pat in login_patterns:
-            if pat.search(url_lower) or (
-                pat.search(content_lower) and 
-                ("password" in content_lower or "senha" in content_lower)
-            ):
-                is_login = True
-                break
+        
+        # Layer 1: URL path contains auth keywords
+        url_auth_keywords = _re.compile(
+            r'\b(login|signin|sign-in|sign_in|logon|sso|auth|authenticate|'
+            r'account|access|entrar|conectar|acesso|portal|cas/login|'
+            r'oauth|saml|adfs|idp|identity)\b', _re.I
+        )
+        url_has_auth = bool(url_auth_keywords.search(url_lower))
+        
+        # Layer 2: HTML has password input field (strongest signal)
+        has_password_input = bool(_re.search(
+            r'<input[^>]*type\s*=\s*["\']password["\']|'
+            r'<input[^>]*name\s*=\s*["\'](password|passwd|pwd|pass|senha|contraseña)["\']',
+            content_lower
+        ))
+        
+        # Layer 3: HTML has login form patterns
+        has_login_form = bool(_re.search(
+            r'<form[^>]*(?:login|signin|auth|log-in|sign-in|entrar)[^>]*>|'
+            r'<form[^>]*action\s*=\s*["\'][^"\']*(?:login|auth|signin|session|token)[^"\']*["\']',
+            content_lower
+        ))
+        
+        # Layer 4: Page title contains login keywords
+        title_match = _re.search(r'<title[^>]*>(.*?)</title>', content_lower)
+        has_login_title = False
+        if title_match:
+            title_text = title_match.group(1)
+            has_login_title = bool(_re.search(
+                r'login|sign\s*in|log\s*in|entrar|acesso|autenticação|authenticate|'
+                r'iniciar\s*sessão|conectar|sign\s*on|portal', title_text
+            ))
+        
+        # Decision: any strong signal OR combination of weaker signals
+        if has_password_input:
+            is_login = True  # Strongest: has password field
+        elif url_has_auth and (has_login_form or has_login_title):
+            is_login = True  # URL + form/title
+        elif has_login_form and has_login_title:
+            is_login = True  # Form + title
+        elif url_has_auth and ("password" in content_lower or "senha" in content_lower):
+            is_login = True  # URL + password text
                 
         # === EXTRACT DATA ===
         # These are synchronous calls from extractors module

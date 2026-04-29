@@ -1,18 +1,13 @@
+# Enum-Allma V11 — Python Dependencies
 httpx
 requests
 dnspython
-aiohttp
-aiofiles
 flask
-fastapi
-uvicorn
+
+# Core libs (used by plugins)
 rich
 pydantic
 
-# Dependências atualizadas (SpiderFoot / Kali compatibility)
+# TLS/Crypto
 cryptography>=46.0.0
 pyOpenSSL>=24.0.0
-
-# NOTA: O SpiderFoot gerencia as próprias dependências.
-# Se instalado via Enum-allma, o check_install.py roda:
-# pip install -r ~/spiderfoot/requirements.txt -U cryptography pyOpenSSL

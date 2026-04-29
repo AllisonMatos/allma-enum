@@ -28,14 +28,31 @@ PATTERNS = [
 CONCURRENCY_LIMIT = 10
 DELAY = 0.5
 
+STATIC_EXTENSIONS = {
+    '.css', '.png', '.jpg', '.jpeg', '.gif', '.svg', '.ico', '.webp', '.bmp',
+    '.woff', '.woff2', '.ttf', '.eot', '.otf',
+    '.mp4', '.mp3', '.avi', '.mov', '.webm', '.ogg',
+    '.pdf', '.zip', '.gz', '.tar', '.rar',
+    '.map', '.min.js', '.chunk.js', '.bundle.js',
+}
+
 # === EXTRAÇÃO DE ENDPOINTS EM TEXTO (CPU Bound) ===
+def _is_static(url: str) -> bool:
+    """Check if URL points to a static asset."""
+    path = url.split('?')[0].split('#')[0].lower()
+    return any(path.endswith(ext) for ext in STATIC_EXTENSIONS)
+
 def extract_from_text(text, base_url=None):
     found = set()
     for p in PATTERNS:
         for m in re.findall(p, text or "", flags=re.I):
+            if _is_static(m):
+                continue
             if m.startswith("/"):
                 if base_url:
-                    found.add(urljoin(base_url, m))
+                    full = urljoin(base_url, m)
+                    if not _is_static(full):
+                        found.add(full)
                 else:
                     found.add(m)
             else:

@@ -15,41 +15,25 @@ MODULES = {
     "6": "fingerprint",
     "7": "endpoint",
     "8": "wordlist",
-    "9": "xss",
-    "10": "sourcemaps",
-    "11": "cve",
-    "12": "admin",
-    "13": "depconfusion",
-    "14": "cors",
-    "15": "takeover",
-    "16": "headers",
-    "17": "waf",
-    "18": "emails",
-    "19": "graphql",
-    "20": "cache_deception",
-    "21": "jwt_analyzer",
-    "22": "crlf_injection",
-    "23": "insecure_deserialization",
-    "24": "api_fuzzer",
-    "25": "ssrf",
-    "26": "cloud",
-    "27": "http_smuggling",
-    "28": "open_redirect",
-    "29": "host_header_injection",
-    "30": "ssti",
-    "31": "xxe",
-    "32": "prototype_pollution",
-    "33": "oauth_misconfig",
-    "34": "api_versioning",
-    "35": "file_upload",
-    "36": "email_security",
-    "37": "google_dorks",
-    "38": "dangling_dns",
-    "39": "cve_nvd",
-    "40": "sqli",
-    "41": "lfi",
-    "42": "spiderfoot",
-    "43": "all",
+    "9": "sourcemaps",
+    "10": "cve",
+    "11": "admin",
+    "12": "cors",
+    "13": "takeover",
+    "14": "headers",
+    "15": "waf",
+    "16": "emails",
+    "17": "graphql",
+    "18": "jwt_analyzer",
+    "19": "api_fuzzer",
+    "20": "cloud",
+    "21": "host_header_injection",
+    "22": "email_security",
+    "23": "google_dorks",
+    "24": "cookies",
+    "25": "asn",
+    "26": "screenshots",
+    "27": "all",
 }
 
 # --------- DEPENDÊNCIAS ---------
@@ -63,41 +47,25 @@ DEPENDENCIES = {
     "6": ["1", "2", "3", "4", "5", "6"],
     "7": ["1", "2", "3", "4", "5", "6", "7"],
     "8": ["1", "2", "3", "4", "5", "6", "7", "8"],
-    "9": ["1", "2", "3", "4", "5", "6", "7", "8", "9"],
-    "10": ["1", "2", "5", "10"],
-    "11": ["1", "2", "3", "6", "11"],
+    "9": ["1", "2", "5", "9"],
+    "10": ["1", "2", "3", "6", "10"],
+    "11": ["1", "2", "11"],
     "12": ["1", "2", "12"],
     "13": ["1", "2", "13"],
     "14": ["1", "2", "14"],
     "15": ["1", "2", "15"],
     "16": ["1", "2", "16"],
-    "17": ["1", "2", "17"],
+    "17": ["1", "2", "7", "17"],
     "18": ["1", "2", "18"],
     "19": ["1", "2", "7", "19"],
-    "20": ["1", "2", "20"],
-    "21": ["1", "2", "21"],
-    "22": ["1", "2", "22"],
+    "20": ["1", "20"],
+    "21": ["1", "21"],
+    "22": ["1", "22"],
     "23": ["1", "2", "23"],
-    "24": ["1", "2", "7", "24"],
-    "25": ["1", "2", "25"],
-    "26": ["1", "26"],
-    "27": ["1", "2", "27"],
-    "28": ["1", "2", "28"],
-    "29": ["1", "29"],
-    "30": ["1", "2", "30"],
-    "31": ["1", "2", "31"],
-    "32": ["1", "2", "5", "32"],
-    "33": ["1", "2", "33"],
-    "34": ["1", "2", "7", "34"],
-    "35": ["1", "2", "35"],
-    "36": ["1", "36"],
-    "37": ["1", "2", "37"],
-    "38": ["1", "2", "38"],
-    "39": ["1", "39"],
-    "40": ["1", "2", "40"],
-    "41": ["1", "2", "41"],
-    "42": ["1", "42"],
-    "43": [str(i) for i in range(1, 43)],  # ALL: Roda do 1 ao 42
+    "24": ["1", "2", "24"],
+    "25": ["1", "25"],
+    "26": ["1", "2", "26"],
+    "27": [str(i) for i in range(1, 27)],  # ALL: Roda do 1 ao 26
 }
 
 
@@ -134,41 +102,25 @@ def print_menu():
         "6": ("fingerprint", "Fingerprinting de tecnologias", "🖐️"),
         "7": ("endpoint", "Enumeração de endpoints API", "🎯"),
         "8": ("wordlist", "Força bruta em diretórios", "🗂️"),
-        "9": ("xss", "Detecção de vulnerabilidades XSS", "🎭"),
-        "10": ("sourcemaps", "Extração e Análise de Source Maps", "🗺️"),
-        "11": ("cve", "Varredura de vulnerabilidades conhecidas", "🛡️"),
-        "12": ("admin", "Busca por painéis administrativos", "🔑"),
-        "13": ("depconfusion", "Dependency Confusion Scan", "📦"),
-        "14": ("cors", "Misconfigurações de CORS", "🟧"),
-        "15": ("takeover", "Subdomain Takeover Scan", "🏴‍☠️"),
-        "16": ("headers", "Análise de Security Headers", "📜"),
-        "17": ("waf", "Detecção de WAF", "🛡️"),
-        "18": ("emails", "Extração de e-mails", "📧"),
-        "19": ("graphql", "GraphQL Introspection", "🧬"),
-        "20": ("cache_deception", "Web Cache Deception", "🧊"),
-        "21": ("jwt_analyzer", "Análise de JWT Tokens", "🔑"),
-        "22": ("crlf_injection", "CRLF Injection Scanner", "💉"),
-        "23": ("insecure_deser", "Insecure Deserialization", "🧬"),
-        "24": ("api_fuzzer", "API Fuzzer (Kiterunner)", "🪁"),
-        "25": ("ssrf", "SSRFmap e OAST", "📡"),
-        "26": ("cloud", "Cloud Recon (S3/Azure/GCP)", "🌩️"),
-        "27": ("http_smuggling", "HTTP Request Smuggling", "🕵️"),
-        "28": ("open_redirect", "Open Redirect Detection", "🔀"),
-        "29": ("host_header_injection", "Host Header Injection", "🏠"),
-        "30": ("ssti", "SSTI (Template Injection)", "🧪"),
-        "31": ("xxe", "XXE (XML External Entity)", "📄"),
-        "32": ("prototype_pollution", "Prototype Pollution", "🧬"),
-        "33": ("oauth_misconfig", "OAuth Misconfiguration", "🔐"),
-        "34": ("api_versioning", "API Versioning Recon", "🔢"),
-        "35": ("file_upload", "Insecure File Upload", "📤"),
-        "36": ("email_security", "SPF/DMARC/DKIM Check", "📧"),
-        "37": ("google_dorks", "Google Dorks Generator", "🔍"),
-        "38": ("dangling_dns", "Dangling DNS Check", "🌐"),
-        "39": ("cve_nvd", "CVE via NVD/NIST", "🛡️"),
-        "40": ("sqli", "SQL Injection", "💉"),
-        "41": ("lfi", "Local File Inclusion", "📂"),
-        "42": ("spiderfoot", "OSINT Automático (200+ fontes)", "🕷️"),
-        "43": ("all", "Execução completa", "🚀")
+        "9": ("sourcemaps", "Extração e Análise de Source Maps", "🗺️"),
+        "10": ("cve", "Varredura de CVEs conhecidas", "🛡️"),
+        "11": ("admin", "Busca por painéis administrativos", "🔑"),
+        "12": ("cors", "Análise de CORS Config", "🟧"),
+        "13": ("takeover", "Subdomain Takeover Check", "🏴‍☠️"),
+        "14": ("headers", "Análise de Security Headers", "📜"),
+        "15": ("waf", "Detecção de WAF", "🛡️"),
+        "16": ("emails", "Extração de e-mails", "📧"),
+        "17": ("graphql", "GraphQL Introspection", "🧬"),
+        "18": ("jwt_analyzer", "Análise de JWT Tokens", "🔑"),
+        "19": ("api_fuzzer", "API Fuzzer (Kiterunner)", "🪁"),
+        "20": ("cloud", "Cloud Recon (S3/Azure/GCP)", "🌩️"),
+        "21": ("host_header", "Host Header Injection", "🏠"),
+        "22": ("email_security", "SPF/DMARC/DKIM Check", "📧"),
+        "23": ("google_dorks", "Google Dorks Generator", "🔍"),
+        "24": ("cookies", "Análise de Segurança de Cookies", "🍪"),
+        "25": ("asn", "CIDR/ASN Mapping", "🌐"),
+        "26": ("screenshots", "Screenshot Capture", "📸"),
+        "27": ("all", "Execução completa", "🚀")
     }
 
     for k, (name, desc, emoji) in modules.items():
@@ -288,19 +240,44 @@ def main():
         if not closed_scope_list:
             print(f"{C.RED}❌ Nenhum subdomínio fornecido. Usando descoberta padrão...{C.END}")
 
+    # V11: Custom User-Agent (Bug Bounty)
+    print(f"\n{C.BOLD}{C.CYAN}🌐 USER-AGENT{C.END}")
+    print(f"  {C.YELLOW}Padrão:{C.END} {C.GREEN}Chrome/124 (rotação automática){C.END}")
+    print(f"  {C.YELLOW}Tip:{C.END} Alguns programas (Bugcrowd/HackerOne) pedem UA customizado.")
+    custom_ua = input(f"{C.BOLD}{C.BLUE}User-Agent customizado (Enter para padrão): {C.END}").strip()
+    if custom_ua:
+        from core.config import _USER_AGENT_POOL
+        import core.config as _cfg
+        _cfg.DEFAULT_USER_AGENT = custom_ua
+        _cfg._USER_AGENT_POOL = [custom_ua]  # Override pool para usar apenas o custom
+        print(f"  {C.GREEN}✅ UA definido: {custom_ua[:60]}...{C.END}" if len(custom_ua) > 60 else f"  {C.GREEN}✅ UA definido: {custom_ua}{C.END}")
+
     # Seleção de Modo Deep/Stealth
     print(f"\n{C.BOLD}{C.CYAN}🎯 OPÇÕES DE PERFORMANCE (V10){C.END}")
     deep_scan = input(f"{C.BOLD}{C.BLUE}Habilitar --deep (varredura profunda)? [s/N]: {C.END}").strip().lower() in ["s", "sim", "y", "yes"]
     stealth_mode = input(f"{C.BOLD}{C.BLUE}Habilitar --stealth (mais silencioso/lento)? [s/N]: {C.END}").strip().lower() in ["s", "sim", "y", "yes"]
 
-    # chain — "43" é meta-módulo (all), não deve entrar na chain de execução
+    # V11: Exclude hosts/patterns
+    print(f"\n{C.BOLD}{C.CYAN}🚫 EXCLUSÕES (Opcional){C.END}")
+    exclude_input = input(f"{C.BOLD}{C.BLUE}Hosts para excluir (separados por vírgula, ou Enter para pular): {C.END}").strip()
+    exclude_hosts = []
+    if exclude_input:
+        exclude_hosts = [h.strip() for h in exclude_input.split(",") if h.strip()]
+        print(f"   {C.YELLOW}⛔ Excluindo: {', '.join(exclude_hosts)}{C.END}")
+
+    # chain — "27" é meta-módulo (all), não deve entrar na chain de execução
     chain = list(dict.fromkeys(DEPENDENCIES[choice] + [choice]))
-    chain = [c for c in chain if c != "43"]
+    chain = [c for c in chain if c != "27"]
 
     # parâmetros
     params = {name: {} for name in MODULES.values()}
 
     params["domain"]["closed_scope"] = closed_scope_list
+
+    # V11: Pass exclude_hosts to all plugins
+    if exclude_hosts:
+        for name in MODULES.values():
+            params[name]["exclude_hosts"] = exclude_hosts
 
     if "1" in chain:
         params["domain"]["ports"] = ask_ports_mode()

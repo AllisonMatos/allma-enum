@@ -985,7 +985,128 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             align-items: center; gap: 6px; transition: all 0.2s;
         }}
         .theme-toggle:hover {{ color: var(--text-primary); border-color: var(--text-muted); }}
+
+        /* ===== ENHANCEMENTS v2 ===== */
+        /* Risk Gauge */
+        .risk-gauge-wrap { display: flex; align-items: flex-start; gap: 24px; flex-wrap: wrap; }
+        .risk-gauge-block { display: flex; flex-direction: column; align-items: center; min-width: 130px; }
+        .risk-gauge { position: relative; width: 130px; height: 65px; overflow: hidden; }
+        .risk-gauge-arc { width: 130px; height: 65px; border-radius: 65px 65px 0 0;
+            background: conic-gradient(from 180deg at 50% 100%, #3fb950 0deg, #d29922 60deg, #f85149 120deg, transparent 121deg);
+            box-shadow: inset 0 0 0 18px var(--bg-secondary); }
+        .risk-needle { position: absolute; bottom: 0; left: 50%; width: 3px; height: 55px;
+            background: linear-gradient(to top, var(--text-primary), transparent);
+            transform-origin: bottom center; transform: translateX(-50%) rotate(-90deg);
+            border-radius: 2px; transition: transform 1s cubic-bezier(.4,0,.2,1); }
+        .risk-gauge-score { font-size: 26px; font-weight: 800; margin-top: 4px; }
+        .risk-gauge-sublabel { font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.8px; }
+
+        /* Metric mini cards */
+        .metric-mini { padding: 10px 12px; background: var(--bg-tertiary); border-radius: 8px; border: 1px solid var(--border-color); }
+        .metric-mini .mval { font-size: 18px; font-weight: 700; }
+        .metric-mini .mlbl { font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
+        .mini-bar { height: 3px; border-radius: 2px; background: var(--bg-primary); margin-top: 6px; overflow: hidden; }
+        .mini-bar-fill { height: 100%; border-radius: 2px; transition: width 0.8s ease; }
+
+        /* Tech chips */
+        .tech-grid { display: flex; flex-wrap: wrap; gap: 6px; }
+        .tech-chip { padding: 3px 10px; border-radius: 10px; font-size: 11px; font-weight: 600; border: 1px solid; }
+
+        /* Priority Queue */
+        .priority-item { display: flex; align-items: flex-start; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--border-color); }
+        .priority-item:last-child { border-bottom: none; padding-bottom: 0; }
+        .p-rank { width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+            font-size: 11px; font-weight: 800; flex-shrink: 0; border: 2px solid; }
+        .p-content { flex: 1; }
+        .p-title { font-size: 13px; font-weight: 600; color: var(--text-primary); margin-bottom: 3px; }
+        .p-desc { font-size: 11px; color: var(--text-secondary); line-height: 1.5; }
+        .p-desc code { background: var(--bg-primary); padding: 1px 4px; border-radius: 3px; font-size: 10px; color: var(--accent-green); border: 1px solid var(--border-color); }
+        .p-go { padding: 3px 10px; border-radius: 4px; font-size: 11px; font-weight: 600; background: var(--bg-primary);
+            border: 1px solid var(--border-color); color: var(--accent-blue); cursor: pointer; white-space: nowrap;
+            flex-shrink: 0; transition: all 0.2s; align-self: center; }
+        .p-go:hover { background: var(--bg-tertiary); border-color: var(--accent-blue); }
+
+        /* Status badges per finding */
+        .status-badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 8px;
+            font-size: 10px; font-weight: 700; cursor: pointer; user-select: none; transition: all 0.15s; border: 1px solid; }
+        .s-untested { background: rgba(110,118,129,0.1); color: #6e7681; border-color: rgba(110,118,129,0.3); }
+        .s-confirmed { background: rgba(248,81,73,0.15); color: #f85149; border-color: rgba(248,81,73,0.4); }
+        .s-tested { background: rgba(63,185,80,0.15); color: #3fb950; border-color: rgba(63,185,80,0.4); }
+        .s-fp { background: rgba(163,113,247,0.15); color: #a371f7; border-color: rgba(163,113,247,0.4); }
+
+        /* Copy button on pre blocks */
+        .pre-wrap { position: relative; }
+        .copy-pre-btn { position: absolute; top: 6px; right: 6px; background: var(--bg-tertiary);
+            border: 1px solid var(--border-color); color: var(--text-muted); padding: 2px 8px;
+            border-radius: 4px; font-size: 10px; cursor: pointer; opacity: 0; transition: opacity 0.15s; }
+        .pre-wrap:hover .copy-pre-btn { opacity: 1; }
+        .copy-pre-btn.copied { color: var(--accent-green); border-color: var(--accent-green); }
+
+        /* Global search */
+        .global-search { background: var(--bg-primary); border: 1px solid var(--border-color);
+            color: var(--text-primary); padding: 5px 12px; border-radius: 6px; font-size: 13px;
+            width: 200px; outline: none; transition: border-color 0.2s; font-family: inherit; }
+        .global-search:focus { border-color: var(--accent-blue); width: 260px; }
+        .search-drop { position: absolute; top: 56px; right: 24px; width: 300px; background: var(--bg-secondary);
+            border: 1px solid var(--border-color); border-radius: 8px; box-shadow: var(--shadow-lg);
+            z-index: 500; max-height: 280px; overflow-y: auto; display: none; }
+        .search-drop-item { padding: 9px 14px; cursor: pointer; border-bottom: 1px solid var(--border-color);
+            font-size: 12px; display: flex; justify-content: space-between; align-items: center; }
+        .search-drop-item:hover { background: var(--bg-tertiary); }
+        .search-drop-item:last-child { border-bottom: none; }
+        .search-drop-section { font-weight: 600; color: var(--text-primary); }
+        .search-drop-count { font-size: 10px; padding: 1px 6px; border-radius: 8px; background: var(--bg-primary);
+            border: 1px solid var(--border-color); color: var(--text-muted); }
+
+        /* Severity filter bar */
+        .filter-bar { display: flex; gap: 6px; margin-bottom: 14px; flex-wrap: wrap; align-items: center; }
+        .filter-bar-label { font-size: 11px; color: var(--text-muted); margin-right: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
+        .filter-btn { padding: 3px 12px; border-radius: 12px; font-size: 11px; font-weight: 600;
+            cursor: pointer; border: 1px solid; background: transparent; transition: all 0.15s; font-family: inherit; }
+        .filter-btn.f-all { color: var(--text-secondary); border-color: var(--border-color); }
+        .filter-btn.f-all.active, .filter-btn.f-all:hover { background: var(--bg-tertiary); color: var(--text-primary); }
+        .filter-btn.f-critical { color: #ff4040; border-color: rgba(255,64,64,0.4); }
+        .filter-btn.f-critical.active, .filter-btn.f-critical:hover { background: rgba(255,64,64,0.12); }
+        .filter-btn.f-high { color: #f85149; border-color: rgba(248,81,73,0.4); }
+        .filter-btn.f-high.active, .filter-btn.f-high:hover { background: rgba(248,81,73,0.12); }
+        .filter-btn.f-medium { color: #d29922; border-color: rgba(210,153,34,0.4); }
+        .filter-btn.f-medium.active, .filter-btn.f-medium:hover { background: rgba(210,153,34,0.12); }
+        .filter-btn.f-low { color: #3fb950; border-color: rgba(63,185,80,0.4); }
+        .filter-btn.f-low.active, .filter-btn.f-low:hover { background: rgba(63,185,80,0.12); }
+        .filter-btn.f-info { color: #58a6ff; border-color: rgba(88,166,255,0.4); }
+        .filter-btn.f-info.active, .filter-btn.f-info:hover { background: rgba(88,166,255,0.12); }
+
+        /* Sidebar severity dots */
+        .sev-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; margin-left: auto; margin-right: 8px; }
+        .sev-dot.d-high { background: #f85149; box-shadow: 0 0 4px #f85149; }
+        .sev-dot.d-medium { background: #d29922; box-shadow: 0 0 4px #d29922; }
+        .sev-dot.d-low { background: #3fb950; }
+
+        /* Export button */
+        .export-btn { background: transparent; border: 1px solid var(--border-color); color: var(--text-secondary);
+            padding: 5px 12px; border-radius: 6px; font-size: 11px; cursor: pointer; font-family: inherit;
+            display: flex; align-items: center; gap: 5px; transition: all 0.2s; }
+        .export-btn:hover { border-color: var(--accent-blue); color: var(--accent-blue); }
+
+        /* Confirmed vuln highlight row */
+        tr.confirmed-row { background: rgba(248,81,73,0.05) !important; }
+        tr.tested-row { background: rgba(63,185,80,0.04) !important; }
+        tr.fp-row { opacity: 0.5; }
+
+        /* Testing progress bar */
+        .test-progress-wrap { margin: 12px 0 4px; }
+        .test-progress-bar { height: 4px; border-radius: 2px; background: var(--bg-primary); overflow: hidden; }
+        .test-progress-fill { height: 100%; background: linear-gradient(to right, #3fb950, #58a6ff); border-radius: 2px; transition: width 0.4s ease; }
+        .test-progress-label { font-size: 11px; color: var(--text-muted); margin-bottom: 4px; display: flex; justify-content: space-between; }
+
+        /* Executive summary */
+        .exec-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin-top: 12px; }
+        .exec-cell { padding: 10px 14px; border-radius: 8px; border-left: 3px solid; }
+        .exec-cell .ec-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); margin-bottom: 4px; }
+        .exec-cell .ec-val { font-size: 15px; font-weight: 700; color: var(--text-primary); }
+        .exec-cell .ec-sub { font-size: 11px; color: var(--text-secondary); margin-top: 2px; }
     </style>
+
     <script>const BURP_DATA = {{}};</script>
 </head>
 <body>
@@ -1041,9 +1162,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         </button>
 
         <div class="sidebar-category"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg> SUPERFÍCIE</div>
-        <button class="nav-btn" data-section="spiderfoot_sec" data-always-show="true">
-            <div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"//></svg></div><div class="nav-label">SpiderFoot <span class="count">{stats_spiderfoot}</span></div>
-        </button>
+
         <button class="nav-btn" data-section="subdomains" data-always-show="true">
             <div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"//></svg></div><div class="nav-label">Subdomains <span class="count">{stats_subdomains}</span></div>
         </button>
@@ -1075,60 +1194,26 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             <div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7"/><path d="M11 18H8a2 2 0 0 1-2-2V9"//></svg></div><div class="nav-label">Source Maps <span class="count">{stats_sourcemaps}</span></div>
         </button>
 
-        <div class="sidebar-category"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg> VULNS</div>
-        <button class="nav-btn" data-section="security">
-            <div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"//></svg></div><div class="nav-label">Security <span class="count">{stats_xss}</span></div>
-        </button>
-        <button class="nav-btn" data-section="api_sec">
-            <div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"//></svg></div><div class="nav-label">API Security <span class="count">{stats_api_security}</span></div>
-        </button>
-        <button class="nav-btn" data-section="logic">
-            <div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"//></svg></div><div class="nav-label">Logic & Smug. <span class="count">{stats_logic}</span></div>
-        </button>
         <button class="nav-btn" data-section="takeover">
             <div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"//></svg></div><div class="nav-label">Takeover <span class="count">{stats_takeover}</span></div>
         </button>
         <button class="nav-btn" data-section="cve">
             <div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19.69 14a6.9 6.9 0 0 0 .31-2V5l-8-3-3.16 1.18"/><path d="M4.73 4.73L4 5v7c0 6 8 10 8 10a20.29 20.29 0 0 0 5.62-4.38"/><line x1="1" y1="1" x2="23" y2="23"//></svg></div><div class="nav-label">CVEs <span class="count">{stats_cves}</span></div>
         </button>
-        <button class="nav-btn" data-section="depconfusion">
-            <div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"//></svg></div><div class="nav-label">Dep. Conf. <span class="count">{stats_depconfusion}</span></div>
+        <button class="nav-btn" data-section="network_graph">
+            <div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"//></svg></div><div class="nav-label">Network Graph</div>
         </button>
-        <button class="nav-btn" data-section="ssrf_sec">
-            <div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"//></svg></div><div class="nav-label">SSRF <span class="count">{stats_ssrf}</span></div>
+        <button class="nav-btn" data-section="dns_records">
+            <div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"//></svg></div><div class="nav-label">DNS Records</div>
         </button>
-        <button class="nav-btn" data-section="open_redirect_sec">
-            <div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><path d="M21 3l-7 7"/><path d="M10 14L3 21"//></svg></div><div class="nav-label">Open Redir <span class="count">{stats_open_redirect}</span></div>
+        <button class="nav-btn" data-section="tls_certs">
+            <div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"//></svg></div><div class="nav-label">TLS Certs</div>
         </button>
-        <button class="nav-btn" data-section="crlf_sec">
-            <div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"//></svg></div><div class="nav-label">CRLF <span class="count">{stats_crlf}</span></div>
+        <button class="nav-btn" data-section="asn_mapping">
+            <div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"//></svg></div><div class="nav-label">ASN/CIDR</div>
         </button>
-        <button class="nav-btn" data-section="smuggling_sec">
-            <div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"//></svg></div><div class="nav-label">Smuggling <span class="count">{stats_smuggling}</span></div>
-        </button>
-        <button class="nav-btn" data-section="deser_sec">
-            <div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"//></svg></div><div class="nav-label">Deserial. <span class="count">{stats_deser}</span></div>
-        </button>
-        <button class="nav-btn" data-section="host_inj_sec">
-            <div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"//></svg></div><div class="nav-label">Host Inj <span class="count">{stats_host_injection}</span></div>
-        </button>
-        <button class="nav-btn" data-section="ssti_sec">
-            <div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"//></svg></div><div class="nav-label">SSTI <span class="count">{stats_ssti}</span></div>
-        </button>
-        <button class="nav-btn" data-section="xxe_sec">
-            <div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"//></svg></div><div class="nav-label">XXE <span class="count">{stats_xxe}</span></div>
-        </button>
-        <button class="nav-btn" data-section="proto_sec">
-            <div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"//></svg></div><div class="nav-label">Proto Poll <span class="count">{stats_proto_pollution}</span></div>
-        </button>
-        <button class="nav-btn" data-section="oauth_sec">
-            <div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"//></svg></div><div class="nav-label">OAuth <span class="count">{stats_oauth}</span></div>
-        </button>
-        <button class="nav-btn" data-section="api_ver_sec">
-            <div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"//></svg></div><div class="nav-label">API Ver <span class="count">{stats_api_versioning}</span></div>
-        </button>
-        <button class="nav-btn" data-section="file_upload_sec">
-            <div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"//></svg></div><div class="nav-label">Upload <span class="count">{stats_file_upload}</span></div>
+        <button class="nav-btn" data-section="resp_headers">
+            <div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"//></svg></div><div class="nav-label">Headers Raw</div>
         </button>
 
         <div class="sidebar-category"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg> EXPOSURES</div>
@@ -1177,17 +1262,28 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     </nav>
     
     <div class="content-wrapper">
+        
         <header class="top-bar">
             <div class="page-title">
                 <h1>Enum-Allma: <span>{target}</span></h1>
             </div>
+            
+            <div style="position:relative; flex:1; max-width:400px; margin: 0 20px;">
+                <input type="text" id="globalSearch" class="global-search" placeholder="🔍 Search sections, findings..." onkeyup="globalSearchHandler(this.value)" autocomplete="off">
+                <div id="searchDrop" class="search-drop"></div>
+            </div>
+
             <div style="display:flex;align-items:center;gap:12px;">
+                <button class="export-btn" onclick="exportMarkdown()">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Export
+                </button>
                 <button class="theme-toggle" onclick="toggleTheme()" id="themeBtn">🌙 Dark</button>
                 <div class="meta-info">
                     {date} &nbsp; {time}
                 </div>
             </div>
         </header>
+
         
         <main class="main-content">
             <!-- Dashboard -->
@@ -1231,24 +1327,57 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                     </div>
                 </div>
                 
-                <div class="card">
-                    <div class="card-header">
-                        <span class="card-title section-title">Quick Summary</span>
+                <!-- RISK ASSESSMENT CARD -->
+                <div class="card open" style="margin-bottom:16px;">
+                    <div class="card-header" style="cursor:default;">
+                        <span class="card-title section-title">📊 Risk Assessment</span>
+                        <span class="card-badge" id="riskLevelBadge" style="color:{risk_color};border-color:{risk_color};">{risk_label} RISK · Score {risk_score}/100</span>
                     </div>
                     <div class="card-content" style="display:block;">
-                        <p>Scan completed for <strong>{target}</strong>. Found {stats_subdomains} subdomains with {stats_urls} valid URLs across {stats_ports} open ports.</p>
-                        {login_warning}
-                        {keys_warning}
+                        <div class="risk-gauge-wrap">
+                            <div class="risk-gauge-block">
+                                <div class="risk-gauge">
+                                    <div class="risk-gauge-arc"></div>
+                                    <div class="risk-needle" id="riskNeedle" style="transform: translateX(-50%) rotate(-90deg);"></div>
+                                </div>
+                                <div class="risk-gauge-score" id="riskScore" style="color:{risk_color};">{risk_score}</div>
+                                <div class="risk-gauge-sublabel">Risk Score /100</div>
+                            </div>
+                            <div style="flex:1;min-width:180px;">
+                                <div style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px;">Stack Detectado</div>
+                                <div class="tech-grid">
+                                    {tech_chips}
+                                </div>
+                                <div style="margin-top:14px;">
+                                    <div class="test-progress-label">
+                                        <span>Progresso dos Testes</span>
+                                        <span id="testProgressPct">100%</span>
+                                    </div>
+                                    <div class="test-progress-bar"><div class="test-progress-fill" id="testProgressFill" style="width:100%;"></div></div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
-                <div style="margin-top:20px;">
+                <!-- PRIORITY QUEUE -->
+                <div class="card open" style="margin-bottom:16px;">
+                    <div class="card-header" style="cursor:default;">
+                        <span class="card-title section-title">🎯 Priority Queue — Next Steps</span>
+                        <span class="card-badge">Auto-ranked by exploitability × impact</span>
+                    </div>
+                    <div class="card-content" style="display:block;">
+                        {hvt_dashboard}
+                    </div>
+                </div>
+
+                <div style="margin-top:0;">
                     <div class="card open" style="border-left: 4px solid var(--accent-blue);">
                          <div class="card-header">
-                            <span class="card-title"> Dicas de Hacking (Recon Intelligence)</span>
+                            <span class="card-title">💡 Playbook por Tecnologia</span>
+                            <span class="card-badge">Dicas práticas baseadas na stack</span>
                         </div>
                         <div class="card-content" style="display:block;">
-                            <p style="margin-bottom:15px; color:#888;">Dicas práticas baseadas nas tecnologias detectadas no alvo.</p>
                             {knowledge_tips}
                         </div>
                     </div>
@@ -1258,7 +1387,6 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 
             
             <section class="section" id="subdomains">{subdomains_content}</section>
-            <section class="section" id="security">{security_content}</section>
 
             <section class="section" id="services">{services_content}</section>
             <section class="section" id="urls">{urls_content}</section>
@@ -1270,47 +1398,242 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 
             <section class="section" id="jsroutes">{js_routes_content}</section>
             <section class="section" id="swagger">{swagger_content}</section>
-
-            <section class="section" id="logic">{logic_content}</section>
             <section class="section" id="git">{git_content}</section>
             <section class="section" id="surfacemap">{surfacemap_content}</section>
             <section class="section" id="sourcemaps">{sourcemaps_content}</section>
             <section class="section" id="cloud">{cloud_content}</section>
             <section class="section" id="cve">{cve_content}</section>
             <section class="section" id="admin">{admin_content}</section>
-            <section class="section" id="depconfusion">{depconfusion_content}</section>
             <section class="section" id="graphql_scan">{graphql_content}</section>
-            <section class="section" id="api_sec">{api_security_content}</section>
             <section class="section" id="files">{files_content}</section>
             <section class="section" id="takeover">{takeover_content}</section>
             <section class="section" id="waf">{waf_content}</section>
             <section class="section" id="emails">{emails_content}</section>
             <section class="section" id="jwt_sec">{jwt_content}</section>
-            <section class="section" id="crlf_sec">{crlf_content}</section>
-            <section class="section" id="smuggling_sec">{smuggling_content}</section>
-            <section class="section" id="deser_sec">{deser_content}</section>
             <section class="section" id="oast_sec">{oast_content}</section>
             <section class="section" id="wordlist_sec">{wordlist_content}</section>
             <section class="section" id="quickwins_attack">{quickwins_attack_content}</section>
-            <section class="section" id="open_redirect_sec">{open_redirect_content}</section>
-            <section class="section" id="host_inj_sec">{host_injection_content}</section>
-            <section class="section" id="ssti_sec">{ssti_content}</section>
-            <section class="section" id="xxe_sec">{xxe_content}</section>
-            <section class="section" id="proto_sec">{proto_pollution_content}</section>
-            <section class="section" id="oauth_sec">{oauth_content}</section>
-            <section class="section" id="api_ver_sec">{api_versioning_content}</section>
-            <section class="section" id="file_upload_sec">{file_upload_content}</section>
             <section class="section" id="email_sec">{email_security_content}</section>
             <section class="section" id="dorks_sec">{google_dorks_content}</section>
-            <section class="section" id="spiderfoot_sec">{spiderfoot_content}</section>
             
+            <!-- V11: New sections -->
+            <section class="section" id="network_graph">{network_graph_content}</section>
+            <section class="section" id="dns_records">{dns_records_content}</section>
+            <section class="section" id="tls_certs">{tls_certs_content}</section>
+            <section class="section" id="asn_mapping">{asn_content}</section>
+            <section class="section" id="resp_headers">{response_headers_content}</section>
+
+            {export_js}
              <footer style="text-align:center; color:var(--text-muted); font-size:12px; margin-top:40px; padding-bottom:20px;">
-                Generated by Enum-Allma | {date} {time}
+                <div style="margin-bottom:8px;font-size:11px;color:var(--text-secondary);">{executive_summary}</div>
+                <div>🔒 Tech Stack: <span style="color:var(--accent-blue);">{tech_stack_summary}</span></div>
+                <div style="margin-top:4px;">Generated by Enum-Allma | {scan_timestamp}</div>
             </footer>
         </main>
     </div>
 
     <script>
+
+        // ==========================================
+        // ENHANCEMENT SUITE v2
+        // ==========================================
+
+        // --- Risk Gauge ---
+        function initRiskGauge() {
+            const score = {risk_score};
+            const needle = document.getElementById('riskNeedle');
+            if (!needle) return;
+            // Map 0-100 to -90deg (low) → 0deg (mid) → +90deg (high)
+            const angle = ((score / 100) * 180) - 90;
+            // setTimeout to allow the transition to animate after page load
+            setTimeout(() => {
+                needle.style.setProperty('transform', `translateX(-50%) rotate(${angle}deg)`);
+            }, 100);
+            const scoreEl = document.getElementById('riskScore');
+            if (scoreEl) { scoreEl.textContent = score; }
+        }
+
+        // --- Copy button for all <pre> blocks ---
+        function wrapAllPre() {
+            document.querySelectorAll('pre:not(.pre-wrapped)').forEach(pre => {
+                pre.classList.add('pre-wrapped');
+                const wrap = document.createElement('div');
+                wrap.className = 'pre-wrap';
+                pre.parentNode.insertBefore(wrap, pre);
+                wrap.appendChild(pre);
+                const btn = document.createElement('button');
+                btn.className = 'copy-pre-btn';
+                btn.textContent = 'Copy';
+                btn.onclick = () => {
+                    navigator.clipboard.writeText(pre.innerText || pre.textContent).then(() => {
+                        btn.textContent = '✓ Copied';
+                        btn.classList.add('copied');
+                        setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 1500);
+                    });
+                };
+                wrap.appendChild(btn);
+            });
+        }
+
+        // --- Status badge toggle (Mark as Tested / Confirmed / FP) ---
+        const STATUS_CYCLE = ['untested', 'confirmed', 'tested', 'fp'];
+        const STATUS_LABELS = { untested: '○ Untested', confirmed: '🔴 Confirmed', tested: '✓ Tested', fp: '~ False Positive' };
+        const STATUS_CLASSES = { untested: 's-untested', confirmed: 's-confirmed', tested: 's-tested', fp: 's-fp' };
+
+        function cycleStatus(btn, rowId) {
+            const current = btn.dataset.status || 'untested';
+            const idx = STATUS_CYCLE.indexOf(current);
+            const next = STATUS_CYCLE[(idx + 1) % STATUS_CYCLE.length];
+            btn.dataset.status = next;
+            btn.textContent = STATUS_LABELS[next];
+            btn.className = 'status-badge ' + STATUS_CLASSES[next];
+            if (rowId) {
+                const row = document.getElementById(rowId);
+                if (row) {
+                    row.classList.remove('confirmed-row', 'tested-row', 'fp-row');
+                    if (next === 'confirmed') row.classList.add('confirmed-row');
+                    else if (next === 'tested') row.classList.add('tested-row');
+                    else if (next === 'fp') row.classList.add('fp-row');
+                }
+            }
+            updateTestingProgress();
+            try { localStorage.setItem('status_' + (rowId||btn.id), next); } catch(e){}
+        }
+
+        function makeStatusBadge(rowId) {
+            const saved = (() => { try { return localStorage.getItem('status_' + rowId) || 'untested'; } catch(e){ return 'untested'; }})();
+            return `<button class="status-badge ${STATUS_CLASSES[saved]}" data-status="${saved}" onclick="cycleStatus(this,'${rowId}')">${STATUS_LABELS[saved]}</button>`;
+        }
+
+        function updateTestingProgress() {
+            const badges = document.querySelectorAll('.status-badge');
+            const total = badges.length;
+            if (!total) return;
+            const done = [...badges].filter(b => b.dataset.status !== 'untested').length;
+            const pct = Math.round((done / total) * 100);
+            const fill = document.getElementById('testProgressFill');
+            const label = document.getElementById('testProgressPct');
+            if (fill) fill.style.width = pct + '%';
+            if (label) label.textContent = pct + '% (' + done + '/' + total + ')';
+        }
+
+        // --- Severity filter bars ---
+        function buildFilterBar(containerId, severity_attr) {
+            const container = document.getElementById(containerId);
+            if (!container) return;
+            const bar = document.createElement('div');
+            bar.className = 'filter-bar';
+            bar.innerHTML = `
+                <span class="filter-bar-label">Filter:</span>
+                <button class="filter-btn f-all active" onclick="filterBySeverity('${containerId}','all',this)">All</button>
+                <button class="filter-btn f-critical" onclick="filterBySeverity('${containerId}','critical',this)">Critical</button>
+                <button class="filter-btn f-high" onclick="filterBySeverity('${containerId}','high',this)">High</button>
+                <button class="filter-btn f-medium" onclick="filterBySeverity('${containerId}','medium',this)">Medium</button>
+                <button class="filter-btn f-low" onclick="filterBySeverity('${containerId}','low',this)">Low</button>
+                <button class="filter-btn f-info" onclick="filterBySeverity('${containerId}','info',this)">Info</button>`;
+            container.parentNode.insertBefore(bar, container);
+        }
+
+        function filterBySeverity(containerId, sev, btn) {
+            btn.closest('.filter-bar').querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            const rows = document.querySelectorAll(`#${containerId} tr[data-sev]`);
+            rows.forEach(row => {
+                if (sev === 'all' || row.dataset.sev === sev) row.style.display = '';
+                else row.style.display = 'none';
+            });
+        }
+
+        // --- Global search ---
+        const SEARCH_INDEX = [];
+        function buildSearchIndex() {
+            document.querySelectorAll('.nav-btn').forEach(btn => {
+                const section = btn.dataset.section;
+                if (!section) return;
+                const label = btn.querySelector('.nav-label');
+                const count = btn.querySelector('.count');
+                if (label) {
+                    SEARCH_INDEX.push({
+                        section,
+                        label: (label.textContent || '').replace(/\d+/g,'').trim(),
+                        count: count ? parseInt(count.textContent) || 0 : 0,
+                        btn
+                    });
+                }
+            });
+        }
+
+        function globalSearchHandler(q) {
+            const drop = document.getElementById('searchDrop');
+            if (!q || q.length < 1) { drop.style.display = 'none'; return; }
+            const matches = SEARCH_INDEX.filter(item =>
+                item.label.toLowerCase().includes(q.toLowerCase()) ||
+                item.section.toLowerCase().includes(q.toLowerCase())
+            ).slice(0, 8);
+            if (!matches.length) { drop.style.display = 'none'; return; }
+            drop.innerHTML = matches.map(m =>
+                `<div class="search-drop-item" onclick="document.querySelector('[data-section='+m.section+']').click(); document.getElementById('searchDrop').style.display='none'; document.getElementById('globalSearch').value='';">
+                    <span class="search-drop-section">${m.label}</span>
+                    ${m.count > 0 ? `<span class="search-drop-count">${m.count}</span>` : ''}
+                </div>`
+            ).join('');
+            drop.style.display = 'block';
+        }
+
+        function closeSearchDrop() {
+            const drop = document.getElementById('searchDrop');
+            if (drop) drop.style.display = 'none';
+        }
+
+        // --- Export to Markdown ---
+        function exportMarkdown() {
+            const target = '{target}';
+            const date = '{date}';
+            let md = `# Recon Report: ${target}\n**Date:** ${date}  \n**Tool:** Enum-Allma\n\n---\n\n`;
+            md += `## Executive Summary\n\n| Category | Count |\n|---|---|\n`;
+            md += `| Subdomains | {stats_subdomains} |\n| Valid URLs | {stats_urls} |\n| Open Ports | {stats_ports} |\n| JWTs Exposed | {stats_jwt} |\n| CORS Issues | {stats_cors} |\n| WAFs Detected | {stats_waf} |\n| Login Pages | {stats_login} |\n| Admin Panels | {stats_admin} |\n| GraphQL Endpoints | {stats_graphql} |\n`;
+            md += `\n**Overall Risk Score: {risk_score}/100 ({risk_label})**\n\n---\n\n`;
+            
+            md += `## Priority Queue\n\n`;
+            document.querySelectorAll('.priority-item').forEach((item, index) => {
+                const title = item.querySelector('.p-title').innerText.trim();
+                const desc = item.querySelector('.p-desc').innerText.trim();
+                md += `${index+1}. **${title}** — ${desc}\n`;
+            });
+            
+            md += `\n---\n\n## Tech Stack\n\n`;
+            document.querySelectorAll('.tech-chip').forEach((chip) => {
+                md += `- ${chip.innerText.trim()}\n`;
+            });
+            
+            md += `\n---\n\n*Generated by Enum-Allma Enhanced Report*\n`;
+
+            const blob = new Blob([md], { type: 'text/markdown' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = `recon_${target}_${date}.md`;
+            a.click();
+        }
+
+        // ==========================================
+        // INIT ALL ENHANCEMENTS ON LOAD
+        // ==========================================
+        document.addEventListener('DOMContentLoaded', () => {
+            initRiskGauge();
+            buildSearchIndex();
+            setTimeout(() => {
+                wrapAllPre();
+                updateTestingProgress();
+            }, 600);
+        });
+
+        // Re-wrap pre blocks when sections are clicked (lazy content)
+        document.addEventListener('click', (e) => {
+            if (e.target.closest('.nav-btn')) {
+                setTimeout(wrapAllPre, 300);
+            }
+        });
+
         // Navigation Switcher
         document.querySelectorAll('.nav-btn').forEach(btn => {{
             btn.addEventListener('click', () => {{
@@ -2189,8 +2512,26 @@ def build_urls_content(subdomains: Dict, target: str) -> str:
     from pathlib import Path
     import json
     
-    # Load Crawled "Discovered" URLs from Katana
+    # Load status codes from httpx JSON output
     base = Path("output") / target
+    urls_json_file = base / "urls" / "urls_200.json"
+    domain_urls_json = base / "domain" / "urls_200.json"
+    
+    status_map = {}  # url -> status_code
+    for jf in [urls_json_file, domain_urls_json]:
+        if jf.exists():
+            try:
+                data = json.loads(jf.read_text(errors="ignore"))
+                if isinstance(data, list):
+                    for item in data:
+                        url = item.get("url", "").strip()
+                        sc = item.get("status_code", 0)
+                        if url and sc:
+                            status_map[url] = sc
+            except:
+                pass
+    
+    # Load Crawled "Discovered" URLs from Katana
     crawled_file = find_file(base, "crawlers/katana_valid.txt", "domain/crawlers/katana_valid.txt", "domain/katana_valid.txt", "katana_valid.txt")
     
     discovered_urls = []
@@ -2206,7 +2547,7 @@ def build_urls_content(subdomains: Dict, target: str) -> str:
                 "host": host, 
                 "url": url, 
                 "is_login": url in data.get("login_urls", set()),
-                "type": "validated",
+                "status_code": status_map.get(url, 0),
                 "tags": data.get("url_classifications", {}).get(url, [])
             })
             
@@ -2222,7 +2563,7 @@ def build_urls_content(subdomains: Dict, target: str) -> str:
                     "host": host if host else "Unknown",
                     "url": d_url.strip(),
                     "is_login": False,
-                    "type": "discovered",
+                    "status_code": status_map.get(d_url.strip(), 0),
                     "tags": []
                 })
         except:
@@ -2231,7 +2572,7 @@ def build_urls_content(subdomains: Dict, target: str) -> str:
     if not all_urls:
         return '<div class="empty-state"><p>No URLs found</p></div>'
         
-    all_urls = sorted(all_urls, key=lambda x: (x["host"], 0 if x["type"] == "validated" else 1, x["url"]))
+    all_urls = sorted(all_urls, key=lambda x: (x["host"], x["url"]))
     json_data = json.dumps(all_urls).replace("</", "<\\/")
     
     # Build subdomain dropdown options
@@ -2239,11 +2580,15 @@ def build_urls_content(subdomains: Dict, target: str) -> str:
     host_options = "".join(f'<option value="{html.escape(h)}">{html.escape(h)} ({sum(1 for u in all_urls if u["host"]==h)})</option>' for h in url_hosts)
     
     return f'''
-    <div style="margin-bottom:16px;">
-        <select id="urlSubdomainFilter" onchange="window._filterUrlsBySub(this.value)" style="width:100%;max-width:400px;background:var(--bg-secondary);border:1px solid var(--border-color);border-radius:var(--radius-sm,8px);padding:10px 14px;color:var(--text-primary);font-size:13px;font-family:Inter,sans-serif;">
+    <div style="margin-bottom:16px; display:flex; gap:12px; flex-wrap:wrap; align-items:center;">
+        <select id="urlSubdomainFilter" onchange="window._filterUrls()" style="appearance:none;width:100%;max-width:340px;background:var(--bg-secondary) url('data:image/svg+xml;utf8,<svg fill=%22%23a0a0a0%22 height=%2224%22 viewBox=%220 0 24 24%22 width=%2224%22 xmlns=%22http://www.w3.org/2000/svg%22><path d=%22M7 10l5 5 5-5z%22/></svg>') no-repeat right 12px center;border:1px solid var(--border-color);border-radius:8px;padding:12px 16px;color:var(--text-primary);font-size:14px;font-weight:500;cursor:pointer;outline:none;transition:border-color 0.2s,box-shadow 0.2s;" onfocus="this.style.borderColor='var(--accent-blue)';this.style.boxShadow='0 0 0 3px rgba(88,166,255,0.2)';" onblur="this.style.borderColor='var(--border-color)';this.style.boxShadow='none';">
             <option value="">All Subdomains ({len(all_urls)} URLs)</option>
             {host_options}
         </select>
+        <div style="position:relative;flex:1;min-width:250px;max-width:400px;">
+            <svg style="position:absolute;left:12px;top:50%;transform:translateY(-50%);pointer-events:none;" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6e7681" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input id="urlSearchInput" type="text" placeholder="Buscar nas URLs... (ex: password, admin, token)" oninput="window._filterUrls()" style="width:100%;background:var(--bg-secondary);border:1px solid var(--border-color);border-radius:8px;padding:12px 16px 12px 38px;color:var(--text-primary);font-size:14px;outline:none;transition:border-color 0.2s,box-shadow 0.2s;" onfocus="this.style.borderColor='var(--accent-blue)';this.style.boxShadow='0 0 0 3px rgba(88,166,255,0.2)';" onblur="this.style.borderColor='var(--border-color)';this.style.boxShadow='none';">
+        </div>
     </div>
     <div class="card open">
         <div class="card-header">
@@ -2254,27 +2599,44 @@ def build_urls_content(subdomains: Dict, target: str) -> str:
     </div>
     <script>
         var _allUrlsData = {json_data};
+        function _scBadge(sc) {{
+            if (!sc || sc === 0) return '<span style="padding:2px 8px;border-radius:8px;font-size:10px;font-weight:700;background:rgba(139,148,158,0.1);color:#6e7681;border:1px solid rgba(139,148,158,0.3);">N/A</span>';
+            var color, bg, border;
+            if (sc >= 200 && sc < 300) {{ color = '#3fb950'; bg = 'rgba(63,185,80,0.12)'; border = 'rgba(63,185,80,0.4)'; }}
+            else if (sc >= 300 && sc < 400) {{ color = '#58a6ff'; bg = 'rgba(88,166,255,0.12)'; border = 'rgba(88,166,255,0.4)'; }}
+            else if (sc === 401 || sc === 403) {{ color = '#d29922'; bg = 'rgba(210,153,34,0.12)'; border = 'rgba(210,153,34,0.4)'; }}
+            else if (sc >= 400) {{ color = '#f85149'; bg = 'rgba(248,81,73,0.12)'; border = 'rgba(248,81,73,0.4)'; }}
+            else {{ color = '#8b949e'; bg = 'rgba(139,148,158,0.1)'; border = 'rgba(139,148,158,0.3)'; }}
+            return '<span style="padding:2px 8px;border-radius:8px;font-size:10px;font-weight:700;background:' + bg + ';color:' + color + ';border:1px solid ' + border + ';">' + sc + '</span>';
+        }}
         window._urlRenderFn = function(row) {{
-                    let style = row.type === "validated" ? "color:var(--text-primary);" : "color:var(--text-muted);";
-                    let type_badge = row.type === "validated" ? '<span class="tag tag-high" style="background:#23863630; color:#3fb950; font-size:10px;"> Validated</span>' : '<span class="tag tag-low" style="background:#d2992230; color:#d29922; font-size:10px;"> Discovered</span>';
                     let login_badge = row.is_login ? '<span class="tag tag-medium"> LOGIN</span>' : "";
                     let tags_html = (row.tags || []).map(t => `<span class="tag tag-low" style="background:#333; color:#aaa; font-size:10px;">${{escapeHtml(t)}}</span>`).join(" ");
-                    
+                    var searchTerm = (document.getElementById("urlSearchInput") || {{}}).value || "";
+                    var urlText = escapeHtml(row.url);
+                    if (searchTerm) {{
+                        var re = new RegExp("(" + searchTerm.replace(/[.*+?^${{}}()|[\\]\\\\]/g, '\\\\$&') + ")", "gi");
+                        urlText = urlText.replace(re, '<mark style="background:#d2992280;color:#fff;padding:0 2px;border-radius:2px;">$1</mark>');
+                    }}
                     return `<tr>
                         <td>${{escapeHtml(row.host)}}</td>
-                        <td style="word-break: break-all; max-width: 500px;"><a href="${{escapeHtml(row.url)}}" target="_blank" style="${{style}}">${{escapeHtml(row.url)}}</a></td>
-                        <td>${{type_badge}}</td>
+                        <td style="word-break: break-all; max-width: 500px;"><a href="${{escapeHtml(row.url)}}" target="_blank" style="color:var(--text-primary);">${{urlText}}</a></td>
+                        <td>${{_scBadge(row.status_code)}}</td>
                         <td>${{tags_html}}</td>
                         <td>${{login_badge}}</td>
                     </tr>`;
                 }};
-        window._filterUrlsBySub = function(host) {{
-            var filtered = host ? _allUrlsData.filter(function(r){{ return r.host === host; }}) : _allUrlsData;
+        window._filterUrls = function() {{
+            var host = document.getElementById("urlSubdomainFilter").value;
+            var search = (document.getElementById("urlSearchInput").value || "").toLowerCase();
+            var filtered = _allUrlsData;
+            if (host) filtered = filtered.filter(function(r){{ return r.host === host; }});
+            if (search) filtered = filtered.filter(function(r){{ return r.url.toLowerCase().indexOf(search) !== -1; }});
             document.getElementById("urlCountBadge").textContent = filtered.length + " URLs";
-            initPaginatedTable("urls_container", filtered, ["Host", "URL", "Type", "Tags", "Login"], window._urlRenderFn, 100);
+            initPaginatedTable("urls_container", filtered, ["Host", "URL", "Status", "Tags", "Login"], window._urlRenderFn, 100);
         }};
         setTimeout(function() {{
-            initPaginatedTable("urls_container", _allUrlsData, ["Host", "URL", "Type", "Tags", "Login"], window._urlRenderFn, 100);
+            initPaginatedTable("urls_container", _allUrlsData, ["Host", "URL", "Status", "Tags", "Login"], window._urlRenderFn, 100);
         }}, 0);
     </script>
     '''
@@ -2501,24 +2863,63 @@ def build_keys_content(target: str) -> str:
 
 
 def build_login_pages_content(subdomains: Dict, target: str) -> str:
-    """Build dedicated Login Pages section."""
+    """Build dedicated Login Pages section (V11: Enhanced detection)."""
     from pathlib import Path
     from urllib.parse import urlparse
+    import re
     
     base = Path("output") / target
     login_urls = []
+    seen = set()
     
+    # Source 1: Detected by domain plugin
     for url in read_file_lines(base / "domain" / "login_pages.txt"):
-        try:
-            host = urlparse(url).netloc.split(":")[0]
-        except:
-            host = "Unknown"
-        login_urls.append({"url": url, "host": host, "source": "detected"})
+        if url not in seen:
+            try:
+                host = urlparse(url).netloc.split(":")[0]
+            except:
+                host = "Unknown"
+            login_urls.append({"url": url, "host": host, "source": "detected", "signal": "Domain Scanner"})
+            seen.add(url)
     
+    # Source 2: From subdomain aggregation
     for host, data in subdomains.items():
         for url in data.get("login_urls", set()):
-            if not any(l["url"] == url for l in login_urls):
-                login_urls.append({"url": url, "host": host, "source": "heuristic"})
+            if url not in seen:
+                login_urls.append({"url": url, "host": host, "source": "heuristic", "signal": "Heuristic"})
+                seen.add(url)
+    
+    # Source 3 (V11): Scan urls_200 for login keywords
+    login_url_re = re.compile(
+        r'(login|signin|sign-in|sign_in|logon|sso|auth|authenticate|'
+        r'account/login|access|entrar|conectar|acesso|cas/login|'
+        r'oauth|saml|adfs|idp|identity|wp-login)', re.I
+    )
+    for urls_file in [
+        base / "urls" / "urls_200.txt",
+        base / "domain" / "urls_valid.txt",
+    ]:
+        for url in read_file_lines(urls_file):
+            if url not in seen and login_url_re.search(url):
+                try:
+                    host = urlparse(url).netloc.split(":")[0]
+                except:
+                    host = "Unknown"
+                login_urls.append({"url": url, "host": host, "source": "url-pattern", "signal": "URL Keyword"})
+                seen.add(url)
+    
+    # Source 4 (V11): From admin panels with has_login_form
+    admin_data = read_json_file(base / "admin" / "admin_panels.json") or []
+    for panel in admin_data:
+        url = panel.get("url", "")
+        if url not in seen and panel.get("has_login_form"):
+            login_urls.append({
+                "url": url,
+                "host": urlparse(url).netloc.split(":")[0] if url else "Unknown",
+                "source": "admin-scan",
+                "signal": "Login Form (Admin)"
+            })
+            seen.add(url)
     
     if not login_urls:
         return '<div class="empty-state"><p>No login pages found.</p></div>'
@@ -2527,10 +2928,18 @@ def build_login_pages_content(subdomains: Dict, target: str) -> str:
     
     rows = ""
     for item in login_urls:
+        source = item["source"]
+        source_color = {
+            "detected": "tag-high",
+            "admin-scan": "tag-high",
+            "url-pattern": "tag-medium",
+            "heuristic": "tag-low",
+        }.get(source, "tag-low")
+        
         rows += '<tr>'
         rows += f'<td><a href="{html.escape(item["url"])}" target="_blank" style="color:var(--accent-orange);font-weight:600;">{html.escape(item["url"][:80])}</a></td>'
         rows += f'<td>{html.escape(item["host"])}</td>'
-        rows += f'<td><span class="tag tag-medium">{html.escape(item["source"])}</span></td>'
+        rows += f'<td><span class="tag {source_color}">{html.escape(item["signal"])}</span></td>'
         rows += '</tr>'
     
     return f"""
@@ -2540,10 +2949,10 @@ def build_login_pages_content(subdomains: Dict, target: str) -> str:
             <span class="card-badge">{len(login_urls)} pages</span>
         </div>
         <div class="card-content" style="display:block;">
-            <p style="color:var(--text-secondary); margin-bottom:12px;">All pages detected as authentication endpoints, login forms, or access portals.</p>
+            <p style="color:var(--text-secondary); margin-bottom:12px;">All pages detected as authentication endpoints, login forms, or access portals. Sources: Domain Scanner, URL Keyword Match, Admin Panel Scan, Heuristic.</p>
             <div class="table-wrapper">
                 <table>
-                    <thead><tr><th>URL</th><th>Subdomain</th><th>Source</th></tr></thead>
+                    <thead><tr><th>URL</th><th>Subdomain</th><th>Detection</th></tr></thead>
                     <tbody>{rows}</tbody>
                 </table>
             </div>
@@ -2594,24 +3003,15 @@ def build_files_content(target: str) -> str:
     ext_json = json.dumps(ext_data).replace("</", "<\\/")
     total_files = sum(len(v) for v in ext_data.values())
     
-    ext_chips_script = """
+    ext_options = "".join(f'<option value="{html.escape(ext)}">{html.escape(ext)} ({len(urls)})</option>' for ext, urls in sorted(ext_data.items(), key=lambda x: len(x[1]), reverse=True))
+    
+    ext_select_script = """
     <script>
         (function() {
             var extData = """ + ext_json + """;
-            var activeExt = "";
-            var chips = document.getElementById("extChips");
             var container = document.getElementById("files_ext_container");
             
-            function renderChips() {
-                var total = Object.values(extData).reduce(function(a,b){return a+b.length;}, 0);
-                var h = '<button class="burp-btn" style="border-radius:20px;padding:4px 14px;' + (activeExt === "" ? "background:var(--accent-blue);color:#fff;" : "") + '" onclick="window._fExt(\'\')">All (' + total + ')</button>';
-                Object.keys(extData).sort(function(a,b){return extData[b].length-extData[a].length;}).forEach(function(ext) {
-                    var active = activeExt === ext;
-                    h += '<button class="burp-btn" style="border-radius:20px;padding:4px 14px;' + (active ? "background:var(--accent-blue);color:#fff;" : "") + '" onclick="window._fExt(\'' + ext.replace(/'/g,"\\'") + '\')">' + ext + ' (' + extData[ext].length + ')</button>';
-                });
-                chips.innerHTML = h;
-            }
-            function renderFiles() {
+            function renderFiles(activeExt) {
                 var exts = activeExt ? [activeExt] : Object.keys(extData).sort(function(a,b){return extData[b].length-extData[a].length;});
                 var rows = [];
                 exts.forEach(function(ext){extData[ext].forEach(function(url){rows.push({ext:ext,url:url});});});
@@ -2621,24 +3021,29 @@ def build_files_content(target: str) -> str:
                     }, 100);
                 }
             }
-            window._fExt = function(ext){ activeExt=ext; renderChips(); renderFiles(); };
-            setTimeout(function(){ renderChips(); renderFiles(); }, 100);
+            window._filterFilesByExt = function(ext){ renderFiles(ext); };
+            setTimeout(function(){ renderFiles(""); }, 100);
         })();
     </script>"""
     
     return f"""
     {sensitive_html}
+    <div style="margin-bottom:16px;">
+        <select id="fileExtFilter" onchange="window._filterFilesByExt(this.value)" style="appearance:none;width:100%;max-width:400px;background:var(--bg-secondary) url('data:image/svg+xml;utf8,<svg fill=%22%23a0a0a0%22 height=%2224%22 viewBox=%220 0 24 24%22 width=%2224%22 xmlns=%22http://www.w3.org/2000/svg%22><path d=%22M7 10l5 5 5-5z%22/></svg>') no-repeat right 12px center;border:1px solid var(--border-color);border-radius:8px;padding:12px 16px;color:var(--text-primary);font-size:14px;font-weight:500;cursor:pointer;outline:none;transition:border-color 0.2s,box-shadow 0.2s;" onfocus="this.style.borderColor='var(--accent-blue)';this.style.boxShadow='0 0 0 3px rgba(88,166,255,0.2)';" onblur="this.style.borderColor='var(--border-color)';this.style.boxShadow='none';">
+            <option value="">All Extensions ({total_files} files)</option>
+            {ext_options}
+        </select>
+    </div>
     <div class="card open">
         <div class="card-header">
             <span class="card-title">Files by Extension</span>
             <span class="card-badge">{total_files} files in {len(ext_data)} types</span>
         </div>
         <div class="card-content" style="display:block;">
-            <div id="extChips" style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:16px;"></div>
             <div id="files_ext_container"></div>
         </div>
     </div>
-    {ext_chips_script}
+    {ext_select_script}
     """
 
 
@@ -3284,48 +3689,193 @@ def build_security_content(target: str) -> str:
     html_parts = []
     
     # -------------------------------------------------------------------------
+    # -------------------------------------------------------------------------
     # 1. XSS Report
     # -------------------------------------------------------------------------
     xss_dir = base / "xss"
     if xss_dir.exists():
-        xss_final = xss_dir / "final_report.txt"
         
-        if xss_final.exists():
-            content = xss_final.read_text(errors="ignore")
-            # Filter out the TOP 10 FINDINGS section and everything after it if it's at the end
-            if "=== TOP 10" in content:
-                content = content.split("=== TOP 10")[0]
-            
-            if content.strip():
-                formatted_content = html.escape(content.strip())
-                formatted_content = formatted_content.replace("Vulnerable:", f'<span style="color:#f85149; font-weight:bold;">Vulnerable:</span>')
-                formatted_content = formatted_content.replace("[POC]", f'<span style="background:#238636; color:#fff; padding:2px 6px; border-radius:4px; font-size:11px;">POC</span>')
+        # 1.1 XSS OAST (Critical)
+        oast_file = xss_dir / "active_xss_oast_results.json"
+        if oast_file.exists():
+            oast_results = read_json_file(oast_file) or []
+            if oast_results:
+                interactsh_log = base / "interactsh.json"
+                if not interactsh_log.exists():
+                    interactsh_log = base / "intelligence" / "oast_interactions.json"
                 
+                interactions = []
+                if interactsh_log.exists():
+                    try:
+                        for line in interactsh_log.read_text(errors="ignore").splitlines():
+                            if line.strip(): interactions.append(json.loads(line))
+                    except: pass
+                
+                rows = ""
+                for res in oast_results:
+                    payload = res.get("payload", "")
+                    oast_host = ""
+                    import re
+                    m = re.search(r'([a-z0-9\\-]+\\.[a-z0-9\\-]+\\.[a-z]+)', payload)
+                    if m: oast_host = m.group()
+                    
+                    oast_summary = "Nenhuma interação registrada no log."
+                    for log in interactions:
+                        if oast_host and (oast_host in log.get('full-uri', '') or oast_host in log.get('raw-request', '')):
+                            ip = log.get("remote-address", "Unknown IP")
+                            proto = log.get("protocol", "Unknown Protocol")
+                            timestamp = log.get("timestamp", "Unknown Time")
+                            oast_summary = f"IP: {ip} | Timestamp: {timestamp} | Protocolo: {proto}"
+                            break
+                    
+                    rows += f'''
+                    <div style="margin-bottom:15px; padding:12px; border-left:4px solid var(--accent-red); background:var(--bg-tertiary); border-radius:6px;">
+                        <div style="margin-bottom:6px; font-size:13px;"><strong style="color:var(--text-primary);">Severidade:</strong> <span class="tag tag-critical" style="font-size:11px;">CRÍTICA</span></div>
+                        <div style="margin-bottom:6px; font-size:13px; word-break:break-all;"><strong>Test URL:</strong> <a href="{html.escape(res.get("test_url", ""))}">{html.escape(res.get("test_url", ""))}</a></div>
+                        <div style="margin-bottom:6px; font-size:13px;"><strong>Parâmetro:</strong> <code>{html.escape(res.get("parameter", ""))}</code></div>
+                        <div style="margin-bottom:10px; font-size:13px;"><strong style="color:var(--text-primary);">Evidência:</strong> Interactsh registrou requisição originada do alvo, comprovando execução do JavaScript.</div>
+                        <div style="font-size:12px; font-family:monospace; color:var(--text-secondary); background:var(--bg-secondary); padding:8px; border-radius:4px; border:1px solid var(--border-color);">
+                            {html.escape(oast_summary)}
+                        </div>
+                    </div>
+                    '''
                 html_parts.append(f'''
-                <div class="card" style="border-left: 3px solid var(--accent-red);">
+                <div class="card open" style="border-left: 3px solid #f85149; margin-top: 15px;">
                     <div class="card-header">
-                        <span class="card-title"> Passive XSS Vulnerabilities</span>
+                        <span class="card-title"> Active XSS (OAST Confirmed)</span>
+                        <span class="card-badge tag-critical">{len(oast_results)} Critical</span>
                     </div>
                     <div class="card-content" style="display:block;">
-                        <pre>{formatted_content}</pre>
+                        {rows}
                     </div>
                 </div>''')
 
-    # Dalfox Active Scan (V10.2 integration)
-    dalfox_out = base / "xss" / "dalfox_results.txt"
-    if dalfox_out.exists():
-        content = dalfox_out.read_text(errors="ignore").strip()
-        if content:
-            formatted_content = html.escape(content)
-            html_parts.append(f'''
-            <div class="card" style="border-left: 3px solid #f85149; margin-top: 15px;">
-                <div class="card-header">
-                    <span class="card-title"> Dalfox Active XSS Scan</span>
-                </div>
-                <div class="card-content" style="display:block;">
-                    <pre>{formatted_content}</pre>
-                </div>
-            </div>''')
+        # 1.2 Visual XSS (Fallback)
+        visual_file = xss_dir / "active_xss_visual_results.json"
+        if visual_file.exists():
+            visual_results = read_json_file(visual_file) or []
+            if visual_results:
+                rows = ""
+                for res in visual_results:
+                    rows += f'''
+                    <div style="margin-bottom:10px; padding:10px; border-left:4px solid var(--accent-orange); background:var(--bg-tertiary); border-radius:4px;">
+                        <div style="margin-bottom:5px; font-size:13px; word-break:break-all;"><strong>Test URL:</strong> <a href="{html.escape(res.get("test_url", ""))}">{html.escape(res.get("test_url", ""))}</a></div>
+                        <div style="margin-bottom:5px; font-size:13px;"><strong>Parâmetro:</strong> <code>{html.escape(res.get("parameter", ""))}</code></div>
+                        <div style="font-size:12px; color:var(--text-secondary);">Reflexão visual confirmada (fallback, menor confiança).</div>
+                    </div>
+                    '''
+                html_parts.append(f'''
+                <div class="card open" style="border-left: 3px solid var(--accent-orange); margin-top: 15px;">
+                    <div class="card-header">
+                        <span class="card-title"> Active XSS (Visual Fallback)</span>
+                        <span class="card-badge tag-high">{len(visual_results)} Medium/High</span>
+                    </div>
+                    <div class="card-content" style="display:block;">
+                        {rows}
+                    </div>
+                </div>''')
+
+        # 1.3 Passive XSS Report
+        xss_final = xss_dir / "final_report.txt"
+        if xss_final.exists():
+            content = xss_final.read_text(errors="ignore")
+            if "=== TOP 10" in content:
+                content = content.split("=== TOP 10")[0]
+            if content.strip():
+                formatted_content = html.escape(content.strip()).replace("Vulnerable:", f'<span style="color:#f85149; font-weight:bold;">Vulnerable:</span>').replace("[POC]", f'<span style="background:#238636; color:#fff; padding:2px 6px; border-radius:4px; font-size:11px;">POC</span>')
+                html_parts.append(f'''
+                <div class="card" style="border-left: 3px solid var(--accent-red); margin-top: 15px;">
+                    <div class="card-header"><span class="card-title"> Passive XSS Vulnerabilities</span></div>
+                    <div class="card-content" style="display:block;"><pre>{formatted_content}</pre></div>
+                </div>''')
+
+    # -------------------------------------------------------------------------
+    # 1.5 XSS Parameter URLs — Dropdown por Subdomínio (estilo Files)
+    # -------------------------------------------------------------------------
+    from urllib.parse import urlparse as _xss_urlparse
+    xss_param_urls = []
+    
+    # Coletar URLs com parâmetros de múltiplas fontes
+    urls_sources = [
+        base / "urls" / "patterns" / "xss_urls.txt",
+        base / "urls" / "patterns" / "xss_ready.txt",
+        base / "urls" / "urls_200.txt",
+    ]
+    seen_urls = set()
+    for src in urls_sources:
+        if src.exists():
+            for line in src.read_text(errors="ignore").splitlines():
+                u = line.strip()
+                if u and "?" in u and u not in seen_urls:
+                    seen_urls.add(u)
+                    xss_param_urls.append(u)
+    
+    if xss_param_urls:
+        # Agrupar por subdomínio
+        xss_by_host = {}
+        for u in xss_param_urls:
+            try:
+                host = _xss_urlparse(u).netloc.split(":")[0]
+            except:
+                host = "Unknown"
+            xss_by_host.setdefault(host, []).append(u)
+        
+        xss_host_json = json.dumps(xss_by_host).replace("</", "<\\/")
+        total_xss_urls = len(xss_param_urls)
+        xss_host_options = "".join(
+            f'<option value="{html.escape(h)}">{html.escape(h)} ({len(urls)})</option>'
+            for h, urls in sorted(xss_by_host.items(), key=lambda x: len(x[1]), reverse=True)
+        )
+        
+        html_parts.append(f'''
+        <div style="margin-top:20px; margin-bottom:16px;">
+            <select id="xssHostFilter" onchange="window._filterXssByHost(this.value)" style="appearance:none;width:100%;max-width:400px;background:var(--bg-secondary) url('data:image/svg+xml;utf8,<svg fill=%22%23a0a0a0%22 height=%2224%22 viewBox=%220 0 24 24%22 width=%2224%22 xmlns=%22http://www.w3.org/2000/svg%22><path d=%22M7 10l5 5 5-5z%22/></svg>') no-repeat right 12px center;border:1px solid var(--border-color);border-radius:8px;padding:12px 16px;color:var(--text-primary);font-size:14px;font-weight:500;cursor:pointer;outline:none;transition:border-color 0.2s,box-shadow 0.2s;" onfocus="this.style.borderColor='var(--accent-blue)';this.style.boxShadow='0 0 0 3px rgba(88,166,255,0.2)';" onblur="this.style.borderColor='var(--border-color)';this.style.boxShadow='none';">
+                <option value="">All Subdomains ({total_xss_urls} URLs with params)</option>
+                {xss_host_options}
+            </select>
+        </div>
+        <div class="card open">
+            <div class="card-header">
+                <span class="card-title">XSS — URLs with Parameters</span>
+                <span class="card-badge" id="xssCountBadge">{total_xss_urls} URLs</span>
+            </div>
+            <div class="card-content" style="display:block;">
+                <div id="xss_param_container"></div>
+            </div>
+        </div>
+        <script>
+            (function() {{
+                var xssHostData = {xss_host_json};
+                function renderXss(activeHost) {{
+                    var hosts = activeHost ? [activeHost] : Object.keys(xssHostData).sort(function(a,b){{ return xssHostData[b].length - xssHostData[a].length; }});
+                    var rows = [];
+                    hosts.forEach(function(h) {{
+                        xssHostData[h].forEach(function(url) {{
+                            // Extrair params da URL
+                            var params = "";
+                            try {{
+                                var q = url.split("?")[1] || "";
+                                params = q.split("&").map(function(p){{ return p.split("=")[0]; }}).join(", ");
+                            }} catch(e) {{}}
+                            rows.push({{ host: h, url: url, params: params }});
+                        }});
+                    }});
+                    document.getElementById("xssCountBadge").textContent = rows.length + " URLs";
+                    if (typeof initPaginatedTable === "function") {{
+                        initPaginatedTable("xss_param_container", rows, ["Host", "URL", "Parameters"], function(row) {{
+                            return '<tr>' +
+                                '<td>' + escapeHtml(row.host) + '</td>' +
+                                '<td style="word-break:break-all;max-width:500px;"><a href="' + escapeHtml(row.url) + '" target="_blank" style="color:var(--text-primary);">' + escapeHtml(row.url) + '</a></td>' +
+                                '<td><code style="color:var(--accent-orange);font-size:11px;">' + escapeHtml(row.params) + '</code></td>' +
+                            '</tr>';
+                        }}, 100);
+                    }}
+                }}
+                window._filterXssByHost = function(host) {{ renderXss(host); }};
+                setTimeout(function() {{ renderXss(""); }}, 100);
+            }})();
+        </script>
+        ''')
 
     # -------------------------------------------------------------------------
     # 2. CORS Misconfigurations
@@ -3808,12 +4358,24 @@ def build_admin_content(target: str) -> str:
             </div>
             '''
         
+        category = panel.get("category", "")
+        cat_colors = {
+            "ARQUIVO SENSÍVEL": ("var(--accent-red)", "rgba(248,81,73,0.12)"),
+            "CONFIG EXPOSURE": ("var(--accent-red)", "rgba(248,81,73,0.12)"),
+            "PATH API": ("var(--accent-blue)", "rgba(88,166,255,0.12)"),
+            "DEBUG/TOOL": ("var(--accent-orange)", "rgba(210,153,34,0.12)"),
+            "ADMIN PANEL": ("var(--accent-purple)", "rgba(163,113,247,0.12)"),
+        }
+        cat_color, cat_bg = cat_colors.get(category, ("var(--text-muted)", "transparent"))
+        cat_html = f'<span style="font-size:9px;padding:2px 6px;border-radius:4px;background:{cat_bg};color:{cat_color};font-weight:600;border:1px solid {cat_color}30;">{html.escape(category)}</span>' if category else ""
+        
         rows += f'''
         <tr>
             <td><a href="{html.escape(url)}" target="_blank">{html.escape(url[:80])}</a></td>
             <td><span class="tag {status_class}">{status}</span></td>
             <td>{html.escape(title)}</td>
             <td>
+                {cat_html}
                 {login_icon}{cms_html}
                 {burp_html}
             </td>
@@ -4454,7 +5016,7 @@ def build_sourcemaps_content(target: str) -> str:
     '''
 
 def build_attack_priority_content(target: str) -> str:
-    """Build Attack Priority Engine section with weighted scores."""
+    """Build Attack Priority Engine section formatted as Priority Queue."""
     path = Path("output") / target / "intelligence" / "attack_priority.json"
     data = read_json_file(path)
     if not data:
@@ -4464,106 +5026,448 @@ def build_attack_priority_content(target: str) -> str:
     if not data: return ""
     
     rows = ""
-    for item in data[:15]:  # Top 15
+    for idx, item in enumerate(data[:15]):  # Top 15
         score = item.get("score", 0)
-        color = "var(--accent-red)" if score >= 7 else "var(--accent-orange)" if score >= 4 else "var(--accent-green)"
-        bar_width = min(score * 10, 100)
-        tags_html = " ".join([f'<span class="tag tag-low" style="background:#444; color:#eee;">{html.escape(str(t))}</span>' for t in item.get("tags", [])])
+        
+        # Define severity based on score
+        if score >= 8:
+            sev_tag = "HIGH"
+            tag_class = "tag-high"
+            border_color = "#f85149"
+            bg_color = "rgba(248,81,73,0.08)"
+        elif score >= 4:
+            sev_tag = "MEDIUM"
+            tag_class = "tag-medium"
+            border_color = "#d29922"
+            bg_color = "rgba(210,153,34,0.08)"
+        else:
+            sev_tag = "LOW"
+            tag_class = "tag-low"
+            border_color = "#3fb950"
+            bg_color = "rgba(63,185,80,0.08)"
+
+        subdomain = html.escape(str(item.get("subdomain", "")))
         
         factors = item.get("factors", item.get("reasons", []))
-        factors_html = "<br>".join([f'<span style="font-size:11px; color:#aaa;">&#8226; {html.escape(str(r))}</span>' for r in factors[:5]])
+        desc_html = "<br>".join([f'&#8226; {html.escape(str(r))}' for r in factors[:3]])
         
         rows += f'''
-        <div style="padding:12px; background:var(--bg-tertiary); border-left:4px solid {color}; border-radius:4px; margin-bottom:12px;">
-            <div style="display:flex; justify-content:space-between; align-items:center;">
-                <div style="flex:1;">
-                    <div style="display:flex; align-items:center; gap:10px;">
-                        <a href="javascript:void(0)" onclick="goToSubdomain(\'{html.escape(str(item.get("subdomain", "")))} \')" style="font-size:15px; font-weight:bold; color:var(--accent-blue); text-decoration:none;">{html.escape(str(item.get("subdomain", "")))}</a>
-                        <div style="font-size:22px; font-weight:800; color:{color};">{score}</div>
-                    </div>
-                    <div style="margin:6px 0; background:var(--bg-primary); border-radius:3px; height:6px; overflow:hidden;">
-                        <div style="width:{bar_width}%; height:100%; background:{color}; border-radius:3px;"></div>
-                    </div>
-                    <div style="margin-top:4px;">{tags_html}</div>
-                    <div style="margin-top:6px;">{factors_html}</div>
-                </div>
+        <div class="priority-item">
+            <div class="p-rank" style="border-color:{border_color};color:{border_color};background:{bg_color};">{idx+1}</div>
+            <div class="p-content">
+                <div class="p-title"><span class="tag {tag_class}" style="margin-right:6px;">{sev_tag}</span>{subdomain} — Risk Score: {score}</div>
+                <div class="p-desc">{desc_html}</div>
             </div>
+            <button class="p-go" onclick="goToSubdomain(\'{subdomain} \')">→ View</button>
         </div>
         '''
     
-    weight_table = '''
-    <div style="margin-bottom:16px; padding:12px; background:var(--bg-tertiary); border-radius:6px; border:1px solid var(--border-color);">
-        <span style="font-weight:bold; color:var(--text-primary); font-size:13px;"> Attack Priority Weights:</span>
-        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:6px; margin-top:8px;">
-            <span style="font-size:11px; color:#aaa;"> Login Page: +3</span>
-            <span style="font-size:11px; color:#aaa;"> Admin Panel: +5</span>
-            <span style="font-size:11px; color:#aaa;"> GraphQL: +6</span>
-            <span style="font-size:11px; color:#aaa;"> Swagger: +5</span>
-            <span style="font-size:11px; color:#aaa;"> JWT: +4</span>
-            <span style="font-size:11px; color:#aaa;"> API Endpoint: +3</span>
-            <span style="font-size:11px; color:#aaa;"> Upload: +6</span>
-            <span style="font-size:11px; color:#aaa;"> Internal Host: +4</span>
-            <span style="font-size:11px; color:#aaa;"> Dev/Staging: +4</span>
-            <span style="font-size:11px; color:#aaa;"> JS Secrets: +5</span>
-        </div>
-    </div>
-    '''
+    return rows
     
-    return f'''
-    <div class="card open" style="border-left: 4px solid var(--accent-red);">
-        <div class="card-header">
-            <span class="card-title"> Attack Priority Engine</span>
-            <span class="card-badge">Top {min(len(data), 15)} Targets</span>
-        </div>
-        <div class="card-content">
-            {weight_table}
-            {rows}
-        </div>
-    </div>
-    '''
-
-
 def build_quick_wins_content(target: str) -> str:
     """Build Quick Wins section with high-impact, low-effort findings."""
-    path = Path("output") / target / "intelligence" / "quick_wins.json"
-    data = read_json_file(path)
-    if not data: return '<div class="empty-state"><p>No quick wins identified.</p></div>'
+    from pathlib import Path
+    import json
+    import html
     
-    wins_html = ""
-    for win in data:
-        severity = win.get("severity", "MEDIUM")
-        sev_class = "tag-high" if severity in ["HIGH", "CRITICAL"] else "tag-medium"
-        icon = win.get("icon", "")
+    base = Path("output") / target
+    
+    # Carregar inteligência real gerada pelo script
+    quick_wins_path = base / "intelligence" / "quick_wins.json"
+    qw_data = read_json_file(quick_wins_path) or []
+    
+    cookies_path = base / "headers" / "headers_results.json"
+    cookies_data = read_json_file(cookies_path) or []
+    weak_cookies_count = sum(1 for h in cookies_data if "Cookie" in h.get("category", "") and h.get("severity") in ["MEDIUM", "HIGH"])
+    # Override with actual cookie scan results if available
+    _cookies_json = base / "cookies" / "cookies_results.json"
+    if _cookies_json.exists():
+        try:
+            _cdata = json.loads(_cookies_json.read_text(errors="ignore"))
+            weak_cookies_count = _cdata.get("stats", {}).get("high_risk", 0) + _cdata.get("stats", {}).get("medium_risk", 0)
+        except: pass
+    
+    # Extração de Candidatos a IDOR / APIs (Dinâmico)
+    idor_candidates = 0
+    params_file = base / "parameters" / "extracted_parameters.json"
+    if params_file.exists():
+        try:
+             params_data = json.loads(params_file.read_text(errors="ignore"))
+             for p in params_data:
+                 if p.lower() in ["id", "user", "userid", "account", "profile"]: idor_candidates += 1
+        except: pass
         
-        bg_color = "rgba(248, 81, 73, 0.08)" if severity == "CRITICAL" else "rgba(210, 153, 34, 0.08)"
-        border_color = "var(--accent-red)" if severity == "CRITICAL" else "var(--accent-orange)"
+    api_endpoints = 0
+    routes_file = base / "urls" / "patterns" / "apis.txt"
+    if routes_file.exists():
+        api_endpoints = len(routes_file.read_text(errors="ignore").splitlines())
         
-        wins_html += f'''
-        <div style="padding:14px; background:{bg_color}; border-left:4px solid {border_color}; border-radius:4px; margin-bottom:12px;">
-            <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
-                <span style="font-size:20px;">{icon}</span>
-                <strong style="color:var(--text-primary);">{html.escape(str(win.get("type", "")))}</strong>
-                <span class="tag {sev_class}">{severity}</span>
-            </div>
-            <div style="font-size:13px; color:var(--text-secondary); margin-bottom:4px;">
-                <a href="{html.escape(str(win.get('url', '')))}" target="_blank" style="color:var(--accent-blue);">{html.escape(str(win.get("url", "")))}</a>
-            </div>
-            <div style="font-size:12px; color:var(--text-secondary);">{html.escape(str(win.get("detail", "")))}</div>
-            <div style="margin-top:6px; padding:6px 10px; background:var(--bg-tertiary); border-radius:4px; border:1px solid var(--border-color);">
-                <span style="font-size:11px; color:var(--accent-green); font-weight:600;"> Action:</span>
-                <span style="font-size:11px; color:var(--text-secondary);"> {html.escape(str(win.get("action", "")))}</span>
-            </div>
+    auth_endpoints = 0
+    login_file = base / "urls" / "login_pages.txt"
+    if login_file.exists():
+        auth_endpoints = len(login_file.read_text(errors="ignore").splitlines())
+        
+    high_value = auth_endpoints + (idor_candidates // 2)
+
+    # ----- GERAR CONTEÚDO DINÂMICO 100% REAL ----- #
+    
+    # Quick Wins
+    quick_wins_html = ""
+    for win in qw_data[:5]:
+        sev = win.get("severity", "MEDIUM")
+        sev_class = "critical" if sev in ["HIGH", "CRITICAL"] else "warning"
+        quick_wins_html += f'''
+        <div class="box {sev_class}">
+        <b>[{sev}] {html.escape(win.get("type", "Security Finding"))}</b><br>
+        <span style="font-size:12px; color:#8b949e;">URL: {html.escape(win.get("url", ""))}</span><br>
+        <span style="font-size:12px; color:#8b949e;">Details: {html.escape(win.get("detail", ""))}</span><br>
+        → <span style="color:var(--accent-blue);">Action: {html.escape(win.get("action", "Test manually"))}</span>
         </div>
         '''
+    if not quick_wins_html:
+        quick_wins_html = '<div class="box good"><b>[INFO] Nenhum Quick Win Imediato (Automático) encontrado.</b><br><span style="font-size:12px; color:#8b949e;">→ Faça análise manual com base nas rotas e parâmetros abaixo.</span></div>'
+
+    # Cookies Analisados (Dinâmico via cookies_results.json)
+    cookies_html = ""
+    cookies_json_path = base / "cookies" / "cookies_results.json"
+    if cookies_json_path.exists():
+        try:
+            cookies_result = json.loads(cookies_json_path.read_text(errors="ignore"))
+            cookie_list = cookies_result.get("cookies", [])
+            for ck in cookie_list:
+                sev = ck.get("severity", "INFO")
+                name = ck.get("name", "Unknown")
+                is_session = any(pat in name.lower() for pat in ["session","sess","sid","token","auth","jwt","access","login","phpsessid","jsessionid","connect.sid"])
+
+                # Build attribute badges
+                httponly_icon = "✅" if ck.get("httponly") else "❌"
+                httponly_note = "" if ck.get("httponly") else " (vulnerável a XSS stealing)"
+                secure_icon = "✅" if ck.get("secure") else "❌"
+                secure_note = "" if ck.get("secure") else " (enviado em HTTP)"
+                samesite_val = ck.get("samesite", "Not Set")
+                if samesite_val.lower() in ("strict", "lax"):
+                    samesite_icon = "✅"
+                elif samesite_val.lower() == "none":
+                    samesite_icon = "⚠"
+                else:
+                    samesite_icon = "⚠"
+                expires = ck.get("expires", "Session")
+
+                # Severity colors
+                if sev == "HIGH":
+                    sev_class = "critical"
+                    sev_badge = f'<span style="background:rgba(248,81,73,0.15);color:#f85149;padding:2px 8px;border-radius:8px;font-size:10px;font-weight:700;border:1px solid rgba(248,81,73,0.4);">{sev}</span>'
+                elif sev == "MEDIUM":
+                    sev_class = "warning"
+                    sev_badge = f'<span style="background:rgba(210,153,34,0.12);color:#d29922;padding:2px 8px;border-radius:8px;font-size:10px;font-weight:700;border:1px solid rgba(210,153,34,0.4);">{sev}</span>'
+                elif sev == "LOW":
+                    sev_class = ""
+                    sev_badge = f'<span style="background:rgba(88,166,255,0.10);color:#58a6ff;padding:2px 8px;border-radius:8px;font-size:10px;font-weight:700;border:1px solid rgba(88,166,255,0.4);">{sev}</span>'
+                else:
+                    sev_class = "good"
+                    sev_badge = f'<span style="background:rgba(63,185,80,0.10);color:#3fb950;padding:2px 8px;border-radius:8px;font-size:10px;font-weight:700;border:1px solid rgba(63,185,80,0.4);">OK</span>'
+
+                session_tag = ' <span style="background:#58a6ff20;color:#58a6ff;padding:1px 6px;border-radius:4px;font-size:9px;font-weight:600;">SESSION</span>' if is_session else ""
+
+                cookies_html += f'''
+                <div class="box {sev_class}" style="padding:12px;">
+                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+                        {sev_badge}
+                        <b style="font-size:13px;">Cookie: <code>{html.escape(name)}</code></b>
+                        {session_tag}
+                    </div>
+                    <div style="font-size:12px;line-height:2;color:var(--text-secondary);">
+                        <span style="display:block;">- HttpOnly: {httponly_icon}{httponly_note}</span>
+                        <span style="display:block;">- Secure: {secure_icon}{secure_note}</span>
+                        <span style="display:block;">- SameSite: {samesite_icon} {html.escape(samesite_val)}</span>
+                        <span style="display:block;">- Expiração: {html.escape(expires)}</span>
+                    </div>
+                </div>
+                '''
+        except Exception:
+            pass
+    
+    # Fallback do objeto cookies_data (legacy)
+    if not cookies_html:
+        for h in cookies_data:
+            if "Cookie" in h.get("category", "") and h.get("severity") in ["MEDIUM", "HIGH"]:
+                sev = h.get("severity")
+                sev_class = "critical" if sev == "HIGH" else "warning"
+                cookies_html += f'''
+                <div class="box {sev_class}">
+                    <b>{html.escape(h.get("name", "Cookie Vuln"))}</b><br>
+                    <span style="font-size:12px; color:#8b949e;">{html.escape(h.get("detail", ""))}</span><br>
+                    → <b style="color:var(--accent-red);">Risco:</b> {html.escape(h.get("type", ""))}
+                </div>
+                '''
+    if not cookies_html:
+        cookies_html = '<div class="box good"><b>Nenhum cookie vulnerável detectado.</b></div>'
+
+    # Inteligência de Parâmetros (Real)
+    params_html = ""
+    if params_file.exists():
+        try:
+             params_data = json.loads(params_file.read_text(errors="ignore"))
+             for p in params_data[:15]: # Top 15 param
+                 tag = "low"
+                 tag_text = "Fuzzing Candidate"
+                 if p.lower() in ["id", "user", "userid", "account"]: 
+                     tag, tag_text = "high", "IDOR"
+                 elif p.lower() in ["url", "redirect", "next", "path"]:
+                     tag, tag_text = "medium", "SSRF / Redirect"
+                 elif p.lower() in ["file", "doc", "dir"]:
+                     tag, tag_text = "high", "LFI"
+                 params_html += f'<span style="display:block; margin-bottom:5px;"><code style="color:var(--accent-blue);">{html.escape(p)}</code> → <span class="qw-tag qw-{tag}">{tag_text}</span></span>'
+        except: pass
+    if not params_html:
+        params_html = '<span style="display:block; margin-bottom:5px; color:#888;">Nenhum parâmetro isolado encontrado.</span>'
+
+    # Sugestões de Ataque por Tecnologia (Real)
+    techs_html = ""
+    tech_file = base / "fingerprint" / "wappalyzer.json"
+    if tech_file.exists():
+        try:
+            tech_data = json.loads(tech_file.read_text(errors="ignore"))
+            # Top 3 tecnologias
+            for t in list(tech_data.keys())[:3]:
+                techs_html += f'''
+                <div class="box">
+                    <b>Tecnologia: {html.escape(t)}</b><br>
+                    → <span style="font-size:12px; color:#8b949e;">Investigar CVEs específicos e default credentials para esta stack.</span><br>
+                </div>
+                '''
+        except: pass
+    if not techs_html:
+        techs_html = '<div class="box">Nenhuma tecnologia identificável para Quick Wins.</div>'
+
+    css = """
+    <style>
+    .qw-grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(200px,1fr)); gap:15px; margin-bottom:20px; }
+    .qw-card { background:var(--bg-secondary); padding:15px; border-radius:10px; border-left:4px solid var(--accent-blue); display:flex; flex-direction:column; justify-content:center;}
+    .qw-card h2 { margin:0; font-size:28px; color:var(--text-primary); }
+    .qw-card p { margin:5px 0 0; color:var(--text-secondary); font-size:13px; font-weight:500; }
+    .qw-tag { padding:3px 8px; border-radius:5px; font-size:11px; font-weight:bold; }
+    .qw-high { background:var(--accent-red); color:#fff; }
+    .qw-medium { background:var(--accent-orange); color:#fff; }
+    .qw-low { background:var(--accent-green); color:#fff; }
+    .qw-section { margin-top:30px; }
+    .qw-section h3 { border-bottom:1px solid var(--border-color); padding-bottom:8px; color:var(--text-primary); font-size:16px; margin-bottom:15px; }
+    .box { background:var(--bg-secondary); padding:15px; border-radius:8px; margin-bottom:12px; border:1px solid var(--border-color); }
+    .box b { color:var(--text-primary); font-size: 14px; }
+    .critical { border-left:4px solid var(--accent-red); }
+    .warning { border-left:4px solid var(--accent-orange); }
+    .good { border-left:4px solid var(--accent-green); }
+
+        /* ===== ENHANCEMENTS v2 ===== */
+        /* Risk Gauge */
+        .risk-gauge-wrap { display: flex; align-items: flex-start; gap: 24px; flex-wrap: wrap; }
+        .risk-gauge-block { display: flex; flex-direction: column; align-items: center; min-width: 130px; }
+        .risk-gauge { position: relative; width: 130px; height: 65px; overflow: hidden; }
+        .risk-gauge-arc { width: 130px; height: 65px; border-radius: 65px 65px 0 0;
+            background: conic-gradient(from 180deg at 50% 100%, #3fb950 0deg, #d29922 60deg, #f85149 120deg, transparent 121deg);
+            box-shadow: inset 0 0 0 18px var(--bg-secondary); }
+        .risk-needle { position: absolute; bottom: 0; left: 50%; width: 3px; height: 55px;
+            background: linear-gradient(to top, var(--text-primary), transparent);
+            transform-origin: bottom center; transform: translateX(-50%) rotate(-90deg);
+            border-radius: 2px; transition: transform 1s cubic-bezier(.4,0,.2,1); }
+        .risk-gauge-score { font-size: 26px; font-weight: 800; margin-top: 4px; }
+        .risk-gauge-sublabel { font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.8px; }
+
+        /* Metric mini cards */
+        .metric-mini { padding: 10px 12px; background: var(--bg-tertiary); border-radius: 8px; border: 1px solid var(--border-color); }
+        .metric-mini .mval { font-size: 18px; font-weight: 700; }
+        .metric-mini .mlbl { font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
+        .mini-bar { height: 3px; border-radius: 2px; background: var(--bg-primary); margin-top: 6px; overflow: hidden; }
+        .mini-bar-fill { height: 100%; border-radius: 2px; transition: width 0.8s ease; }
+
+        /* Tech chips */
+        .tech-grid { display: flex; flex-wrap: wrap; gap: 6px; }
+        .tech-chip { padding: 3px 10px; border-radius: 10px; font-size: 11px; font-weight: 600; border: 1px solid; }
+
+        /* Priority Queue */
+        .priority-item { display: flex; align-items: flex-start; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--border-color); }
+        .priority-item:last-child { border-bottom: none; padding-bottom: 0; }
+        .p-rank { width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+            font-size: 11px; font-weight: 800; flex-shrink: 0; border: 2px solid; }
+        .p-content { flex: 1; }
+        .p-title { font-size: 13px; font-weight: 600; color: var(--text-primary); margin-bottom: 3px; }
+        .p-desc { font-size: 11px; color: var(--text-secondary); line-height: 1.5; }
+        .p-desc code { background: var(--bg-primary); padding: 1px 4px; border-radius: 3px; font-size: 10px; color: var(--accent-green); border: 1px solid var(--border-color); }
+        .p-go { padding: 3px 10px; border-radius: 4px; font-size: 11px; font-weight: 600; background: var(--bg-primary);
+            border: 1px solid var(--border-color); color: var(--accent-blue); cursor: pointer; white-space: nowrap;
+            flex-shrink: 0; transition: all 0.2s; align-self: center; }
+        .p-go:hover { background: var(--bg-tertiary); border-color: var(--accent-blue); }
+
+        /* Status badges per finding */
+        .status-badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 8px;
+            font-size: 10px; font-weight: 700; cursor: pointer; user-select: none; transition: all 0.15s; border: 1px solid; }
+        .s-untested { background: rgba(110,118,129,0.1); color: #6e7681; border-color: rgba(110,118,129,0.3); }
+        .s-confirmed { background: rgba(248,81,73,0.15); color: #f85149; border-color: rgba(248,81,73,0.4); }
+        .s-tested { background: rgba(63,185,80,0.15); color: #3fb950; border-color: rgba(63,185,80,0.4); }
+        .s-fp { background: rgba(163,113,247,0.15); color: #a371f7; border-color: rgba(163,113,247,0.4); }
+
+        /* Copy button on pre blocks */
+        .pre-wrap { position: relative; }
+        .copy-pre-btn { position: absolute; top: 6px; right: 6px; background: var(--bg-tertiary);
+            border: 1px solid var(--border-color); color: var(--text-muted); padding: 2px 8px;
+            border-radius: 4px; font-size: 10px; cursor: pointer; opacity: 0; transition: opacity 0.15s; }
+        .pre-wrap:hover .copy-pre-btn { opacity: 1; }
+        .copy-pre-btn.copied { color: var(--accent-green); border-color: var(--accent-green); }
+
+        /* Global search */
+        .global-search { background: var(--bg-primary); border: 1px solid var(--border-color);
+            color: var(--text-primary); padding: 5px 12px; border-radius: 6px; font-size: 13px;
+            width: 200px; outline: none; transition: border-color 0.2s; font-family: inherit; }
+        .global-search:focus { border-color: var(--accent-blue); width: 260px; }
+        .search-drop { position: absolute; top: 56px; right: 24px; width: 300px; background: var(--bg-secondary);
+            border: 1px solid var(--border-color); border-radius: 8px; box-shadow: var(--shadow-lg);
+            z-index: 500; max-height: 280px; overflow-y: auto; display: none; }
+        .search-drop-item { padding: 9px 14px; cursor: pointer; border-bottom: 1px solid var(--border-color);
+            font-size: 12px; display: flex; justify-content: space-between; align-items: center; }
+        .search-drop-item:hover { background: var(--bg-tertiary); }
+        .search-drop-item:last-child { border-bottom: none; }
+        .search-drop-section { font-weight: 600; color: var(--text-primary); }
+        .search-drop-count { font-size: 10px; padding: 1px 6px; border-radius: 8px; background: var(--bg-primary);
+            border: 1px solid var(--border-color); color: var(--text-muted); }
+
+        /* Severity filter bar */
+        .filter-bar { display: flex; gap: 6px; margin-bottom: 14px; flex-wrap: wrap; align-items: center; }
+        .filter-bar-label { font-size: 11px; color: var(--text-muted); margin-right: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
+        .filter-btn { padding: 3px 12px; border-radius: 12px; font-size: 11px; font-weight: 600;
+            cursor: pointer; border: 1px solid; background: transparent; transition: all 0.15s; font-family: inherit; }
+        .filter-btn.f-all { color: var(--text-secondary); border-color: var(--border-color); }
+        .filter-btn.f-all.active, .filter-btn.f-all:hover { background: var(--bg-tertiary); color: var(--text-primary); }
+        .filter-btn.f-critical { color: #ff4040; border-color: rgba(255,64,64,0.4); }
+        .filter-btn.f-critical.active, .filter-btn.f-critical:hover { background: rgba(255,64,64,0.12); }
+        .filter-btn.f-high { color: #f85149; border-color: rgba(248,81,73,0.4); }
+        .filter-btn.f-high.active, .filter-btn.f-high:hover { background: rgba(248,81,73,0.12); }
+        .filter-btn.f-medium { color: #d29922; border-color: rgba(210,153,34,0.4); }
+        .filter-btn.f-medium.active, .filter-btn.f-medium:hover { background: rgba(210,153,34,0.12); }
+        .filter-btn.f-low { color: #3fb950; border-color: rgba(63,185,80,0.4); }
+        .filter-btn.f-low.active, .filter-btn.f-low:hover { background: rgba(63,185,80,0.12); }
+        .filter-btn.f-info { color: #58a6ff; border-color: rgba(88,166,255,0.4); }
+        .filter-btn.f-info.active, .filter-btn.f-info:hover { background: rgba(88,166,255,0.12); }
+
+        /* Sidebar severity dots */
+        .sev-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; margin-left: auto; margin-right: 8px; }
+        .sev-dot.d-high { background: #f85149; box-shadow: 0 0 4px #f85149; }
+        .sev-dot.d-medium { background: #d29922; box-shadow: 0 0 4px #d29922; }
+        .sev-dot.d-low { background: #3fb950; }
+
+        /* Export button */
+        .export-btn { background: transparent; border: 1px solid var(--border-color); color: var(--text-secondary);
+            padding: 5px 12px; border-radius: 6px; font-size: 11px; cursor: pointer; font-family: inherit;
+            display: flex; align-items: center; gap: 5px; transition: all 0.2s; }
+        .export-btn:hover { border-color: var(--accent-blue); color: var(--accent-blue); }
+
+        /* Confirmed vuln highlight row */
+        tr.confirmed-row { background: rgba(248,81,73,0.05) !important; }
+        tr.tested-row { background: rgba(63,185,80,0.04) !important; }
+        tr.fp-row { opacity: 0.5; }
+
+        /* Testing progress bar */
+        .test-progress-wrap { margin: 12px 0 4px; }
+        .test-progress-bar { height: 4px; border-radius: 2px; background: var(--bg-primary); overflow: hidden; }
+        .test-progress-fill { height: 100%; background: linear-gradient(to right, #3fb950, #58a6ff); border-radius: 2px; transition: width 0.4s ease; }
+        .test-progress-label { font-size: 11px; color: var(--text-muted); margin-bottom: 4px; display: flex; justify-content: space-between; }
+
+        /* Executive summary */
+        .exec-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin-top: 12px; }
+        .exec-cell { padding: 10px 14px; border-radius: 8px; border-left: 3px solid; }
+        .exec-cell .ec-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); margin-bottom: 4px; }
+        .exec-cell .ec-val { font-size: 15px; font-weight: 700; color: var(--text-primary); }
+        .exec-cell .ec-sub { font-size: 11px; color: var(--text-secondary); margin-top: 2px; }
+    </style>
+
+    """
+    
+    # ── Recon Intelligence — 20 detectores automáticos ──
+    recon_intel_html = ""
+    try:
+        from plugins.intelligence.recon_intel import run_detectors, build_intel_card
+        # Coletar todo o HTML já gerado do report para alimentar os detectores
+        # Usamos os dados brutos dos arquivos de output como fonte
+        base = Path("output") / target
+        raw_html_parts = []
+        for root, dirs, files in __import__('os').walk(str(base)):
+            for fname in files:
+                fpath = Path(root) / fname
+                if fpath.suffix in ('.json', '.txt', '.html') and fpath.stat().st_size < 500_000:
+                    try:
+                        raw_html_parts.append(fpath.read_text(errors='ignore'))
+                    except:
+                        pass
+        combined_text = '\n'.join(raw_html_parts)
+        findings = run_detectors(combined_text)
+        recon_intel_html = build_intel_card(findings)
+    except Exception as e:
+        recon_intel_html = f'<!-- recon_intel error: {e} -->'
     
     return f'''
-    <div class="card open" style="border-left: 4px solid var(--accent-orange);">
-        <div class="card-header">
-            <span class="card-title"> Quick Wins — Low-Effort, High-Impact</span>
-            <span class="card-badge">{len(data)} wins</span>
+    {css}
+    <div class="card open" style="border:none; background:transparent;">
+        <div class="card-header" style="border-radius:8px; background:var(--bg-tertiary);">
+            <span class="card-title">🔥 Command Center - Intelligence</span>
         </div>
-        <div class="card-content">
-            {wins_html}
+        <div class="card-content" style="display:block; padding:20px 0;">
+        
+            {recon_intel_html}
+        
+            <!-- DASHBOARD NUMERICO DINÂMICO -->
+            <div class="qw-grid">
+                <div class="qw-card" style="border-color:var(--accent-red);">
+                    <h2>{high_value}</h2>
+                    <p>🔥 High Value Targets</p>
+                </div>
+                <div class="qw-card" style="border-color:var(--accent-orange);">
+                    <h2>{idor_candidates}</h2>
+                    <p>⚠️ IDOR Candidates</p>
+                </div>
+                <div class="qw-card" style="border-color:var(--accent-purple);">
+                    <h2>{auth_endpoints}</h2>
+                    <p>🔐 Auth Endpoints</p>
+                </div>
+                <div class="qw-card" style="border-color:#d29922;">
+                    <h2>{weak_cookies_count}</h2>
+                    <p>🍪 Weak Cookies</p>
+                </div>
+                <div class="qw-card" style="border-color:var(--accent-green);">
+                    <h2>{api_endpoints}</h2>
+                    <p>📡 API Endpoints</p>
+                </div>
+            </div>
+
+            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap:20px;">
+                
+                <!-- QUICK WINS -->
+                <div class="qw-section" style="margin-top:10px;">
+                    <h3>⚡ Quick Wins (Ataque Imediato)</h3>
+                    {quick_wins_html}
+                </div>
+
+                <!-- COOKIES -->
+                <div class="qw-section" style="margin-top:10px;">
+                    <h3>🍪 Cookies Analysis</h3>
+                    {cookies_html}
+                </div>
+
+            </div>
+            
+            <!-- TECH / PARAM INTELLIGENCE -->
+            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap:20px;">
+                <div class="qw-section">
+                    <h3>🧬 Parameter Intelligence</h3>
+                    <div class="box">
+                        {params_html}
+                    </div>
+                </div>
+
+                <div class="qw-section">
+                    <h3>🧠 Tech-Based Attack Suggestions</h3>
+                    {techs_html}
+                </div>
+            </div>
+
         </div>
     </div>
     '''
@@ -4707,6 +5611,328 @@ def build_wordlist_content(target: str) -> str:
     </div>
     '''
 
+# ============================================================
+# V11: NOVAS SEÇÕES DO REPORT
+# ============================================================
+
+def build_network_graph_content(target: str) -> str:
+    """Build interactive D3.js network graph of subdomains → IPs → services."""
+    base = Path("output") / target
+    
+    # Collect nodes and links
+    nodes = []
+    links = []
+    node_ids = set()
+    
+    # Add target as center node
+    nodes.append({"id": target, "group": "target", "label": target})
+    node_ids.add(target)
+    
+    # Subdomains
+    subs_file = base / "domain" / "subdomains.txt"
+    if subs_file.exists():
+        for sub in subs_file.read_text(errors="ignore").splitlines()[:50]:
+            sub = sub.strip()
+            if sub and sub not in node_ids:
+                nodes.append({"id": sub, "group": "subdomain", "label": sub.replace(f".{target}", "")})
+                node_ids.add(sub)
+                links.append({"source": target, "target": sub})
+    
+    # ASN data (IPs)
+    asn_file = base / "asn" / "asn_mapping.json"
+    asn_data = read_json_file(asn_file)
+    if asn_data:
+        for block in asn_data.get("cidr_blocks", [])[:20]:
+            cidr = block.get("cidr", "")
+            asn = block.get("asn", "")
+            org = block.get("org", "")[:25]
+            cidr_id = f"{asn}:{cidr}"
+            if cidr_id not in node_ids:
+                nodes.append({"id": cidr_id, "group": "cidr", "label": f"{cidr} ({org})"})
+                node_ids.add(cidr_id)
+            for host in block.get("hosts", [])[:10]:
+                if host in node_ids:
+                    links.append({"source": host, "target": cidr_id})
+    
+    # Technologies
+    tech_file = base / "domain" / "technologies.json"
+    tech_data = read_json_file(tech_file)
+    if tech_data:
+        seen_tech = set()
+        for host, data in list(tech_data.items())[:30]:
+            for tech in data.get("technologies", [])[:3]:
+                name = tech.get("name", "")
+                if name and name not in seen_tech:
+                    tech_id = f"tech:{name}"
+                    if tech_id not in node_ids:
+                        nodes.append({"id": tech_id, "group": "tech", "label": name})
+                        node_ids.add(tech_id)
+                    seen_tech.add(name)
+                if name and host in node_ids:
+                    links.append({"source": host, "target": f"tech:{name}"})
+
+    nodes_json = json.dumps(nodes)
+    links_json = json.dumps(links)
+    
+    return f'''
+    <div class="card open">
+        <div class="card-header">
+            <span class="card-title">🕸️ Network Graph</span>
+            <span class="card-badge">{len(nodes)} nodes · {len(links)} links</span>
+        </div>
+        <div class="card-content" style="display:block;">
+            <div id="networkGraph" style="width:100%;height:500px;background:var(--bg-primary);border-radius:8px;border:1px solid var(--border-color);overflow:hidden;"></div>
+            <script src="https://d3js.org/d3.v7.min.js"></script>
+            <script>
+            (function() {{
+                const nodes = {nodes_json};
+                const links = {links_json};
+                if (!nodes.length) return;
+                
+                const container = document.getElementById('networkGraph');
+                const width = container.offsetWidth;
+                const height = 500;
+                
+                const svg = d3.select('#networkGraph').append('svg')
+                    .attr('width', width).attr('height', height);
+                
+                const g = svg.append('g');
+                
+                // Zoom
+                svg.call(d3.zoom().scaleExtent([0.2, 5]).on('zoom', (e) => g.attr('transform', e.transform)));
+                
+                const colorMap = {{target:'#f85149', subdomain:'#58a6ff', cidr:'#d29922', tech:'#3fb950', service:'#a371f7'}};
+                
+                const simulation = d3.forceSimulation(nodes)
+                    .force('link', d3.forceLink(links).id(d => d.id).distance(80))
+                    .force('charge', d3.forceManyBody().strength(-150))
+                    .force('center', d3.forceCenter(width/2, height/2))
+                    .force('collision', d3.forceCollide().radius(20));
+                
+                const link = g.append('g').selectAll('line').data(links).join('line')
+                    .attr('stroke', '#30363d').attr('stroke-opacity', 0.6).attr('stroke-width', 1);
+                
+                const node = g.append('g').selectAll('circle').data(nodes).join('circle')
+                    .attr('r', d => d.group === 'target' ? 12 : 6)
+                    .attr('fill', d => colorMap[d.group] || '#8b949e')
+                    .attr('stroke', '#0d1117').attr('stroke-width', 1.5)
+                    .call(d3.drag().on('start', (e,d) => {{ if(!e.active) simulation.alphaTarget(0.3).restart(); d.fx=e.x; d.fy=e.y; }})
+                    .on('drag', (e,d) => {{ d.fx=e.x; d.fy=e.y; }})
+                    .on('end', (e,d) => {{ if(!e.active) simulation.alphaTarget(0); d.fx=null; d.fy=null; }}));
+                
+                const label = g.append('g').selectAll('text').data(nodes).join('text')
+                    .text(d => d.label).attr('font-size', d => d.group === 'target' ? 11 : 9)
+                    .attr('fill', '#c9d1d9').attr('dx', 10).attr('dy', 4);
+                
+                node.append('title').text(d => d.id);
+                
+                simulation.on('tick', () => {{
+                    link.attr('x1',d=>d.source.x).attr('y1',d=>d.source.y).attr('x2',d=>d.target.x).attr('y2',d=>d.target.y);
+                    node.attr('cx',d=>d.x).attr('cy',d=>d.y);
+                    label.attr('x',d=>d.x).attr('y',d=>d.y);
+                }});
+            }})();
+            </script>
+            <div style="display:flex;gap:15px;margin-top:10px;justify-content:center;">
+                <span style="font-size:11px;color:var(--text-muted);"><span style="color:#f85149;">●</span> Target</span>
+                <span style="font-size:11px;color:var(--text-muted);"><span style="color:#58a6ff;">●</span> Subdomain</span>
+                <span style="font-size:11px;color:var(--text-muted);"><span style="color:#d29922;">●</span> CIDR/ASN</span>
+                <span style="font-size:11px;color:var(--text-muted);"><span style="color:#3fb950;">●</span> Technology</span>
+            </div>
+        </div>
+    </div>
+    '''
+
+
+def build_dns_records_content(target: str) -> str:
+    """Build DNS records section — A/AAAA/CNAME/MX/NS per host."""
+    base = Path("output") / target
+    # Try fingerprint's dns data
+    fp_file = base / "fingerprint" / "fingerprint_results.json"
+    data = read_json_file(fp_file)
+    if not data:
+        return '<div class="empty-state"><p>No DNS records available. Run fingerprint module first.</p></div>'
+    
+    rows = ""
+    count = 0
+    for entry in data if isinstance(data, list) else []:
+        host = entry.get("host", "")
+        dns_info = entry.get("dns", {})
+        if not dns_info:
+            continue
+        count += 1
+        a_records = ", ".join(dns_info.get("A", [])) or "—"
+        aaaa = ", ".join(dns_info.get("AAAA", [])) or "—"
+        cname = ", ".join(dns_info.get("CNAME", [])) or "—"
+        rows += f'''<tr>
+            <td><code style="color:var(--accent-blue);">{html.escape(host)}</code></td>
+            <td style="font-size:11px;">{html.escape(a_records)}</td>
+            <td style="font-size:11px;">{html.escape(cname)}</td>
+        </tr>'''
+    
+    if not rows:
+        return '<div class="empty-state"><p>No DNS records found.</p></div>'
+    
+    return f'''
+    <div class="card open">
+        <div class="card-header"><span class="card-title">🌐 DNS Records</span><span class="card-badge">{count} hosts</span></div>
+        <div class="card-content" style="display:block;">
+            <div class="table-wrapper"><table>
+                <thead><tr><th>Host</th><th>A Records (IPs)</th><th>CNAME</th></tr></thead>
+                <tbody>{rows}</tbody>
+            </table></div>
+        </div>
+    </div>'''
+
+
+def build_tls_certs_content(target: str) -> str:
+    """Build TLS certificate info section."""
+    base = Path("output") / target
+    fp_file = base / "fingerprint" / "fingerprint_results.json"
+    data = read_json_file(fp_file)
+    if not data:
+        return '<div class="empty-state"><p>No TLS data. Run fingerprint module.</p></div>'
+    
+    rows = ""
+    count = 0
+    for entry in (data if isinstance(data, list) else []):
+        tls = entry.get("tls", {})
+        if not tls:
+            continue
+        count += 1
+        host = entry.get("host", "")
+        cn = tls.get("cn", "—")
+        sans = ", ".join(tls.get("sans", [])[:5]) or "—"
+        issuer = tls.get("issuer", "—")
+        expires = tls.get("not_after", "—")
+        protocol = tls.get("protocol", "—")
+        
+        exp_style = ""
+        if expires and expires != "—":
+            try:
+                from datetime import datetime
+                exp_date = datetime.fromisoformat(expires.replace("Z", "+00:00"))
+                if exp_date < datetime.now(exp_date.tzinfo):
+                    exp_style = 'style="color:#f85149;font-weight:700;"'
+            except: pass
+        
+        rows += f'''<tr>
+            <td><code style="color:var(--accent-blue);">{html.escape(host)}</code></td>
+            <td style="font-size:11px;">{html.escape(str(cn))}</td>
+            <td style="font-size:11px;">{html.escape(str(issuer)[:40])}</td>
+            <td style="font-size:11px;" {exp_style}>{html.escape(str(expires))}</td>
+            <td style="font-size:10px;color:var(--text-muted);">{html.escape(str(protocol))}</td>
+        </tr>'''
+    
+    if not rows:
+        return '<div class="empty-state"><p>No TLS certificates found.</p></div>'
+    
+    return f'''
+    <div class="card open">
+        <div class="card-header"><span class="card-title">🔒 TLS Certificates</span><span class="card-badge">{count} certs</span></div>
+        <div class="card-content" style="display:block;">
+            <div class="table-wrapper"><table>
+                <thead><tr><th>Host</th><th>CN</th><th>Issuer</th><th>Expires</th><th>Protocol</th></tr></thead>
+                <tbody>{rows}</tbody>
+            </table></div>
+        </div>
+    </div>'''
+
+
+def build_response_headers_content(target: str) -> str:
+    """Build per-host response headers analysis."""
+    base = Path("output") / target
+    headers_file = base / "headers" / "headers_results.json"
+    data = read_json_file(headers_file)
+    if not data:
+        return '<div class="empty-state"><p>No headers data. Run headers module.</p></div>'
+    
+    cards = ""
+    for entry in (data if isinstance(data, list) else [])[:30]:
+        url = entry.get("url", "")
+        raw_headers = entry.get("headers", {})
+        issues = entry.get("issues", [])
+        
+        headers_html = ""
+        for k, v in raw_headers.items() if isinstance(raw_headers, dict) else []:
+            sec_color = "var(--accent-green)" if k.lower().startswith(("x-content", "x-frame", "strict-transport", "content-security")) else "var(--text-secondary)"
+            headers_html += f'<div style="font-size:11px;margin:2px 0;"><span style="color:{sec_color};font-weight:600;">{html.escape(k)}:</span> <span style="color:var(--text-muted);">{html.escape(str(v)[:100])}</span></div>'
+        
+        issue_count = len(issues) if issues else 0
+        badge_color = "var(--accent-red)" if issue_count > 3 else "var(--accent-orange)" if issue_count > 0 else "var(--accent-green)"
+        
+        cards += f'''
+        <div class="box" style="margin-bottom:8px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+                <code style="font-size:11px;color:var(--accent-blue);">{html.escape(url[:80])}</code>
+                <span style="font-size:10px;color:{badge_color};font-weight:700;">{issue_count} issues</span>
+            </div>
+            {headers_html}
+        </div>'''
+    
+    return f'''
+    <div class="card open">
+        <div class="card-header"><span class="card-title">📋 Response Headers</span><span class="card-badge">{len(data) if isinstance(data, list) else 0} hosts</span></div>
+        <div class="card-content" style="display:block;">{cards}</div>
+    </div>'''
+
+
+def build_asn_content(target: str) -> str:
+    """Build CIDR/ASN mapping section."""
+    base = Path("output") / target
+    asn_file = base / "asn" / "asn_mapping.json"
+    data = read_json_file(asn_file)
+    if not data:
+        return '<div class="empty-state"><p>No ASN data. Run ASN module.</p></div>'
+    
+    rows = ""
+    for block in data.get("cidr_blocks", []):
+        rows += f'''<tr>
+            <td style="font-weight:600;color:var(--accent-blue);">{html.escape(block.get("cidr", ""))}</td>
+            <td>{html.escape(block.get("asn", ""))}</td>
+            <td style="font-size:11px;">{html.escape(block.get("org", "")[:50])}</td>
+            <td>{html.escape(block.get("country", ""))}</td>
+            <td style="text-align:center;">{block.get("ip_count", 0)}</td>
+            <td style="text-align:center;">{block.get("host_count", 0)}</td>
+        </tr>'''
+    
+    return f'''
+    <div class="card open">
+        <div class="card-header"><span class="card-title">🌐 CIDR/ASN Mapping</span>
+            <span class="card-badge">{data.get("total_asns", 0)} ASNs · {data.get("total_cidrs", 0)} CIDRs · {data.get("total_ips", 0)} IPs</span></div>
+        <div class="card-content" style="display:block;">
+            <div class="table-wrapper"><table>
+                <thead><tr><th>CIDR</th><th>ASN</th><th>Organização</th><th>País</th><th>IPs</th><th>Hosts</th></tr></thead>
+                <tbody>{rows}</tbody>
+            </table></div>
+        </div>
+    </div>'''
+
+
+def build_export_buttons_js() -> str:
+    """Generate JavaScript for CSV export buttons."""
+    return '''
+    <script>
+    function exportTableToCSV(tableId, filename) {
+        const table = document.getElementById(tableId);
+        if (!table) { alert('Table not found'); return; }
+        const rows = table.querySelectorAll('tr');
+        let csv = [];
+        rows.forEach(row => {
+            const cols = row.querySelectorAll('td, th');
+            let rowData = [];
+            cols.forEach(col => rowData.push('"' + col.textContent.replace(/"/g, '""').trim() + '"'));
+            csv.push(rowData.join(','));
+        });
+        const blob = new Blob([csv.join('\\n')], {type: 'text/csv'});
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = filename; a.click();
+        URL.revokeObjectURL(url);
+    }
+    </script>'''
+
+
 def run(context: Dict[str, Any]) -> List[str]:
     target = context.get("target")
     if not target:
@@ -4732,11 +5958,53 @@ def run(context: Dict[str, Any]) -> List[str]:
     if stats["keys_found"] > 0:
         keys_warning = f'<p style="color:var(--accent-red);"><strong>Alert:</strong> Found {stats["keys_found"]} exposed keys/secrets. Review immediately!</p>'
     
+    # Calculate dynamic risk score from Attack Priority
+    attack_priority_path = Path("output") / target / "intelligence" / "attack_priority.json"
+    ap_data = read_json_file(attack_priority_path) or []
+    total_score = sum(item.get("score", 0) for item in ap_data)
+    risk_score = min(100, int(total_score * 5)) # Multiply by 5 to scale it roughly 0-100 if there are a few vulns
+    
+    if risk_score >= 80:
+        risk_label = "CRITICAL"
+        risk_color = "#f85149"
+    elif risk_score >= 50:
+        risk_label = "HIGH"
+        risk_color = "#ff7b72"
+    elif risk_score >= 20:
+        risk_label = "MEDIUM"
+        risk_color = "#d29922"
+    elif risk_score > 0:
+        risk_label = "LOW"
+        risk_color = "#3fb950"
+    else:
+        risk_label = "INFO"
+        risk_color = "#8b949e"
+        
+    risk_deg = (risk_score * 1.8) - 90
+    
+    # Extract unique technologies from knowledge_tips
+    kb_path = Path("output") / target / "intelligence" / "knowledge_tips.json"
+    kb_data = read_json_file(kb_path) or {}
+    all_techs = set()
+    for kb_info in kb_data.values():
+        all_techs.update(kb_info.get("matched_technologies", []))
+        
+    tech_chips_html = ""
+    for tech in sorted(list(all_techs))[:8]: # Max 8 chips
+        tech_chips_html += f'<span class="tech-chip" style="color:var(--accent-blue);border-color:rgba(88,166,255,0.35);background:rgba(88,166,255,0.08);">{html.escape(tech)}</span>'
+    if not tech_chips_html:
+        tech_chips_html = '<span style="color:#666;font-size:12px;">Nenhuma stack detectada.</span>'
+
     # Get datetime
     now = datetime.now()
     
     # Build template variables
     template_vars = {
+        "risk_score": risk_score,
+        "risk_label": risk_label,
+        "risk_color": risk_color,
+        "risk_deg": risk_deg,
+        "tech_chips": tech_chips_html,
         "target": html.escape(target),
         "date": now.strftime("%Y-%m-%d"),
         "time": now.strftime("%H:%M:%S"),
@@ -4754,7 +6022,7 @@ def run(context: Dict[str, Any]) -> List[str]:
         "stats_buckets": stats.get("cloud_buckets", 0),
         "stats_cves": stats.get("cve_vulns", 0),
         "stats_endpoints": stats.get("endpoints_count", 0) + stats.get("routes_found", 0),
-        "stats_xss": stats.get("xss_vulns", 0),
+        "stats_xss": 0,
         "subdomains_content": build_subdomains_content(subdomains, target),
         "ports_content": build_ports_content(target),
         "urls_content": build_urls_content(subdomains, target),
@@ -4776,7 +6044,7 @@ def run(context: Dict[str, Any]) -> List[str]:
         "js_routes_content": build_js_routes_content(target),
         "stats_swagger": stats.get("swagger_count", 0),
         "swagger_content": build_swagger_content(target),
-        "stats_logic": stats.get("logic_flaws_count", 0),
+        "stats_logic": 0,
         "logic_content": build_logic_content(target),
         "stats_git": stats.get("git_exposed_count", 0),
         "git_content": build_git_content(target),
@@ -4788,10 +6056,10 @@ def run(context: Dict[str, Any]) -> List[str]:
         "admin_content": build_admin_content(target),
         "stats_admin": len(read_json_file(Path("output") / target / "admin" / "admin_panels.json") or []),
         "depconfusion_content": build_depconfusion_content(target),
-        "stats_depconfusion": len([d for d in (read_json_file(Path("output") / target / "depconfusion" / "depconfusion.json") or []) if d.get("risk") == "HIGH"]),
+        "stats_depconfusion": 0,
         "stats_graphql": stats.get("graphql_count", 0),
         "graphql_content": build_graphql_content(target),
-        "stats_api_security": stats.get("api_security_count", 0),
+        "stats_api_security": 0,
         "api_security_content": build_api_security_content(target),
         "takeover_content": build_takeover_content(target),
         "stats_takeover": stats.get("takeover_count", 0),
@@ -4806,41 +6074,56 @@ def run(context: Dict[str, Any]) -> List[str]:
         # New modules
         "stats_jwt": len(read_json_file(Path("output") / target / "jwt_analyzer" / "jwt_results.json") or []),
         "jwt_content": build_jwt_content(target),
-        "stats_crlf": len(read_json_file(Path("output") / target / "crlf_injection" / "crlf_results.json") or []),
+        "stats_crlf": 0,
         "crlf_content": build_crlf_content(target),
-        "stats_smuggling": len(read_json_file(Path("output") / target / "http_smuggling" / "smuggling_results.json") or []),
+        "stats_smuggling": 0,
         "smuggling_content": build_smuggling_content(target),
-        "stats_deser": len(read_json_file(Path("output") / target / "insecure_deserialization" / "deser_results.json") or []),
+        "stats_deser": 0,
         "deser_content": build_deser_content(target),
         "quickwins_attack_content": build_quick_wins_content(target),
         "stats_quickwins": len(read_json_file(Path("output") / target / "intelligence" / "quick_wins.json") or []),
-        "stats_ssrf": 0,  # SSRF stats placeholder
+        "stats_ssrf": 0,
         "stats_oast": len(read_file_lines(Path("output") / target / "interactsh.json")),
         "oast_content": build_oast_content(target),
         "stats_wordlist": stats.get("wordlist_count", 0),
         "wordlist_content": build_wordlist_content(target),
         # V9: Novos módulos de segurança
         "open_redirect_content": build_open_redirect_content(target),
-        "stats_open_redirect": len(read_json_file(Path("output") / target / "open_redirect" / "open_redirect_results.json") or []),
+        "stats_open_redirect": 0,
         "host_injection_content": build_host_injection_content(target),
-        "stats_host_injection": len(read_json_file(Path("output") / target / "host_header_injection" / "host_injection_results.json") or []),
+        "stats_host_injection": 0,
         "ssti_content": build_ssti_content(target),
-        "stats_ssti": len(read_json_file(Path("output") / target / "ssti" / "ssti_results.json") or []),
+        "stats_ssti": 0,
         "xxe_content": build_xxe_content(target),
-        "stats_xxe": len(read_json_file(Path("output") / target / "xxe" / "xxe_results.json") or []),
+        "stats_xxe": 0,
         "proto_pollution_content": build_proto_pollution_content(target),
-        "stats_proto_pollution": len(read_json_file(Path("output") / target / "prototype_pollution" / "prototype_pollution_results.json") or []),
+        "stats_proto_pollution": 0,
         "oauth_content": build_oauth_content(target),
-        "stats_oauth": len(read_json_file(Path("output") / target / "oauth_misconfig" / "oauth_misconfig_results.json") or []),
+        "stats_oauth": 0,
         "api_versioning_content": build_api_versioning_content(target),
-        "stats_api_versioning": len(read_json_file(Path("output") / target / "api_versioning" / "api_versioning_results.json") or []),
+        "stats_api_versioning": 0,
         "file_upload_content": build_file_upload_content(target),
-        "stats_file_upload": len(read_json_file(Path("output") / target / "file_upload" / "file_upload_results.json") or []),
+        "stats_file_upload": 0,
         "email_security_content": build_email_security_content(target),
         "google_dorks_content": build_google_dorks_content(target),
         "stats_google_dorks": len(read_json_file(Path("output") / target / "google_dorks" / "dorks_results.json") or []),
-        "spiderfoot_content": build_spiderfoot_content(target),
-        "stats_spiderfoot": len((read_json_file(Path("output") / target / "spiderfoot" / "spiderfoot_results.json") or {}).get("findings", [])),
+        "spiderfoot_content": "",
+        "stats_spiderfoot": 0,
+        # V11: New sections
+        "network_graph_content": build_network_graph_content(target),
+        "dns_records_content": build_dns_records_content(target),
+        "tls_certs_content": build_tls_certs_content(target),
+        "response_headers_content": build_response_headers_content(target),
+        "asn_content": build_asn_content(target),
+        "export_js": build_export_buttons_js(),
+        "scan_timestamp": now.strftime("%Y-%m-%d %H:%M:%S"),
+        "tech_stack_summary": ", ".join(sorted(list(all_techs))[:12]) if all_techs else "Stack não detectada",
+        "executive_summary": f"Scan de <b>{html.escape(target)}</b> em {now.strftime('%Y-%m-%d %H:%M')}. "
+            f"Encontrados <b>{stats['subdomains']}</b> subdomínios, "
+            f"<b>{max(stats['urls_valid'], stats.get('urls_200_count', 0))}</b> URLs, "
+            f"<b>{stats['keys_found']}</b> chaves/segredos expostos, "
+            f"<b>{stats['login_pages']}</b> páginas de login. "
+            f"Severidade geral: <b style='color:{risk_color};'>{risk_label}</b>.",
     }
     
 

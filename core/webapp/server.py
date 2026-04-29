@@ -66,15 +66,11 @@ def import_target(target: str):
         build_quick_wins_content,
         build_vuln_patterns_content, build_knowledge_tips_content,
         build_surfacemap_content, build_attack_priority_content,
-        build_jwt_content, build_crlf_content, build_smuggling_content,
-        build_deser_content, build_oast_content,
+        build_jwt_content, build_oast_content,
         build_open_redirect_content, build_host_injection_content,
-        build_ssti_content, build_xxe_content, build_proto_pollution_content,
-        build_oauth_content, build_file_upload_content,
-        build_api_versioning_content, build_email_security_content,
-        build_google_dorks_content, build_ssrf_content,
-        build_cache_deception_content, build_spiderfoot_content,
-        build_login_pages_content
+        build_email_security_content,
+        build_google_dorks_content,
+        build_login_pages_content, build_cookies_content,
     )
 
     print(f"  [+] Importing: {target}")
@@ -99,6 +95,46 @@ def import_target(target: str):
     dashboard_attack_priority = build_attack_priority_content(target)
     dashboard_knowledge_tips = build_knowledge_tips_content(target)
 
+    
+    # Calculate Risk Score
+    from pathlib import Path
+    
+    import html
+    
+    ap_path = Path("output") / target / "intelligence" / "attack_priority.json"
+    ap_data = json.loads(ap_path.read_text()) if ap_path.exists() else []
+    total_score = sum(item.get("score", 0) for item in ap_data)
+    risk_score = min(100, int(total_score * 5))
+    
+    if risk_score >= 80:
+        risk_label = "CRITICAL"
+        risk_color = "#f85149"
+    elif risk_score >= 50:
+        risk_label = "HIGH"
+        risk_color = "#ff7b72"
+    elif risk_score >= 20:
+        risk_label = "MEDIUM"
+        risk_color = "#d29922"
+    elif risk_score > 0:
+        risk_label = "LOW"
+        risk_color = "#3fb950"
+    else:
+        risk_label = "INFO"
+        risk_color = "#8b949e"
+        
+    # Tech chips
+    kb_path = Path("output") / target / "intelligence" / "knowledge_tips.json"
+    kb_data = json.loads(kb_path.read_text()) if kb_path.exists() else {}
+    all_techs = set()
+    for kb_info in kb_data.values():
+        all_techs.update(kb_info.get("matched_technologies", []))
+        
+    tech_chips_html = ""
+    for tech in sorted(list(all_techs))[:8]:
+        tech_chips_html += f'<span class="tech-chip" style="color:var(--accent-blue);border-color:rgba(88,166,255,0.35);background:rgba(88,166,255,0.08);">{html.escape(tech)}</span>'
+    if not tech_chips_html:
+        tech_chips_html = '<span style="color:#666;font-size:12px;">Nenhuma stack detectada.</span>'
+
     dashboard_html = f'''
         <div class="stats-grid">
             <div class="stat-card highlight"><div class="value">{stats["subdomains"]}</div><div class="label">Subdomains</div></div>
@@ -111,28 +147,63 @@ def import_target(target: str):
             <div class="stat-card"><div class="value">{stats.get("emails_count", 0)}</div><div class="label">Emails</div></div>
             <div class="stat-card" style="border-left: 3px solid var(--accent-orange);"><div class="value">{stats.get("cors_count", 0)}</div><div class="label">CORS Issues</div></div>
         </div>
-        <div class="card">
-            <div class="card-header"><span class="card-title section-title">Quick Summary</span></div>
+        
+        <!-- RISK ASSESSMENT CARD -->
+        <div class="card open" style="margin-bottom:16px;">
+            <div class="card-header" style="cursor:default;">
+                <span class="card-title section-title">📊 Risk Assessment</span>
+                <span class="card-badge" id="riskLevelBadge" style="color:{risk_color};border-color:{risk_color};">{risk_label} RISK · Score <span id="riskScore">{risk_score}</span>/100</span>
+            </div>
             <div class="card-content" style="display:block;">
-                <p>Scan completed for <strong>{html.escape(target)}</strong>. Found {stats["subdomains"]} subdomains with {stats["urls_valid"]} valid URLs across {stats["ports_total"]} open ports.</p>
-                {login_warning}
-                {keys_warning}
+                <div class="risk-gauge-wrap">
+                    <div class="risk-gauge-block">
+                        <div class="risk-gauge">
+                            <div class="risk-gauge-arc"></div>
+                            <div class="risk-needle" id="riskNeedle" style="transform: translateX(-50%) rotate(-90deg);"></div>
+                        </div>
+                        <div class="risk-gauge-score" style="color:{risk_color};">{risk_score}</div>
+                        <div class="risk-gauge-sublabel">Risk Score /100</div>
+                    </div>
+                    <div style="flex:1;min-width:180px;">
+                        <div style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px;">Stack Detectado</div>
+                        <div class="tech-grid">
+                            {tech_chips_html}
+                        </div>
+                        <div style="margin-top:14px;">
+                            <div class="test-progress-label">
+                                <span>Progresso dos Testes</span>
+                                <span id="testProgressPct">0%</span>
+                            </div>
+                            <div class="test-progress-bar"><div class="test-progress-fill" id="testProgressFill" style="width:0%;"></div></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- PRIORITY QUEUE -->
+        <div class="card open" style="margin-bottom:16px;">
+            <div class="card-header" style="cursor:default;">
+                <span class="card-title section-title">🎯 Priority Queue — Next Steps</span>
+                <span class="card-badge">Auto-ranked by exploitability × impact</span>
+            </div>
+            <div class="card-content" style="display:block;">
+                {dashboard_attack_priority or '<div class="priority-item"><div class="p-content"><div class="p-title">No priority items found.</div></div></div>'}
+            </div>
+        </div>
+
+        <div style="margin-top:0;">
+            <div class="card open" style="border-left: 4px solid var(--accent-blue);">
+                 <div class="card-header">
+                    <span class="card-title">💡 Playbook por Tecnologia</span>
+                    <span class="card-badge">Dicas práticas baseadas na stack</span>
+                </div>
+                <div class="card-content" style="display:block;">
+                    {dashboard_knowledge_tips or '<p style="color:#666;">Sem dicas disponíveis.</p>'}
+                </div>
             </div>
         </div>
     '''
-    
-    if dashboard_attack_priority:
-        dashboard_html += dashboard_attack_priority
-    
-    if dashboard_knowledge_tips:
-        dashboard_html += f'''
-        <div class="card open" style="border-left: 4px solid var(--accent-blue); margin-top: 20px;">
-            <div class="card-header"><span class="card-title">🧠 Dicas de Hacking (Recon Intelligence)</span></div>
-            <div class="card-content" style="display:block;">
-                {dashboard_knowledge_tips}
-            </div>
-        </div>
-        '''
 
     # Calculate stats for sidebar badges  
     stats_for_db = {
@@ -165,24 +236,13 @@ def import_target(target: str):
         "stats_graphql": stats.get("graphql_count", 0),
         "stats_api_security": stats.get("api_security_count", 0),
         "stats_jwt": len(read_json_file(Path("output") / target / "jwt_analyzer" / "jwt_results.json") or []),
-        "stats_crlf": len(read_json_file(Path("output") / target / "crlf_injection" / "crlf_results.json") or []),
-        "stats_smuggling": len(read_json_file(Path("output") / target / "http_smuggling" / "smuggling_results.json") or []),
-        "stats_deser": len(read_json_file(Path("output") / target / "insecure_deserialization" / "deser_results.json") or []),
         "stats_quickwins": len(read_json_file(Path("output") / target / "intelligence" / "quick_wins.json") or []),
         "stats_oast": len(read_file_lines(Path("output") / target / "interactsh.json") or read_json_file(Path("output") / target / "intelligence" / "oast_interactions.json") or []),
         "stats_open_redirect": len(read_json_file(Path("output") / target / "open_redirect" / "open_redirect_results.json") or []),
         "stats_host_injection": len(read_json_file(Path("output") / target / "host_header_injection" / "host_injection_results.json") or []),
-        "stats_ssti": len(read_json_file(Path("output") / target / "ssti" / "ssti_results.json") or []),
-        "stats_xxe": len(read_json_file(Path("output") / target / "xxe" / "xxe_results.json") or []),
-        "stats_proto": len(read_json_file(Path("output") / target / "prototype_pollution" / "prototype_pollution_results.json") or []),
-        "stats_oauth": len(read_json_file(Path("output") / target / "oauth_misconfig" / "oauth_misconfig_results.json") or []),
-        "stats_file_upload": len(read_json_file(Path("output") / target / "file_upload" / "file_upload_results.json") or []),
-        "stats_api_versioning": len(read_json_file(Path("output") / target / "api_versioning" / "api_versioning_results.json") or []),
         "stats_email_sec": 1 if (Path("output") / target / "email_security" / "email_security_results.json").exists() else 0,
-        "stats_google_dorks": len(read_json_file(Path("output") / target / "google_dorks" / "google_dorks_results.json") or []),
-        "stats_ssrf": len(read_json_file(Path("output") / target / "ssrf" / "ssrf_results.json") or []),
-        "stats_cache_deception": len(read_json_file(Path("output") / target / "cache_deception" / "cache_deception_results.json") or []),
-        "stats_spiderfoot": len((read_json_file(Path("output") / target / "spiderfoot" / "spiderfoot_results.json") or {}).get("findings", [])),
+        "stats_google_dorks": len(read_json_file(Path("output") / target / "google_dorks" / "dorks_results.json") or []),
+        "stats_cookies": len(read_json_file(Path("output") / target / "cookies" / "cookies_results.json") or []),
     }
 
     # Build all section content
@@ -213,25 +273,14 @@ def import_target(target: str):
         "waf": build_waf_content(target),
         "emails": build_emails_content(target),
         "jwt_sec": build_jwt_content(target),
-        "crlf_sec": build_crlf_content(target),
-        "smuggling_sec": build_smuggling_content(target),
-        "deser_sec": build_deser_content(target),
         "quickwins_attack": build_quick_wins_content(target),
         "knowledge_tips": build_knowledge_tips_content(target),
         "oast_sec": build_oast_content(target),
         "open_redirect": build_open_redirect_content(target),
         "host_injection": build_host_injection_content(target),
-        "ssti_sec": build_ssti_content(target),
-        "xxe_sec": build_xxe_content(target),
-        "proto_pollution": build_proto_pollution_content(target),
-        "oauth_sec": build_oauth_content(target),
-        "file_upload": build_file_upload_content(target),
-        "api_versioning": build_api_versioning_content(target),
         "email_security": build_email_security_content(target),
         "google_dorks": build_google_dorks_content(target),
-        "ssrf_sec": build_ssrf_content(target),
-        "cache_deception": build_cache_deception_content(target),
-        "spiderfoot_sec": build_spiderfoot_content(target),
+        "cookies_sec": build_cookies_content(target),
     }
 
     # Save to in-memory DB
