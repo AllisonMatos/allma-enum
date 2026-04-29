@@ -2219,6 +2219,45 @@ def build_email_security_content(target: str) -> str:
         </table></div></div>
     </div>'''
 
+def build_cookies_content(target: str) -> str:
+    data = read_json_file(Path("output") / target / "cookies" / "cookies_results.json")
+    if not data:
+        return '<div class="empty-state"><p> Nenhum problema de cookie encontrado ou módulo não executado.</p></div>'
+    
+    rows = ""
+    for item in data:
+        url = html.escape(item.get("url", ""))
+        name = html.escape(item.get("cookie_name", ""))
+        issues = "<br>".join([html.escape(i) for i in item.get("issues", [])])
+        sev = item.get("severity", "LOW")
+        cls = {"HIGH": "tag-high", "MEDIUM": "tag-medium", "LOW": "tag-low"}.get(sev, "tag-info")
+        
+        rows += f'''
+        <tr data-sev="{sev.lower()}">
+            <td><a href="{url}" target="_blank" style="color:var(--accent-blue);text-decoration:none;">{url}</a></td>
+            <td><code>{name}</code></td>
+            <td><span class="tag {cls}">{sev}</span></td>
+            <td>{issues}</td>
+        </tr>'''
+        
+    return f'''
+    <div class="card open" style="border-left: 4px solid var(--accent-orange);">
+        <div class="card-header">
+            <span class="card-title"> Análise de Segurança de Cookies</span>
+            <span class="card-badge">{len(data)} cookies inseguros</span>
+        </div>
+        <div class="card-content" style="display:block;">
+            <div class="table-wrapper">
+                <table id="cookies_table">
+                    <thead><tr><th>URL</th><th>Cookie Name</th><th>Risk</th><th>Issues</th></tr></thead>
+                    <tbody>
+                        {rows}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>'''
+
 def build_google_dorks_content(target: str) -> str:
     data = read_json_file(Path("output") / target / "google_dorks" / "dorks_results.json")
     if not data:
