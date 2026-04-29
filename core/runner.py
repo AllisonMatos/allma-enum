@@ -6,7 +6,8 @@ from datetime import datetime
 from importlib import import_module
 from core.oast import OastClient
 from core.output import info, error, success, warn, set_target_logfile
-from menu import C
+from core.colors import C
+from plugins.validation import finding
 
 
 # --------- CARREGAMENTO DINÂMICO ---------
@@ -189,6 +190,7 @@ def execute_chain(target: str, chain: list, params: dict, deep: bool = False, st
             plugin_start = time.time()
             
             result = module.run(plugin_context)
+            _save_normalized_findings(target, name, result)
             
             # ⏱️ TIMESTAMP: Fim do plugin
             plugin_end = time.time()
@@ -423,3 +425,44 @@ def _save_timing_report(target: str, timings: list, total_duration: float):
     info(f"   🏁 TEMPO TOTAL: {format_duration(total_duration)}")
     info(f"{'='*60}")
     success(f"📄 Relatório de timing salvo em: {timing_file}\n")
+
+
+def _save_normalized_findings(target: str, plugin_name: str, result: object):
+    """
+    Best-effort normalization layer for plugins that still return legacy schemas.
+    """
+    try:
+        out = Path("output") / target / plugin_name
+        out.mkdir(parents=True, exist_ok=True)
+        out_file = out / "findings_normalized.json"
+        findings = []
+
+        if isinstance(result, list):
+            candidates = result
+        elif isinstance(result, dict):
+            candidates = [result]
+        else:
+            candidates = []
+
+        for item in candidates:
+            if isinstance(item, dict) and item.get("schema_version") == "1.0":
+                findings.append(item)
+                continue
+            if isinstance(item, dict):
+                findings.append(finding(
+                    plugin=plugin_name,
+                    target=target,
+                    title=item.get("type", f"{plugin_name} finding"),
+                    issue_type=item.get("type", "GENERIC_FINDING"),
+                    risk=item.get("risk", item.get("severity", "LOW")),
+                    confidence=item.get("confidence", "LOW"),
+                    description=item.get("details", ""),
+                    url=item.get("url", ""),
+                    detection={"legacy": True},
+                    validation={},
+                    evidence={"request_raw": item.get("request_raw", ""), "response_raw": item.get("response_raw", "")},
+                    metadata=item
+                ))
+        out_file.write_text(json.dumps(findings, indent=2, ensure_ascii=False))
+    except Exception:
+        pass

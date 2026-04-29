@@ -15,16 +15,21 @@ from plugins import ensure_outdir
 from ..output import info, success, warn, error
 
 
-def resolve_host_to_ip(host: str) -> str | None:
-    """Resolve hostname to IP address."""
+def resolve_host_to_ips(host: str) -> list[str]:
+    """Resolve hostname to IPv4/IPv6 addresses."""
     try:
-        return socket.gethostbyname(host)
+        infos = socket.getaddrinfo(host, None, socket.AF_UNSPEC, socket.SOCK_STREAM)
+        ips = {info[4][0] for info in infos if info and info[4]}
+        return sorted(ips)
     except Exception:
-        return None
+        return []
 
 
 def query_cymru_asn(ip: str) -> dict | None:
     """Query Team Cymru DNS for ASN info. No rate limit."""
+    # Team Cymru origin DNS lookup below supports IPv4 format.
+    if ":" in ip:
+        return None
     try:
         # Reverse IP for DNS query
         octets = ip.split(".")
@@ -95,18 +100,19 @@ def run(context: dict):
     # Resolve hosts to IPs in parallel
     ip_to_hosts = defaultdict(list)
     with ThreadPoolExecutor(max_workers=20) as executor:
-        futures = {executor.submit(resolve_host_to_ip, h): h for h in hosts}
+        futures = {executor.submit(resolve_host_to_ips, h): h for h in hosts}
         for future in as_completed(futures):
             host = futures[future]
             try:
-                ip = future.result()
-                if ip:
+                ips = future.result()
+                for ip in ips:
                     ip_to_hosts[ip].append(host)
             except Exception:
                 pass
 
     unique_ips = list(ip_to_hosts.keys())
-    info(f"   🔢 {len(unique_ips)} IPs únicos resolvidos")
+    ipv6_count = sum(1 for ip in unique_ips if ":" in ip)
+    info(f"   🔢 {len(unique_ips)} IPs únicos resolvidos ({ipv6_count} IPv6)")
 
     if not unique_ips:
         warn("⚠️ Nenhum IP resolvido.")

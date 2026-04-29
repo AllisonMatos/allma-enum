@@ -12,6 +12,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from menu import C
 from plugins import ensure_outdir
 from ..output import info, success, warn, error
+from ..validation import finding
 
 # ============================================================
 # FINGERPRINTS DE SERVIÇOS VULNERÁVEIS A TAKEOVER
@@ -168,6 +169,16 @@ def verify_service_available(cname: str, service: str, subdomain: str) -> dict:
     return verification
 
 
+def evaluate_takeover_signal(is_nxdomain: bool, has_fingerprint: bool, verified: bool) -> tuple[str, str]:
+    if verified:
+        return "CONFIRMED", "CONFIRMED"
+    if is_nxdomain and has_fingerprint:
+        return "HIGH", "VULNERABLE"
+    if is_nxdomain or has_fingerprint:
+        return "MEDIUM", "POTENTIAL"
+    return "LOW", "POTENTIAL"
+
+
 def check_subdomain(subdomain: str, known_cnames: dict = None) -> dict | None:
     """Verifica se um subdomínio é vulnerável a takeover.
     V10.3: Usa known_cnames como fallback quando resolução live falha."""
@@ -202,17 +213,21 @@ def check_subdomain(subdomain: str, known_cnames: dict = None) -> dict | None:
                 else:
                     status = "POTENTIAL"
                 
-                return {
-                    "subdomain": subdomain,
-                    "cname": cname,
-                    "service": service,
-                    "severity": severity,
-                    "nxdomain": is_nxdomain,
-                    "http_fingerprint": has_fingerprint,
-                    "status": status,
-                    "verified": verification["verified"],
-                    "verification_detail": verification["verification_detail"],
-                }
+                confidence, status = evaluate_takeover_signal(is_nxdomain, has_fingerprint, verification["verified"])
+                return finding(
+                    plugin="takeover",
+                    target="",
+                    title="Potential Subdomain Takeover",
+                    issue_type="SUBDOMAIN_TAKEOVER",
+                    risk=severity.upper(),
+                    confidence=confidence,
+                    url=f"https://{subdomain}",
+                    description=f"{service}: {verification['verification_detail']}",
+                    detection={"cname": cname, "service": service, "nxdomain": is_nxdomain, "http_fingerprint": has_fingerprint},
+                    validation={"verified": verification["verified"], "status": status},
+                    evidence={"observable_impact": verification["verification_detail"]},
+                    metadata={"subdomain": subdomain}
+                )
 
     return None
 
@@ -272,11 +287,11 @@ def run(context: dict):
                 result = future.result()
                 if result:
                     all_findings.append(result)
-                    sev_color = C.RED if result["severity"] == "critical" else C.YELLOW
-                    status = "🔴 VULNERABLE" if result["status"] == "VULNERABLE" else "🟡 POTENTIAL"
+                    sev_color = C.RED if result["risk"] == "CRITICAL" else C.YELLOW
+                    status = "🔴 CONFIRMED" if result["confidence"] == "CONFIRMED" else "🟡 POTENTIAL"
                     info(
-                        f"   {status} {sev_color}[{result['severity'].upper()}]{C.END} "
-                        f"{result['subdomain']} → {result['cname']} ({result['service']})"
+                        f"   {status} {sev_color}[{result['risk']}/{result['confidence']}]{C.END} "
+                        f"{result.get('metadata', {}).get('subdomain', '')} → {result.get('phases', {}).get('detection', {}).get('cname', '')}"
                     )
             except Exception:
                 pass
@@ -288,8 +303,8 @@ def run(context: dict):
     results_file = outdir / "takeover_results.json"
 
     if all_findings:
-        confirmed = sum(1 for v in all_findings if v["status"] == "VULNERABLE")
-        potential = sum(1 for v in all_findings if v["status"] == "POTENTIAL")
+        confirmed = sum(1 for v in all_findings if v["confidence"] == "CONFIRMED")
+        potential = sum(1 for v in all_findings if v["confidence"] in ("MEDIUM", "HIGH"))
         success(f"\n   🏴‍☠️ {len(all_findings)} subdomínios vulneráveis a takeover!")
         info(f"   📊 Confirmados: {C.RED}{confirmed}{C.END} | Potenciais: {C.YELLOW}{potential}{C.END}")
     
@@ -312,13 +327,19 @@ def run(context: dict):
                 try:
                     dns.resolver.resolve(ns_host, 'A')
                 except (dns.resolver.NXDOMAIN, dns.resolver.NoAnswer):
-                    all_findings.append({
-                        "subdomain": target,
-                        "type": "NS_DELEGATION_TAKEOVER",
-                        "risk": "CRITICAL",
-                        "details": f"NS '{ns_host}' não resolve (NXDOMAIN) — controlando este NS, um atacante pode controlar TODO o domínio!",
-                        "ns_server": ns_host,
-                    })
+                    all_findings.append(finding(
+                        plugin="takeover",
+                        target=target,
+                        title="NS Delegation Takeover Risk",
+                        issue_type="NS_DELEGATION_TAKEOVER",
+                        risk="CRITICAL",
+                        confidence="HIGH",
+                        url=f"dns://{target}",
+                        description=f"NS '{ns_host}' não resolve (NXDOMAIN)",
+                        detection={"ns_server": ns_host},
+                        validation={"nxdomain": True},
+                        evidence={"observable_impact": "attacker_can_claim_ns"}
+                    ))
                     info(f"   🔴 {C.RED}NS Takeover: {ns_host} → NXDOMAIN{C.END}")
                 except Exception:
                     pass
@@ -333,13 +354,19 @@ def run(context: dict):
                 try:
                     dns.resolver.resolve(mx_host, 'A')
                 except (dns.resolver.NXDOMAIN, dns.resolver.NoAnswer):
-                    all_findings.append({
-                        "subdomain": target,
-                        "type": "MX_TAKEOVER",
-                        "risk": "HIGH",
-                        "details": f"MX '{mx_host}' não resolve — atacante pode registrar e interceptar emails de {target}",
-                        "mx_server": mx_host,
-                    })
+                    all_findings.append(finding(
+                        plugin="takeover",
+                        target=target,
+                        title="MX Takeover Risk",
+                        issue_type="MX_TAKEOVER",
+                        risk="HIGH",
+                        confidence="HIGH",
+                        url=f"dns://{target}",
+                        description=f"MX '{mx_host}' não resolve — atacante pode registrar e interceptar e-mails",
+                        detection={"mx_server": mx_host},
+                        validation={"nxdomain": True},
+                        evidence={"observable_impact": "mail_interception_risk"}
+                    ))
                     info(f"   🔴 {C.RED}MX Takeover: {mx_host} → NXDOMAIN{C.END}")
                 except Exception:
                     pass

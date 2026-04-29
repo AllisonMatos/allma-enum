@@ -15,6 +15,7 @@ import re
 import time
 import json
 from urllib.parse import urlparse, parse_qs
+from collections import Counter
 
 from menu import C
 from plugins import ensure_outdir
@@ -25,6 +26,10 @@ from ..output import info, warn, success
 # ---------------------------------------------------
 RE_WORD = re.compile(r"[A-Za-z0-9\-_]{3,60}")
 RE_PATH_SEG = re.compile(r"/([A-Za-z0-9\-_]{2,80})")
+STOPWORDS = {
+    "www", "com", "http", "https", "api", "static", "assets", "index", "home",
+    "true", "false", "null", "undefined", "json", "html", "css", "js"
+}
 
 def read_lines(p: Path):
     if not p.exists():
@@ -40,7 +45,7 @@ def extract_from_url(url):
 
 def extract_tokens_from_js(text):
     tokens = set(RE_WORD.findall(text or ""))
-    tokens = {t for t in tokens if len(t) > 3 and not t.isdigit()}
+    tokens = {t for t in tokens if len(t) > 3 and not t.isdigit() and t.lower() not in STOPWORDS}
     return tokens
 
 
@@ -82,6 +87,7 @@ def run(context: dict):
     path_terms = set()
     param_terms = set()
     js_terms = set()
+    ranking = Counter()
 
     # ============================================================
     # ETAPA 1 — Processar arquivos principais
@@ -100,8 +106,17 @@ def run(context: dict):
                 segs, params = extract_from_url(l)
                 path_terms.update(segs)
                 param_terms.update(params)
+                for s in segs:
+                    if s.lower() not in STOPWORDS and len(s) > 2:
+                        ranking[s.lower()] += 3
+                for p in params:
+                    if p.lower() not in STOPWORDS:
+                        ranking[p.lower()] += 4
             else:
-                js_terms.update(extract_tokens_from_js(l))
+                toks = extract_tokens_from_js(l)
+                js_terms.update(toks)
+                for t in toks:
+                    ranking[t.lower()] += 1
 
     # ============================================================
     # ETAPA 2 — Baixar arquivos JS da lista e extrair tokens
@@ -132,6 +147,8 @@ def run(context: dict):
                     tokens = future.result()
                     if tokens:
                         js_terms.update(tokens)
+                        for t in tokens:
+                            ranking[t.lower()] += 1
                 except:
                     pass
 
@@ -140,9 +157,9 @@ def run(context: dict):
     # ============================================================
     info(f"\n{C.BOLD}{C.BLUE}💾 Salvando arquivos de wordlist...{C.END}")
 
-    paths_sorted = sorted({p for p in path_terms if p})
-    params_sorted = sorted({p for p in param_terms if p})
-    js_sorted = sorted({p for p in js_terms if p})
+    paths_sorted = sorted({p for p in path_terms if p and p.lower() not in STOPWORDS})
+    params_sorted = sorted({p for p in param_terms if p and p.lower() not in STOPWORDS})
+    js_sorted = sorted({p for p in js_terms if p and p.lower() not in STOPWORDS})
 
     paths_file.write_text("\n".join(paths_sorted) + ("\n" if paths_sorted else ""))
     params_file.write_text("\n".join(params_sorted) + ("\n" if params_sorted else ""))
@@ -150,6 +167,9 @@ def run(context: dict):
 
     combined = sorted(set(paths_sorted) | set(params_sorted) | set(js_sorted))
     combined_file.write_text("\n".join(combined) + ("\n" if combined else ""))
+    ranking_file = outdir / "wordlist_ranked.json"
+    ranked = [{"term": term, "score": score} for term, score in ranking.most_common(500) if term not in STOPWORDS and len(term) > 2]
+    ranking_file.write_text(json.dumps(ranked, indent=2, ensure_ascii=False))
 
     # ============================================================
     # 🎉 FINALIZAÇÃO
@@ -170,5 +190,6 @@ def run(context: dict):
         str(paths_file),
         str(params_file),
         str(js_words_file),
-        str(combined_file)
+        str(combined_file),
+        str(ranking_file)
     ]

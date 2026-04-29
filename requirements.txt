@@ -11,3 +11,4 @@ pydantic
 # TLS/Crypto
 cryptography>=46.0.0
 pyOpenSSL>=24.0.0
+pytest

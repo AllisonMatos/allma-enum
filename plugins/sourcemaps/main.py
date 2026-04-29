@@ -18,6 +18,7 @@ from urllib.parse import urlparse, urljoin
 from menu import C
 from plugins import ensure_outdir
 from ..output import info, warn, success, error
+from ..validation import finding
 
 CONFIG = {
     'max_conn_per_host': 10,
@@ -56,6 +57,7 @@ class SourceMapScanner:
         self.outdir = Path("output") / target / "sourcemaps"
         self.outdir.mkdir(parents=True, exist_ok=True)
         self.findings = []
+        self._dedup = set()
         
     async def fetch(self, client: httpx.AsyncClient, url: str) -> Tuple[str, str]:
         """Fetch content from URL and return text/json."""
@@ -130,14 +132,27 @@ class SourceMapScanner:
               for i, line in enumerate(lines):
                    matches = pattern.finditer(line)
                    for match in matches:
-                        self.findings.append({
-                            "type": pattern_name,
-                            "map_url": map_url,
-                            "source_file": source_filename,
-                            "line_num": i + 1,
-                            "match": match.group(0),
-                            "context": line.strip()[:150]
-                        })
+                        match_val = match.group(0)
+                        dedup_key = f"{pattern_name}|{source_filename}|{match_val}"
+                        if dedup_key in self._dedup:
+                            continue
+                        self._dedup.add(dedup_key)
+                        risk = "HIGH" if "Key" in pattern_name or "JWT" in pattern_name else "MEDIUM"
+                        confidence = "HIGH" if len(match_val) > 10 else "MEDIUM"
+                        self.findings.append(finding(
+                            plugin="sourcemaps",
+                            target=self.target,
+                            title=f"SourceMap Secret Pattern: {pattern_name}",
+                            issue_type=pattern_name.replace(" ", "_").upper(),
+                            risk=risk,
+                            confidence=confidence,
+                            url=map_url,
+                            description=f"Padrão {pattern_name} encontrado em source map desembrulhado",
+                            detection={"pattern_name": pattern_name, "source_file": source_filename, "line_num": i + 1},
+                            validation={"source_map_parsed": True},
+                            evidence={"matched_snippet": match_val[:180], "observable_impact": "secret_or_internal_code_exposure"},
+                            metadata={"score": min(100, 50 + len(match_val))}
+                        ))
 
 async def run_async(context: dict):
     start = time.time()
@@ -203,9 +218,11 @@ async def run_async(context: dict):
              
          with findings_file.open('w') as f:
              for item in scanner.findings:
-                  f.write(f"[{item['type']}] - File: {item['source_file']} (from {item['map_url']})\n")
-                  f.write(f"Line {item['line_num']}: {item['match']}\n")
-                  f.write(f"Context: {item['context']}\n")
+                  det = item.get("phases", {}).get("detection", {})
+                  ev = item.get("evidence", {})
+                  f.write(f"[{item.get('type')}] - File: {det.get('source_file', 'unknown')} (from {item.get('url', '')})\n")
+                  f.write(f"Line {det.get('line_num', '?')}: {ev.get('matched_snippet', '')}\n")
+                  f.write(f"Confidence: {item.get('confidence', 'LOW')} | Risk: {item.get('risk', 'LOW')}\n")
                   f.write("-" * 60 + "\n")
                   
     elapsed = time.time() - start

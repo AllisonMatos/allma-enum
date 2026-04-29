@@ -14,6 +14,7 @@ import base64
 from menu import C
 from plugins import ensure_outdir
 from ..output import info, success, warn, error
+from ..validation import finding
 
 # ============================================================
 # PATHS COMUNS DE ADMIN PANELS
@@ -204,6 +205,18 @@ WAF_CHALLENGE_SIGS = [
     "checking your browser", "ddos-guard", "incapsula", "sucuri",
     "access denied | used cloudflare", "please wait...",
 ]
+
+
+def is_semantic_admin_response(body: str, title: str, path: str) -> bool:
+    body_l = (body or "").lower()
+    title_l = (title or "").lower()
+    path_l = (path or "").lower()
+    if any(x in body_l for x in WAF_CHALLENGE_SIGS):
+        return False
+    if any(x in title_l for x in ("not found", "error", "forbidden")) and "admin" not in path_l:
+        return False
+    admin_indicators = ("admin", "dashboard", "panel", "console", "settings", "users", "login")
+    return any(x in body_l for x in admin_indicators) or any(x in title_l for x in admin_indicators) or any(x in path_l for x in admin_indicators)
 
 def normalize_title(title: str) -> str:
     """Normalize a page title for deduplication."""
@@ -430,7 +443,7 @@ def check_admin_path(client, base_url: str, path: str, baseline: dict = None) ->
                 for bypass_h in bypass_headers_list:
                     try:
                         r = client.get(url, headers=bypass_h)
-                        if r.status_code == 200:
+                        if r.status_code == 200 and is_semantic_admin_response(r.text, title, path):
                             # V10.5: Validar que NÃO é WAF/Cloudflare challenge
                             bypass_body = r.text.lower() if r.text else ""
                             if any(sig in bypass_body for sig in WAF_CHALLENGE_SIGS):
@@ -448,7 +461,7 @@ def check_admin_path(client, base_url: str, path: str, baseline: dict = None) ->
                     try:
                         test = base_url.rstrip("/") + bp
                         r = client.get(test)
-                        if r.status_code == 200:
+                        if r.status_code == 200 and is_semantic_admin_response(r.text, title, path):
                             # V10.5: Validar que NÃO é WAF/Cloudflare challenge
                             bypass_body = r.text.lower() if r.text else ""
                             if any(sig in bypass_body for sig in WAF_CHALLENGE_SIGS):
@@ -469,7 +482,20 @@ def check_admin_path(client, base_url: str, path: str, baseline: dict = None) ->
                     result["raw_request"] = bypass_evidence[0]["req"]
                     result["raw_response"] = bypass_evidence[0]["res"]
             
-            return result
+            return finding(
+                plugin="admin",
+                target="",
+                title="Admin Surface Exposure",
+                issue_type="ADMIN_PANEL_EXPOSED" if result.get("status") == 200 else "ADMIN_PANEL_DISCOVERED",
+                risk="HIGH" if result.get("status") in (200, "403 → BYPASS") else "MEDIUM",
+                confidence="CONFIRMED" if result.get("bypass_found") else "HIGH",
+                url=result.get("url", ""),
+                description=f"Admin endpoint detected at {result.get('path')}",
+                detection={"status": result.get("status"), "path": result.get("path"), "cms": result.get("cms")},
+                validation={"semantic_admin_match": True, "bypass_confirmed": bool(result.get("bypass_found"))},
+                evidence={"request_raw": result.get("raw_request", ""), "response_raw": result.get("raw_response", ""), "observable_impact": "admin_endpoint_accessible"},
+                metadata=result
+            )
 
     except Exception:
         pass
@@ -635,13 +661,13 @@ def run(context: dict):
                         
                         found_panels.append(result)
                         
-                        status_val = result["status"]
+                        status_val = result["metadata"]["status"]
                         status_color = C.RED if status_val in (200, "403 → BYPASS") else C.YELLOW
                         status_str = str(status_val) if isinstance(status_val, int) else status_val
                             
-                        login_icon = "🔑" if result["has_login_form"] else "📄"
-                        cms_str = f" [{result['cms']}]" if result.get("cms") else ""
-                        info(f"   {login_icon} {status_color}[{status_str}]{C.END} {result['url']}{cms_str}")
+                        login_icon = "🔑" if result["metadata"].get("has_login_form") else "📄"
+                        cms_str = f" [{result['metadata'].get('cms')}]" if result["metadata"].get("cms") else ""
+                        info(f"   {login_icon} {status_color}[{status_str}/{result['confidence']}]{C.END} {result['url']}{cms_str}")
                 except Exception:
                     pass
 
@@ -653,7 +679,7 @@ def run(context: dict):
     # Auto-Exploitation: GitLeaks for exposed .git directories
     # ---------------------------------------------------------
     import subprocess
-    git_exposures = [p["url"] for p in unique_panels if "/.git/" in p["url"] and p["status"] == 200]
+    git_exposures = [p["url"] for p in unique_panels if "/.git/" in p["url"] and p["metadata"]["status"] == 200]
     if git_exposures:
         info(f"\n   [!] Diretórios .git expostos detectados! Tentando clone e extração de credenciais...")
         git_dumper = shutil.which("git-dumper")
@@ -686,17 +712,20 @@ def run(context: dict):
                             if leaks:
                                 success(f"   🚨 {C.PURPLE}GitLeaks encontrou {len(leaks)} secrets expostos!{C.END}")
                                 for leak in leaks:
-                                    unique_panels.append({
-                                        "url": base_git_url,
-                                        "path": leak.get("File", ""),
-                                        "cms": "GitLeaks Exfiltration",
-                                        "has_login_form": False,
-                                        "status": "CRITICAL",
-                                        "title": f"Secret Leak: {leak.get('Description', 'Key')}",
-                                        "response_size": 0,
-                                        "content_type": "secret/gitleaks",
-                                        "content_hash": leak.get("Secret", "")
-                                    })
+                                    unique_panels.append(finding(
+                                        plugin="admin",
+                                        target=target,
+                                        title="Git Secret Leak via Exposed Repository",
+                                        issue_type="GITLEAKS_EXFILTRATION",
+                                        risk="CRITICAL",
+                                        confidence="CONFIRMED",
+                                        url=base_git_url,
+                                        description=f"Secret leak found in {leak.get('File', '')}",
+                                        detection={"tool": "gitleaks"},
+                                        validation={"repo_dumped": True},
+                                        evidence={"matched_snippet": leak.get("Description", ""), "observable_impact": "secret_exfiltration"},
+                                        metadata={"leak": leak}
+                                    ))
                         except Exception as e:
                             pass
         else:
@@ -710,10 +739,10 @@ def run(context: dict):
         success(f"   📂 Salvos em {output_file}")
 
         # Stats
-        with_login = sum(1 for p in unique_panels if p["has_login_form"])
-        cms_count = sum(1 for p in unique_panels if p.get("cms"))
-        open_200 = sum(1 for p in unique_panels if p["status"] == 200 or p["status"] == "403 → BYPASS")
-        auth_required = sum(1 for p in unique_panels if isinstance(p["status"], int) and p["status"] in (401, 403))
+        with_login = sum(1 for p in unique_panels if p.get("metadata", {}).get("has_login_form"))
+        cms_count = sum(1 for p in unique_panels if p.get("metadata", {}).get("cms"))
+        open_200 = sum(1 for p in unique_panels if p.get("metadata", {}).get("status") == 200 or p.get("metadata", {}).get("status") == "403 → BYPASS")
+        auth_required = sum(1 for p in unique_panels if isinstance(p.get("metadata", {}).get("status"), int) and p.get("metadata", {}).get("status") in (401, 403))
 
         info(f"   📊 Stats:")
         info(f"      Abertos/Bypass: {C.RED}{open_200}{C.END}")

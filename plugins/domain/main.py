@@ -254,15 +254,8 @@ def run(context):
     info(f"{C.BOLD}{C.BLUE}[7/8] Validando URLs ativas...{C.END}")
     valid_urls = validate_urls(urls_file, urls_ok)
 
-    # === ETAPA 7.5: ADVANCED CRAWLING (Recursivo) ===
-    try:
-        from ..crawlers import run_crawlers
-        info(f"{C.BOLD}{C.BLUE}[7.5/8] Advanced Crawling (Katana/GoSpider)...{C.END}")
-        run_crawlers(urls_ok, outdir)
-    except ImportError as e:
-        warn(f"Modulo de crawlers nao encontrado: {e}")
-    except Exception as e:
-        error(f"Erro ao executar crawlers: {e}")
+    # === ETAPA 7.5: ADVANCED CRAWLING ===
+    # (crawlers module removido na V11 — katana integrado diretamente no domain)
 
     # === ETAPA 6: DEEP ANALYSIS (ASYNC) ===
     

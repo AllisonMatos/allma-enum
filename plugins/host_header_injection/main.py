@@ -18,6 +18,7 @@ from menu import C
 from plugins import ensure_outdir
 from ..output import info, success, warn, error
 from ..http_utils import format_http_request, format_http_response
+from ..validation import finding
 
 # Portas de painel administrativas (Blacklist cirúrgica V10.1)
 PANEL_PORTS = {2082, 2083, 2086, 2087, 8080, 8443}
@@ -26,6 +27,29 @@ EVIL_DOMAIN = "evil-enum-allma.com"
 
 # Headers indicativos de cache (V10.2 — Cache Poisoning Detection)
 CACHE_HIT_HEADERS = ["x-cache", "x-cache-status", "cf-cache-status", "age", "x-varnish"]
+
+
+def reflection_context(body: str, marker: str) -> str:
+    idx = body.find(marker)
+    if idx < 0:
+        return "NONE"
+    around = body[max(0, idx - 200): idx + 200]
+    dangerous_patterns = [
+        r'<form[^>]*action\s*=\s*["\']?[^"\'>]*' + re.escape(marker),
+        r'<a[^>]*href\s*=\s*["\']?[^"\'>]*' + re.escape(marker),
+        r'<script[^>]*src\s*=\s*["\']?[^"\'>]*' + re.escape(marker),
+        r'<meta[^>]*content\s*=\s*["\']?\d+;\s*url\s*=\s*[^"\'>]*' + re.escape(marker),
+        r'<iframe[^>]*src\s*=\s*["\']?[^"\'>]*' + re.escape(marker),
+    ]
+    safe_patterns = [
+        r'<link[^>]*rel\s*=\s*["\']?canonical',
+        r'property\s*=\s*["\']og:url["\']',
+    ]
+    if any(re.search(p, around, re.I) for p in dangerous_patterns):
+        return "DANGEROUS"
+    if any(re.search(p, around, re.I) for p in safe_patterns):
+        return "SAFE"
+    return "UNKNOWN"
 
 def _test_host_injection(client: httpx.Client, url: str) -> list:
     """Testa Host Header Injection com payloads cirúrgicos. Reutiliza sessão."""
@@ -70,47 +94,21 @@ def _test_host_injection(client: httpx.Client, url: str) -> list:
             
             is_vuln = False
             details = ""
-            risk_context = "SAFE"  # V10.4: Contexto de reflexão
+            risk_context = "SAFE"
             
             if EVIL_DOMAIN in location:
                 is_vuln = True
                 risk_context = "DANGEROUS"
                 details = f"Domínio injetado refletido no header 'Location' ({resp.status_code})"
             elif EVIL_DOMAIN in body:
-                # V10.4: Verificar se a reflexão está em contexto perigoso vs inofensivo
-                evil_idx = body.find(EVIL_DOMAIN)
-                surrounding = body[max(0, evil_idx - 200):evil_idx + 200]
-                
-                # Contextos PERIGOSOS: form action, a href, script, meta refresh
-                dangerous_patterns = [
-                    r'<form[^>]*action\s*=\s*["\']?[^"\'>]*' + re.escape(EVIL_DOMAIN),
-                    r'<a[^>]*href\s*=\s*["\']?[^"\'>]*' + re.escape(EVIL_DOMAIN),
-                    r'<script[^>]*src\s*=\s*["\']?[^"\'>]*' + re.escape(EVIL_DOMAIN),
-                    r'<meta[^>]*content\s*=\s*["\']?\d+;\s*url\s*=\s*[^"\'>]*' + re.escape(EVIL_DOMAIN),
-                    r'<iframe[^>]*src\s*=\s*["\']?[^"\'>]*' + re.escape(EVIL_DOMAIN),
-                ]
-                # Contextos SEGUROS: link canonical, base href, og:url
-                safe_patterns = [
-                    r'<link[^>]*rel\s*=\s*["\']?canonical[^>]*' + re.escape(EVIL_DOMAIN),
-                    r'<link[^>]*rel\s*=\s*["\']?alternate[^>]*' + re.escape(EVIL_DOMAIN),
-                    r'<base[^>]*href\s*=\s*["\']?[^"\'>]*' + re.escape(EVIL_DOMAIN),
-                    r'property\s*=\s*["\']og:url["\']',
-                ]
-                
-                import re as _re
-                is_dangerous = any(_re.search(p, surrounding, _re.I) for p in dangerous_patterns)
-                is_safe_ctx = any(_re.search(p, surrounding, _re.I) for p in safe_patterns)
-                
-                if is_dangerous:
+                ctx = reflection_context(body, EVIL_DOMAIN)
+                if ctx == "DANGEROUS":
                     is_vuln = True
                     risk_context = "DANGEROUS"
                     details = f"Domínio injetado refletido em contexto PERIGOSO no body ({resp.status_code})"
-                elif is_safe_ctx:
-                    # V10.4: Reflexão em contexto seguro — NÃO reportar como vuln
+                elif ctx == "SAFE":
                     continue
                 else:
-                    # V11: Contexto desconhecido — ignorar para evitar falsos positivos
-                    # Sites frequentemente refletem Host em meta tags, og:url, canonical etc.
                     continue
 
             # V10.2: Detectar cache poisoning
@@ -124,17 +122,25 @@ def _test_host_injection(client: httpx.Client, url: str) -> list:
                         break
 
             if is_vuln:
-                risk = "CRITICAL" if cache_poisoned else ("HIGH" if resp.status_code < 400 else "MEDIUM")
-                findings.append({
-                    "url": url,
-                    "type": "HOST_HEADER_INJECTION",
-                    "risk": risk,
-                    "details": details,
-                    "payload": str(headers),
-                    "cache_poisoned": cache_poisoned,
-                    "request_raw": format_http_request(resp.request),
-                    "response_raw": format_http_response(resp),
-                })
+                confidence = "CONFIRMED" if cache_poisoned else "HIGH"
+                findings.append(finding(
+                    plugin="host_header_injection",
+                    target="",
+                    title="Host Header Injection",
+                    issue_type="HOST_HEADER_INJECTION",
+                    risk="CRITICAL" if cache_poisoned else "HIGH",
+                    confidence=confidence,
+                    url=url,
+                    description=details,
+                    detection={"payload": headers, "status": resp.status_code, "reflection_context": risk_context},
+                    validation={"cache_poisoned": cache_poisoned, "external_redirect": EVIL_DOMAIN in location},
+                    evidence={
+                        "request_raw": format_http_request(resp.request),
+                        "response_raw": format_http_response(resp),
+                        "observable_impact": "cache_hit_with_injected_host" if cache_poisoned else "injected_host_reflection"
+                    },
+                    metadata={"cache_poisoned": cache_poisoned}
+                ))
                 break # Evita duplicar se múltiplos headers funcionarem
         except Exception:
             pass
@@ -178,7 +184,8 @@ def run(context: dict):
                 if res:
                     results.extend(res)
                     for f in res:
-                        info(f"   🔴 {C.RED}[{f['risk']}]{C.END} Host Injection em {f['url']}")
+                        f["target"] = target
+                        info(f"   🔴 {C.RED}[{f['risk']}/{f['confidence']}]{C.END} Host Injection em {f['url']}")
 
     output_file = outdir / "host_injection_results.json"
     output_file.write_text(json.dumps(results, indent=2))

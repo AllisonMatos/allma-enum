@@ -13,6 +13,7 @@ from menu import C
 from plugins import ensure_outdir
 from ..output import info, success, warn, error
 from ..http_utils import format_raw_request, format_raw_response
+from ..validation import finding
 
 try:
     import httpx
@@ -37,8 +38,20 @@ MUTATIONS_QUERY = '{"query": "{ __schema { mutationType { fields { name args { n
 SUGGESTIONS_QUERY = '{"query": "{ __typ }"}'
 
 
+def is_graphql_json_response(body: str) -> bool:
+    try:
+        data = json.loads(body)
+    except Exception:
+        return False
+    if isinstance(data, dict):
+        return "data" in data or "errors" in data
+    if isinstance(data, list):
+        return all(isinstance(i, dict) and ("data" in i or "errors" in i) for i in data)
+    return False
+
+
 def test_endpoint(client, url):
-    """Testa um endpoint GraphQL para diversas vulnerabilidades"""
+    """Two-phase test: detection then validation."""
     findings = []
     headers = {
         "Content-Type": "application/json",
@@ -61,15 +74,11 @@ def test_endpoint(client, url):
             body = resp.text
             method_used = "GET"
 
-        if resp.status_code == 200 and "__schema" in body:
-            try:
-                data = resp.json()
-                if "data" not in data and "errors" not in data:
-                    raise ValueError("Not GraphQL FP")  # Não é um erro JSON padrão ou resposta graphql (FP)
-                types_count = len(data.get("data", {}).get("__schema", {}).get("types", []))
-            except Exception:
-                # Se não for JSON parseable, é uma página HTML de Soft-404/WAF e não um endpoint
-                raise ValueError("Soft-404 FP")
+        detected = resp.status_code == 200 and "__schema" in body
+        validated = detected and is_graphql_json_response(body)
+        if validated:
+            data = resp.json()
+            types_count = len(data.get("data", {}).get("__schema", {}).get("types", []))
                 
             if method_used == "POST":
                 raw_req = format_raw_request("POST", url, dict(resp.request.headers), INTROSPECTION_QUERY)
@@ -78,18 +87,20 @@ def test_endpoint(client, url):
                 
             raw_res = format_raw_response(resp.status_code, dict(resp.headers), body[:3000])
             
-            findings.append({
-                "url": url,
-                "type": "INTROSPECTION_ENABLED",
-                "risk": "HIGH",
-                "status": resp.status_code,
-                "length": len(body),
-                "introspection": True,
-                "types_count": types_count,
-                "details": f"Introspection habilitada via {method_used} — {types_count} types expostos",
-                "request_raw": raw_req,
-                "response_raw": raw_res,
-            })
+            findings.append(finding(
+                plugin="graphql",
+                target="",
+                title="GraphQL Introspection Enabled",
+                issue_type="INTROSPECTION_ENABLED",
+                risk="HIGH",
+                confidence="CONFIRMED",
+                url=url,
+                description=f"Introspection habilitada via {method_used} — {types_count} types expostos",
+                detection={"matched_schema_keyword": detected},
+                validation={"is_graphql_json": validated, "http_status": resp.status_code},
+                evidence={"request_raw": raw_req, "response_raw": raw_res, "observable_impact": f"types_count={types_count}"},
+                metadata={"types_count": types_count, "method": method_used}
+            ))
     except Exception:
         pass
     
@@ -105,15 +116,19 @@ def test_endpoint(client, url):
                 if isinstance(data, list) and len(data) > 1:
                     raw_req = format_raw_request("POST", url, dict(resp.request.headers), BATCH_QUERY)
                     raw_res = format_raw_response(resp.status_code, dict(resp.headers), body[:2000])
-                    findings.append({
-                        "url": url,
-                        "type": "BATCH_QUERIES_ALLOWED",
-                        "risk": "MEDIUM",
-                        "status": resp.status_code,
-                        "details": f"Batch queries aceitas — potencial DoS/rate limit bypass",
-                        "request_raw": raw_req,
-                        "response_raw": raw_res,
-                    })
+                    findings.append(finding(
+                        plugin="graphql",
+                        target="",
+                        title="GraphQL Batch Queries Allowed",
+                        issue_type="BATCH_QUERIES_ALLOWED",
+                        risk="MEDIUM",
+                        confidence="HIGH",
+                        url=url,
+                        description="Batch queries aceitas — potencial DoS/rate limit bypass",
+                        detection={"batch_len": len(data)},
+                        validation={"is_batch_response": True, "http_status": resp.status_code},
+                        evidence={"request_raw": raw_req, "response_raw": raw_res}
+                    ))
             except Exception:
                 pass
     except Exception:
@@ -151,16 +166,20 @@ def test_endpoint(client, url):
                             raw_req = format_raw_request("GET", req_url, dict(resp.request.headers))
                             
                         raw_res = format_raw_response(resp.status_code, dict(resp.headers), body[:3000])
-                        findings.append({
-                            "url": url,
-                            "type": "DANGEROUS_MUTATIONS_EXPOSED",
-                            "risk": "HIGH",
-                            "status": resp.status_code,
-                            "mutations": names,
-                            "details": f"Mutations perigosas expostas via {method_used}: {', '.join(names)}",
-                            "request_raw": raw_req,
-                            "response_raw": raw_res,
-                        })
+                        findings.append(finding(
+                            plugin="graphql",
+                            target="",
+                            title="Dangerous GraphQL Mutations Exposed",
+                            issue_type="DANGEROUS_MUTATIONS_EXPOSED",
+                            risk="HIGH",
+                            confidence="HIGH",
+                            url=url,
+                            description=f"Mutations perigosas expostas via {method_used}: {', '.join(names)}",
+                            detection={"dangerous_mutation_count": len(names)},
+                            validation={"is_graphql_json": True, "http_status": resp.status_code},
+                            evidence={"request_raw": raw_req, "response_raw": raw_res, "observable_impact": ",".join(names)},
+                            metadata={"mutations": names}
+                        ))
             except Exception:
                 pass
     except Exception:
@@ -178,13 +197,7 @@ def test_endpoint(client, url):
             body = resp.text
             method_used = "GET"
             
-        if resp.status_code == 200 and ("Did you mean" in body or "suggestions" in body.lower()):
-            try:
-                data = resp.json()
-                if "errors" not in data:
-                    raise ValueError("Not error FP")
-            except Exception:
-                raise ValueError("Soft-404 FP")
+        if resp.status_code == 200 and ("Did you mean" in body or "suggestions" in body.lower()) and is_graphql_json_response(body):
                 
             if method_used == "POST":
                 raw_req = format_raw_request("POST", url, dict(resp.request.headers), SUGGESTIONS_QUERY)
@@ -192,15 +205,19 @@ def test_endpoint(client, url):
                 raw_req = format_raw_request("GET", req_url, dict(resp.request.headers))
                 
             raw_res = format_raw_response(resp.status_code, dict(resp.headers), body[:2000])
-            findings.append({
-                "url": url,
-                "type": "FIELD_SUGGESTIONS_ENABLED",
-                "risk": "LOW",
-                "status": resp.status_code,
-                "details": f"Field suggestions habilitadas via {method_used} — permite enumeração de campos",
-                "request_raw": raw_req,
-                "response_raw": raw_res,
-            })
+            findings.append(finding(
+                plugin="graphql",
+                target="",
+                title="GraphQL Field Suggestions Enabled",
+                issue_type="FIELD_SUGGESTIONS_ENABLED",
+                risk="LOW",
+                confidence="HIGH",
+                url=url,
+                description=f"Field suggestions habilitadas via {method_used} — permite enumeração de campos",
+                detection={"suggestion_keyword_present": True},
+                validation={"is_graphql_json": True, "http_status": resp.status_code},
+                evidence={"request_raw": raw_req, "response_raw": raw_res}
+            ))
     except Exception:
         pass
     
@@ -280,7 +297,8 @@ def run(context: dict):
                     all_findings.extend(findings)
                     print(" " * 80, end="\r")
                     for f in findings:
-                        info(f"   🚨 {C.RED}{f['type']}: {futures[future]}{C.END}")
+                        f["target"] = target
+                        info(f"   🚨 {C.RED}{f['type']}: {futures[future]} ({f['confidence']}){C.END}")
             except Exception:
                 pass
     
@@ -304,13 +322,19 @@ def run(context: dict):
                         has_errors = '"errors"' in body
                         has_data = '"data"' in body
                         if not has_errors and has_data:
-                            all_findings.append({
-                                "url": url,
-                                "type": "NO_DEPTH_LIMITING",
-                                "risk": "MEDIUM",
-                                "details": f"Query com profundidade {depth} aceita sem limites — possível DoS via nested queries",
-                                "depth_tested": depth,
-                            })
+                            all_findings.append(finding(
+                                plugin="graphql",
+                                target=target,
+                                title="No GraphQL Depth Limiting",
+                                issue_type="NO_DEPTH_LIMITING",
+                                risk="MEDIUM",
+                                confidence="HIGH",
+                                url=url,
+                                description=f"Query com profundidade {depth} aceita sem limites — possível DoS via nested queries",
+                                detection={"depth_tested": depth},
+                                validation={"response_had_data_without_errors": True},
+                                evidence={"observable_impact": f"accepted_depth={depth}"}
+                            ))
                             info(f"   ⚠️ {C.YELLOW}Sem depth limiting em {url} (profundidade {depth}){C.END}")
                             break  # Se passou com profundidade menor, não precisa testar mais
                     elif resp.status_code in [400, 413, 422]:

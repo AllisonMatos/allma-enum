@@ -20,6 +20,46 @@ from .utils import require_binary
 WANT_STATUS = "200,301,302,307,308,401,403,404,405,500"
 
 
+def smart_normalize_urls(urls: list[str]) -> list[str]:
+    """
+    Use unfurl + uro when available for smarter URL normalization/dedup.
+    Falls back to plain set-based dedup.
+    """
+    normalized = sorted(set(u.strip() for u in urls if u and u.strip()))
+    if not normalized:
+        return normalized
+
+    uro = shutil.which("uro")
+    unfurl = shutil.which("unfurl")
+    if not uro and not unfurl:
+        return normalized
+
+    temp_in = Path("/tmp/enum_allma_urls_raw.txt")
+    temp_out = Path("/tmp/enum_allma_urls_norm.txt")
+    try:
+        temp_in.write_text("\n".join(normalized) + "\n", encoding="utf-8")
+        current = temp_in.read_text(encoding="utf-8")
+
+        # First unfurl to keep canonical URL paths when tool is present.
+        if unfurl:
+            p = subprocess.run([unfurl, "format", "%s://%d%p?%q"], input=current, text=True, capture_output=True, timeout=120)
+            if p.returncode == 0 and p.stdout.strip():
+                current = p.stdout
+
+        # Then uro for URL canonical dedup.
+        if uro:
+            p = subprocess.run([uro], input=current, text=True, capture_output=True, timeout=120)
+            if p.returncode == 0 and p.stdout.strip():
+                temp_out.write_text(p.stdout, encoding="utf-8")
+                return sorted(set(l.strip() for l in temp_out.read_text(encoding="utf-8").splitlines() if l.strip()))
+    except Exception:
+        return normalized
+    finally:
+        temp_in.unlink(missing_ok=True)
+        temp_out.unlink(missing_ok=True)
+    return normalized
+
+
 # ============================================================
 # Validação com httpx
 # ============================================================
@@ -178,7 +218,8 @@ def run_historical_discovery(target: str, out_file: Path):
 
     # Limpar duplicatas e retornar
     if out_file.exists() and out_file.stat().st_size > 0:
-        urls = sorted(set([l.strip() for l in out_file.read_text(errors="ignore").splitlines() if l.strip()]))
+        raw_urls = [l.strip() for l in out_file.read_text(errors="ignore").splitlines() if l.strip()]
+        urls = smart_normalize_urls(raw_urls)
         out_file.write_text("\n".join(urls) + "\n", encoding="utf-8")
         success(f"📜 {len(urls)} URLs históricas consolidadas salvas em: {C.GREEN}{out_file.name}{C.END}")
         return urls
@@ -549,7 +590,7 @@ def run(context: dict):
         if l.strip()
     ]
 
-    unique = sorted(set(lines))
+    unique = smart_normalize_urls(lines)
     url_completas.write_text("\n".join(unique) + "\n")
 
     success(f"📁 {len(unique)} URLs coletadas em: {C.GREEN}{url_completas}{C.END}")

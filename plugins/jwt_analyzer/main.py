@@ -63,6 +63,7 @@ def test_alg_none(token):
     none_header = base64.urlsafe_b64encode(json.dumps({"alg": "none", "typ": "JWT"}).encode()).rstrip(b"=").decode()
     none_token = f"{none_header}.{parts[1]}."
     return none_token
+test_alg_none.__test__ = False
 
 
 def test_weak_secrets(token, alg):
@@ -90,6 +91,7 @@ def test_weak_secrets(token, alg):
             return secret
             
     return None
+test_weak_secrets.__test__ = False
 
 
 def check_expiration(payload):
