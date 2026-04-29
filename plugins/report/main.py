@@ -2221,11 +2221,18 @@ def build_email_security_content(target: str) -> str:
 
 def build_cookies_content(target: str) -> str:
     data = read_json_file(Path("output") / target / "cookies" / "cookies_results.json")
-    if not data:
+    
+    cookies_list = []
+    if isinstance(data, dict):
+        cookies_list = data.get("cookies", [])
+    elif isinstance(data, list):
+        cookies_list = data
+        
+    if not cookies_list:
         return '<div class="empty-state"><p> Nenhum problema de cookie encontrado ou módulo não executado.</p></div>'
     
     rows = ""
-    for item in data:
+    for item in cookies_list:
         url = html.escape(item.get("url", ""))
         name = html.escape(item.get("cookie_name", ""))
         issues = "<br>".join([html.escape(i) for i in item.get("issues", [])])
