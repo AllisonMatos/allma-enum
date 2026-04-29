@@ -254,63 +254,150 @@ def run(context):
     info(f"{C.BOLD}{C.BLUE}[7/8] Validando URLs ativas...{C.END}")
     valid_urls = validate_urls(urls_file, urls_ok)
 
-    # === ETAPA 7.5: KATANA CRAWLING ===
+    # === ETAPA 7.5: ADVANCED CRAWLING (Katana + GoSpider) ===
     import shutil as _shutil
     katana_bin = _shutil.which("katana")
+    gospider_bin = _shutil.which("gospider")
     katana_out = outdir / "katana_valid.txt"
-    if katana_bin and urls_ok.exists():
-        info(f"{C.BOLD}{C.BLUE}[7.5/8] Katana Crawling (descoberta de URLs por crawling ativo)...{C.END}")
-        katana_raw = outdir / "katana_raw.txt"
-        try:
-            katana_cmd = [
-                katana_bin,
-                "-list", str(urls_ok),
-                "-d", "2",               # depth 2
-                "-jc",                    # crawl JS
-                "-kf", "all",             # known files
-                "-ef", "css,png,jpg,jpeg,gif,svg,ico,woff,woff2,ttf,eot",
-                "-silent",
-                "-timeout", "15",
-                "-rate-limit", "50",
-                "-o", str(katana_raw),
-            ]
-            result = subprocess.run(katana_cmd, capture_output=True, text=True, timeout=300)
+    discovered_file = outdir / "discovered_urls.txt"
+    
+    if (katana_bin or gospider_bin) and urls_ok.exists():
+        info(f"{C.BOLD}{C.BLUE}[7.5/8] Advanced Crawling (Katana/GoSpider)...{C.END}")
+        
+        initial_urls = set(l.strip() for l in urls_ok.read_text().splitlines() if l.strip())
+        all_discovered = set()
+        all_valid = set(initial_urls)
+        
+        max_rounds = 2
+        current_urls = initial_urls
+        
+        for round_num in range(1, max_rounds + 1):
+            if not current_urls:
+                break
+            info(f"   Round {round_num}/{max_rounds} ({len(current_urls)} URLs)...")
             
-            if katana_raw.exists():
-                raw_urls = [u.strip() for u in katana_raw.read_text(errors="ignore").splitlines() if u.strip()]
-                # Validar com httpx
-                if raw_urls:
-                    info(f"   Katana encontrou {len(raw_urls)} URLs brutas. Validando com httpx...")
-                    from .utils import require_binary
-                    httpx_bin = require_binary("httpx")
-                    httpx_cmd = [
-                        httpx_bin,
-                        "-l", str(katana_raw),
-                        "-mc", "200,301,302,307,308,401,403",
-                        "-threads", "30",
-                        "-timeout", "10",
+            round_input = outdir / f"crawl_round_{round_num}.txt"
+            round_input.write_text("\n".join(current_urls))
+            round_discovered = set()
+            
+            # --- Katana ---
+            if katana_bin:
+                katana_raw = outdir / f"katana_raw_r{round_num}.txt"
+                try:
+                    katana_cmd = [
+                        katana_bin,
+                        "-list", str(round_input),
+                        "-d", "2",
+                        "-jc",                    # JS crawling
+                        "-kf", "all",             # known files
+                        "-ef", "css,png,jpg,jpeg,gif,svg,ico,woff,woff2,ttf,eot",
                         "-silent",
-                        "-no-color",
-                        "-follow-redirects",
-                        "-o", str(katana_out),
+                        "-timeout", "20",
+                        "-rate-limit", "50",
+                        "-o", str(katana_raw),
                     ]
-                    subprocess.run(httpx_cmd, capture_output=True, text=True, timeout=120)
-                    
-                    if katana_out.exists():
-                        valid_count = len(katana_out.read_text().strip().splitlines())
-                        success(f"   ✅ Katana: {valid_count} URLs válidas descobertas (depth=2)")
-                    else:
-                        info(f"   ⚠️ Katana: nenhuma URL nova validada")
-                else:
-                    info(f"   ⚠️ Katana: nenhuma URL bruta encontrada")
+                    subprocess.run(katana_cmd, capture_output=True, text=True, timeout=300)
+                    if katana_raw.exists():
+                        urls = set(l.strip() for l in katana_raw.read_text(errors="ignore").splitlines() if l.strip())
+                        round_discovered.update(urls)
+                        info(f"   Katana R{round_num}: {len(urls)} URLs brutas")
+                except subprocess.TimeoutExpired:
+                    warn(f"   Katana R{round_num}: timeout")
+                except Exception as e:
+                    warn(f"   Katana R{round_num}: {e}")
+            
+            # --- GoSpider (só no round 1) ---
+            if gospider_bin and round_num == 1:
+                gospider_dir = outdir / "gospider_out"
+                gospider_dir.mkdir(exist_ok=True)
+                try:
+                    gs_cmd = [
+                        gospider_bin,
+                        "-S", str(round_input),
+                        "-o", str(gospider_dir),
+                        "-c", "10", "-d", "2",
+                        "--other-source", "--include-subs", "-q",
+                    ]
+                    subprocess.run(gs_cmd, capture_output=True, text=True, timeout=300)
+                    import re as _gs_re
+                    url_pattern = _gs_re.compile(r'https?://[^\s\]"\'><]+')
+                    for out_file in gospider_dir.glob("*"):
+                        if out_file.is_file():
+                            try:
+                                for line in out_file.read_text(errors="ignore").splitlines():
+                                    round_discovered.update(url_pattern.findall(line))
+                            except Exception:
+                                pass
+                    info(f"   GoSpider: {len(round_discovered)} URLs combinadas")
+                except subprocess.TimeoutExpired:
+                    warn(f"   GoSpider: timeout")
+                except Exception as e:
+                    warn(f"   GoSpider: {e}")
+            
+            all_discovered.update(round_discovered)
+            
+            # Filtrar novas URLs do domínio alvo
+            from urllib.parse import urlparse as _crawl_urlparse
+            potential_new = round_discovered - all_valid
+            domain_new = set()
+            for u in potential_new:
+                try:
+                    h = _crawl_urlparse(u).netloc.split(":")[0]
+                    if h.endswith(target) or target.endswith(h):
+                        domain_new.add(u)
+                except Exception:
+                    pass
+            
+            if not domain_new:
+                info(f"   Round {round_num}: sem URLs novas do domínio")
+                break
+            
+            # Validar novas com httpx
+            from .utils import require_binary
+            httpx_bin = require_binary("httpx")
+            validate_in = outdir / f"crawl_validate_r{round_num}.txt"
+            validate_out = outdir / f"crawl_valid_r{round_num}.txt"
+            validate_in.write_text("\n".join(domain_new))
+            try:
+                httpx_cmd = [
+                    httpx_bin,
+                    "-l", str(validate_in),
+                    "-mc", "200,301,302,307,308,401,403",
+                    "-threads", "30", "-timeout", "10",
+                    "-silent", "-no-color", "-follow-redirects",
+                    "-o", str(validate_out),
+                ]
+                subprocess.run(httpx_cmd, capture_output=True, text=True, timeout=120)
+            except Exception:
+                pass
+            
+            newly_valid = set()
+            if validate_out.exists():
+                newly_valid = set(l.strip() for l in validate_out.read_text().splitlines() if l.strip())
+            
+            if newly_valid:
+                info(f"   ✅ Round {round_num}: +{len(newly_valid)} URLs válidas novas")
+                all_valid.update(newly_valid)
+                current_urls = newly_valid
             else:
-                info(f"   ⚠️ Katana: sem output")
-        except subprocess.TimeoutExpired:
-            warn(f"   ⚠️ Katana: timeout (300s)")
-        except Exception as e:
-            warn(f"   ⚠️ Katana falhou: {e}")
-    elif not katana_bin:
-        warn(f"   ⚠️ Katana não instalado — crawling avançado desativado")
+                info(f"   Round {round_num}: 0 URLs novas validadas")
+                break
+        
+        # Salvar katana_valid.txt (todas as URLs válidas do crawling)
+        crawl_only = all_valid - initial_urls
+        if crawl_only:
+            katana_out.write_text("\n".join(sorted(crawl_only)) + "\n")
+            success(f"   ✅ Crawling: {len(crawl_only)} URLs novas → katana_valid.txt")
+        else:
+            info(f"   Crawling: nenhuma URL nova além das iniciais")
+        
+        # Salvar discovered_urls.txt (tudo que foi encontrado, mesmo não validado)
+        if all_discovered:
+            discovered_file.write_text("\n".join(sorted(all_discovered)) + "\n")
+            info(f"   📄 {len(all_discovered)} URLs brutas → discovered_urls.txt")
+    else:
+        if not katana_bin and not gospider_bin:
+            warn(f"   ⚠️ Katana/GoSpider não instalados — crawling avançado desativado")
 
     # === ETAPA 6: DEEP ANALYSIS (ASYNC) ===
     
