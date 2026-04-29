@@ -1555,7 +1555,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 if (label) {
                     SEARCH_INDEX.push({
                         section,
-                        label: (label.textContent || '').replace(/\d+/g,'').trim(),
+                        label: (label.textContent || '').replace(/\\d+/g,'').trim(),
                         count: count ? parseInt(count.textContent) || 0 : 0,
                         btn
                     });
