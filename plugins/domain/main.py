@@ -254,8 +254,63 @@ def run(context):
     info(f"{C.BOLD}{C.BLUE}[7/8] Validando URLs ativas...{C.END}")
     valid_urls = validate_urls(urls_file, urls_ok)
 
-    # === ETAPA 7.5: ADVANCED CRAWLING ===
-    # (crawlers module removido na V11 — katana integrado diretamente no domain)
+    # === ETAPA 7.5: KATANA CRAWLING ===
+    import shutil as _shutil
+    katana_bin = _shutil.which("katana")
+    katana_out = outdir / "katana_valid.txt"
+    if katana_bin and urls_ok.exists():
+        info(f"{C.BOLD}{C.BLUE}[7.5/8] Katana Crawling (descoberta de URLs por crawling ativo)...{C.END}")
+        katana_raw = outdir / "katana_raw.txt"
+        try:
+            katana_cmd = [
+                katana_bin,
+                "-list", str(urls_ok),
+                "-d", "2",               # depth 2
+                "-jc",                    # crawl JS
+                "-kf", "all",             # known files
+                "-ef", "css,png,jpg,jpeg,gif,svg,ico,woff,woff2,ttf,eot",
+                "-silent",
+                "-timeout", "15",
+                "-rate-limit", "50",
+                "-o", str(katana_raw),
+            ]
+            result = subprocess.run(katana_cmd, capture_output=True, text=True, timeout=300)
+            
+            if katana_raw.exists():
+                raw_urls = [u.strip() for u in katana_raw.read_text(errors="ignore").splitlines() if u.strip()]
+                # Validar com httpx
+                if raw_urls:
+                    info(f"   Katana encontrou {len(raw_urls)} URLs brutas. Validando com httpx...")
+                    from .utils import require_binary
+                    httpx_bin = require_binary("httpx")
+                    httpx_cmd = [
+                        httpx_bin,
+                        "-l", str(katana_raw),
+                        "-mc", "200,301,302,307,308,401,403",
+                        "-threads", "30",
+                        "-timeout", "10",
+                        "-silent",
+                        "-no-color",
+                        "-follow-redirects",
+                        "-o", str(katana_out),
+                    ]
+                    subprocess.run(httpx_cmd, capture_output=True, text=True, timeout=120)
+                    
+                    if katana_out.exists():
+                        valid_count = len(katana_out.read_text().strip().splitlines())
+                        success(f"   ✅ Katana: {valid_count} URLs válidas descobertas (depth=2)")
+                    else:
+                        info(f"   ⚠️ Katana: nenhuma URL nova validada")
+                else:
+                    info(f"   ⚠️ Katana: nenhuma URL bruta encontrada")
+            else:
+                info(f"   ⚠️ Katana: sem output")
+        except subprocess.TimeoutExpired:
+            warn(f"   ⚠️ Katana: timeout (300s)")
+        except Exception as e:
+            warn(f"   ⚠️ Katana falhou: {e}")
+    elif not katana_bin:
+        warn(f"   ⚠️ Katana não instalado — crawling avançado desativado")
 
     # === ETAPA 6: DEEP ANALYSIS (ASYNC) ===
     
