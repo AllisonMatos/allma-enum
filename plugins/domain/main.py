@@ -2,6 +2,7 @@ from pathlib import Path
 import json
 import asyncio
 import time
+import subprocess
 from urllib.parse import urlparse
 
 from menu import C
