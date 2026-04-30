@@ -297,7 +297,7 @@ def run(context):
                         "-rate-limit", "50",
                         "-o", str(katana_raw),
                     ]
-                    subprocess.run(katana_cmd, capture_output=True, text=True, timeout=300)
+                    subprocess.run(katana_cmd, capture_output=True, text=True, timeout=1000)
                     if katana_raw.exists():
                         urls = set(l.strip() for l in katana_raw.read_text(errors="ignore").splitlines() if l.strip())
                         round_discovered.update(urls)
@@ -319,7 +319,7 @@ def run(context):
                         "-c", "10", "-d", "2",
                         "--other-source", "--include-subs", "-q",
                     ]
-                    subprocess.run(gs_cmd, capture_output=True, text=True, timeout=300)
+                    subprocess.run(gs_cmd, capture_output=True, text=True, timeout=1000)
                     import re as _gs_re
                     url_pattern = _gs_re.compile(r'https?://[^\s\]"\'><]+')
                     for out_file in gospider_dir.glob("*"):
