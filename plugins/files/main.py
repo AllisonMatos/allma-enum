@@ -15,6 +15,7 @@ import re
 
 from menu import C
 from plugins import ensure_outdir
+from plugins.validation import finding
 
 from ..output import info, success, warn, error
 # ----------------------------------------------
@@ -204,5 +205,24 @@ def run(context: dict):
         f"📂 JSON Sensível em: {C.CYAN}{outdir / 'sensitive_files.json'}{C.END}"
     )
 
-    return [str(outfile)]
+    findings = []
+    for s in sensitive_files:
+        findings.append(
+            finding(
+                plugin="files",
+                target=target,
+                title="Sensitive File Exposed",
+                issue_type="SENSITIVE_FILE_EXPOSED",
+                risk="HIGH",
+                confidence="MEDIUM",
+                description="Potentially sensitive file exposed in discovered URLs",
+                url=s,
+                detection={"pattern_match": True},
+                validation={"source": "urls_200"},
+                evidence={"matched_snippet": s, "observable_impact": "sensitive_file_disclosure"},
+                metadata={"sensitive_url": s},
+            )
+        )
+    (outdir / "findings.json").write_text(json.dumps(findings, indent=2, ensure_ascii=False))
+    return findings
 

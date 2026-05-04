@@ -10,6 +10,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from menu import C
 from plugins import ensure_outdir
+from plugins.validation import finding
 from ..output import info, success, warn, error
 
 # ============================================================
@@ -297,6 +298,29 @@ def run(context: dict):
     output_file = outdir / "waf_results.json"
     output_file.write_text(json.dumps(results, indent=2, ensure_ascii=False))
 
+    normalized_findings = []
+    for r in results:
+        primary = r.get("waf_detected", [{}])[0] if r.get("waf_detected") else {}
+        conf = str(primary.get("confidence", "medium")).upper()
+        conf_norm = "HIGH" if conf == "HIGH" else "MEDIUM"
+        normalized_findings.append(
+            finding(
+                plugin="waf",
+                target=target,
+                title=f"WAF Detected: {r.get('primary_waf', 'Unknown')}",
+                issue_type="WAF_DETECTED",
+                risk="INFO",
+                confidence=conf_norm,
+                description=f"Fingerprint match for {r.get('primary_waf', 'Unknown')}",
+                url=r.get("url", ""),
+                detection={"matches": primary.get("matches", []), "score": primary.get("score", 0)},
+                validation={"status": r.get("status", 0)},
+                evidence={"observable_impact": f"primary_waf={r.get('primary_waf', 'Unknown')}"},
+                metadata=r,
+            )
+        )
+    (outdir / "findings.json").write_text(json.dumps(normalized_findings, indent=2, ensure_ascii=False))
+
     if results:
         # Contar WAFs únicos
         waf_counter = {}
@@ -315,4 +339,4 @@ def run(context: dict):
     if no_waf:
         info(f"   🎯 {len(no_waf)} hosts SEM WAF detectado (alvos prioritários)")
 
-    return results
+    return normalized_findings

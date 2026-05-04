@@ -33,7 +33,8 @@ MODULES = {
     "24": "cookies",
     "25": "asn",
     "26": "screenshots",
-    "27": "all",
+    "27": "cache",
+    "28": "all",
 }
 
 # --------- DEPENDÊNCIAS ---------
@@ -65,7 +66,7 @@ DEPENDENCIES = {
     "24": ["1", "2", "24"],
     "25": ["1", "25"],
     "26": ["1", "2", "26"],
-    "27": [str(i) for i in range(1, 27)],  # ALL: Roda do 1 ao 26
+    "28": [str(i) for i in range(1, 28)],  # ALL: Roda do 1 ao 27
 }
 
 
@@ -120,7 +121,8 @@ def print_menu():
         "24": ("cookies", "Análise de Segurança de Cookies", "🍪"),
         "25": ("asn", "CIDR/ASN Mapping", "🌐"),
         "26": ("screenshots", "Screenshot Capture", "📸"),
-        "27": ("all", "Execução completa", "🚀")
+        "27": ("cache", "Web Cache Vulnerabilities", "⚡"),
+        "28": ("all", "Execução completa", "🚀")
     }
 
     for k, (name, desc, emoji) in modules.items():
@@ -210,9 +212,15 @@ def main():
         # Se fechar, sai ou recarrega menu? Vamos apenas chamar o main de novo ou sair.
         sys.exit(0)
 
-    if choice not in MODULES:
-        print(f"{C.RED}❌ Opção inválida!{C.END}")
+    choices = [c.strip() for c in choice.split(",") if c.strip()]
+    if not choices:
+        print(f"{C.RED}❌ Nenhuma opção fornecida!{C.END}")
         sys.exit(1)
+        
+    for c in choices:
+        if c not in MODULES:
+            print(f"{C.RED}❌ Opção inválida: {c}{C.END}")
+            sys.exit(1)
 
     # target
     print(f"\n{C.BOLD}{C.CYAN}🎯 DEFINIÇÃO DO ALVO{C.END}")
@@ -259,15 +267,46 @@ def main():
 
     # V11: Exclude hosts/patterns
     print(f"\n{C.BOLD}{C.CYAN}🚫 EXCLUSÕES (Opcional){C.END}")
-    exclude_input = input(f"{C.BOLD}{C.BLUE}Hosts para excluir (separados por vírgula, ou Enter para pular): {C.END}").strip()
+    exclude_input = input(f"{C.BOLD}{C.BLUE}Caminho do arquivo (.xlsx/.txt) OU lista de IPs/Hosts (Enter p/ pular): {C.END}").strip()
     exclude_hosts = []
+    
     if exclude_input:
-        exclude_hosts = [h.strip() for h in exclude_input.split(",") if h.strip()]
-        print(f"   {C.YELLOW}⛔ Excluindo: {', '.join(exclude_hosts)}{C.END}")
+        import os
+        if os.path.isfile(exclude_input):
+            if exclude_input.endswith('.xlsx'):
+                try:
+                    import openpyxl
+                    wb = openpyxl.load_workbook(exclude_input, data_only=True)
+                    for sheet in wb.sheetnames:
+                        ws = wb[sheet]
+                        for row in ws.iter_rows(values_only=True):
+                            for cell in row:
+                                if cell and isinstance(cell, str):
+                                    val = str(cell).strip()
+                                    if val and " " not in val: # basic heuristic for IP/Host
+                                        exclude_hosts.append(val)
+                except Exception as e:
+                    print(f"{C.RED}❌ Erro ao ler XLSX: {e}{C.END}")
+            else:
+                try:
+                    with open(exclude_input, 'r') as f:
+                        exclude_hosts = [l.strip() for l in f if l.strip()]
+                except Exception as e:
+                    print(f"{C.RED}❌ Erro ao ler arquivo: {e}{C.END}")
+        else:
+            exclude_hosts = [h.strip() for h in exclude_input.split(",") if h.strip()]
+            
+        # Deduplicate
+        exclude_hosts = list(set(exclude_hosts))
+        if exclude_hosts:
+            print(f"   {C.YELLOW}⛔ Carregados {len(exclude_hosts)} hosts/IPs para exclusão.{C.END}")
 
-    # chain — "27" é meta-módulo (all), não deve entrar na chain de execução
-    chain = list(dict.fromkeys(DEPENDENCIES[choice] + [choice]))
-    chain = [c for c in chain if c != "27"]
+    # chain — "28" é meta-módulo (all), não deve entrar na chain de execução
+    raw_chain = []
+    for c in choices:
+        raw_chain.extend(DEPENDENCIES[c] + [c])
+    chain = list(dict.fromkeys(raw_chain))
+    chain = [c for c in chain if c != "28"]
 
     # parâmetros
     params = {name: {} for name in MODULES.values()}

@@ -9,6 +9,7 @@ from collections import defaultdict
 
 from menu import C
 from plugins import ensure_outdir
+from plugins.validation import finding
 from ..output import info, success, warn, error
 
 # Regex robusto para emails
@@ -195,6 +196,26 @@ def run(context: dict):
     output_file = outdir / "emails.json"
     output_file.write_text(json.dumps(result, indent=2, ensure_ascii=False))
 
+    normalized_findings = []
+    for e in internal:
+        normalized_findings.append(
+            finding(
+                plugin="emails",
+                target=target,
+                title="Internal Email Exposure",
+                issue_type="INTERNAL_EMAIL_DISCLOSED",
+                risk="LOW",
+                confidence="MEDIUM",
+                description=f"Internal email discovered: {e.get('email', '')}",
+                url="",
+                detection={"domain": e.get("domain", ""), "source_count": len(e.get("sources", []))},
+                validation={"is_internal": True},
+                evidence={"matched_snippet": e.get("email", "")},
+                metadata=e,
+            )
+        )
+    (outdir / "findings.json").write_text(json.dumps(normalized_findings, indent=2, ensure_ascii=False))
+
     if all_emails:
         success(f"\n   📧 {len(all_emails)} emails encontrados!")
         info(f"   📊 Internos ({target}): {C.GREEN}{len(internal)}{C.END}")
@@ -215,4 +236,4 @@ def run(context: dict):
     else:
         info("   ✅ Nenhum email encontrado nos outputs.")
 
-    return result
+    return normalized_findings

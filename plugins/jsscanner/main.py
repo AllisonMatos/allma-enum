@@ -301,21 +301,40 @@ async def run_async_scan(target, outdir, report_file, raw_file):
         shutil.rmtree(raw_js_dir, ignore_errors=True)
 
     # 4. Save Results
-    info("💾 Salvando relatório...")
+    info("💾 Salvando relatório e extraindo inteligência (DOM XSS / Parâmetros)...")
+    
+    all_variables = set()
+    all_dom_xss = []
     
     with raw_file.open("w") as f_raw, report_file.open("w") as f_rep:
         for item in results_data:
+            # Aggregate variables
+            if item.get('variables'):
+                all_variables.update(item['variables'])
+                
+            # Aggregate DOM XSS
+            if item.get('dom_xss'):
+                all_dom_xss.extend(item['dom_xss'])
+                
             # Raw
             f_raw.write(f"=== FILE: {item['url']} ===\n")
             f_raw.write(item['text'] + "\n\n")
             # Report
-            if item['urls'] or item['keys']:
+            if item.get('urls') or item.get('keys') or item.get('routes') or item.get('dom_xss'):
                 f_rep.write(f"FILE: {item['url']}\n")
-                if item['urls']:
+                if item.get('dom_xss'):
+                    f_rep.write("  🚨 DOM XSS FOUND:\n")
+                    for dx in item['dom_xss']:
+                        f_rep.write(f"    - [{dx['type']}] Line {dx['line']}: {dx['snippet']}\n")
+                if item.get('routes'):
+                    f_rep.write("  ROUTES found:\n")
+                    for r in item['routes']:
+                        f_rep.write(f"    - {r}\n")
+                if item.get('urls'):
                     f_rep.write("  URLs found:\n")
                     for u in item['urls']:
                         f_rep.write(f"    - {u}\n")
-                if item['keys']:
+                if item.get('keys'):
                     f_rep.write("  KEYS found:\n")
                     for k in item['keys']:
                         f_rep.write(f"    - {k}\n")
@@ -329,7 +348,7 @@ async def run_async_scan(target, outdir, report_file, raw_file):
             global_parameters.update(item.get('parameters', []))
             
         f_rep.write("==================================================\n")
-        f_rep.write("V10.5: GLOBAL DEDUPLICATED ROUTES & PARAMETERS\n")
+        f_rep.write("V11.5: GLOBAL DEDUPLICATED ROUTES, PARAMETERS & VARS\n")
         f_rep.write("==================================================\n")
         if global_routes:
             f_rep.write("  UNIQUE API ROUTES:\n")
@@ -339,6 +358,21 @@ async def run_async_scan(target, outdir, report_file, raw_file):
             f_rep.write("  UNIQUE PARAMETERS:\n")
             for p in sorted(list(global_parameters)):
                 f_rep.write(f"    - {p}\n")
+        if all_variables:
+            f_rep.write("  UNIQUE VARIABLES (FRONTEND):\n")
+            for v in sorted(list(all_variables)):
+                f_rep.write(f"    - {v}\n")
+                
+    # V11.5: Intelligence Export for Fuzzer
+    if all_variables:
+        intel_dir = Path("output") / target / "intelligence"
+        intel_dir.mkdir(parents=True, exist_ok=True)
+        intel_file = intel_dir / "custom_params.txt"
+        intel_file.write_text("\n".join(sorted(list(all_variables))))
+        success(f"   🎯 {C.GREEN}{len(all_variables)}{C.END} variáveis dinâmicas salvas em intelligence/custom_params.txt!")
+        
+    if all_dom_xss:
+        warn(f"   🚨 {C.RED}Encontrados {len(all_dom_xss)} potenciais pontos de DOM XSS no código!{C.END}")
                 
     # Bug Bounty 2026: Export JSON structure for the UI Report
     js_routes_file = outdir / "js_routes.json"

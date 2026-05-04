@@ -75,9 +75,9 @@ def httpx_validate(in_file: Path, out_file: Path, want_status: str = WANT_STATUS
         httpx,
         "-l", str(in_file),
         "-mc", want_status,
-        "-threads", "50",
-        "-retries", "2",
-        "-timeout", "15",
+        "-threads", "100",   # Aumentado para 100
+        "-retries", "1",     # Reduzido de 2 para 1 para economizar tempo
+        "-timeout", "10",    # Reduzido de 15 para 10s
         "-random-agent",
         "-no-color",
         "-follow-redirects",
@@ -89,7 +89,8 @@ def httpx_validate(in_file: Path, out_file: Path, want_status: str = WANT_STATUS
 
     info(f"   CMD: {' '.join(cmd)}")
 
-    result = subprocess.run(cmd, capture_output=True, text=True, timeout=1800)
+    # Timeout removido ou ampliado drasticamente (10800 = 3h) para mega-scopes
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=10800)
     
     if result.stderr:
         stderr_clean = result.stderr.strip()[:500]
@@ -107,9 +108,9 @@ def httpx_validate(in_file: Path, out_file: Path, want_status: str = WANT_STATUS
             httpx,
             "-l", str(in_file),
             "-mc", want_status,
-            "-threads", "50",
-            "-retries", "2",
-            "-timeout", "15",
+            "-threads", "100",
+            "-retries", "1",
+            "-timeout", "10",
             "-random-agent",
             "-no-color",
             "-follow-redirects",
@@ -117,7 +118,7 @@ def httpx_validate(in_file: Path, out_file: Path, want_status: str = WANT_STATUS
             "-sc",
             "-silent",
         ]
-        result2 = subprocess.run(cmd_pipe, capture_output=True, text=True, timeout=1200)
+        result2 = subprocess.run(cmd_pipe, capture_output=True, text=True, timeout=10800)
         if result2.stdout and result2.stdout.strip():
             json_out_file.write_text(result2.stdout)
             info(f"   ✅ Fallback via pipe funcionou!")
@@ -190,7 +191,7 @@ def run_historical_discovery(target: str, out_file: Path):
         
         cmd = [tool]
         if "gau" in tool_name:
-            cmd.extend([target, "--threads", "10"])
+            cmd.extend([target, "-t", "10"])
             
         try:
             with out_file.open("w", encoding="utf-8", errors="ignore") as fout:
@@ -252,17 +253,18 @@ def run_katana_discovery(target: str, out_file: Path):
     ]
     
     try:
-        # Timeout otimizado para 600s (10 minutos)
-        subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=600)
+        # Timeout otimizado para 10800s (3 horas)
+        subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=10800)
     except subprocess.TimeoutExpired:
-        warn(f"   [!] Katana atingiu o timeout de 10 min. Processando o que foi encontrado até agora...")
+        warn(f"   [!] Katana atingiu o timeout de 3 horas. Processando o que foi encontrado até agora...")
     except Exception as e:
         error(f"Erro inesperado no Katana: {e}")
         
     # Mesmo com timeout ou erro, verificamos se o arquivo de output tem dados salvos parcialmentes
     if out_file.exists() and out_file.stat().st_size > 0:
-        found = [l.strip() for l in out_file.read_text(errors="ignore").splitlines() if l.strip()]
-        success(f"   🕷️  {len(found)} URLs recuperadas do Katana (crawling ativo).")
+        from core.config import is_in_scope
+        found = [l.strip() for l in out_file.read_text(errors="ignore").splitlines() if l.strip() and is_in_scope(l.strip(), target)]
+        success(f"   🕷️  {len(found)} URLs recuperadas do Katana (crawling ativo - In-Scope).")
         return found
             
     return []

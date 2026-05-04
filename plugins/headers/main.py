@@ -10,6 +10,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from menu import C
 from plugins import ensure_outdir
+from plugins.validation import finding
 from ..output import info, success, warn, error
 from ..http_utils import format_http_request, format_http_response
 
@@ -205,6 +206,37 @@ def run(context: dict):
     output_file = outdir / "headers_results.json"
     output_file.write_text(json.dumps(results, indent=2, ensure_ascii=False))
 
+    normalized_findings = []
+    for r in results:
+        missing_names = [m.get("header", "") for m in r.get("missing", [])]
+        risk = "LOW"
+        conf = "MEDIUM"
+        if r.get("score", 100) < 40:
+            risk, conf = "HIGH", "HIGH"
+        elif r.get("score", 100) < 60:
+            risk, conf = "MEDIUM", "MEDIUM"
+        normalized_findings.append(
+            finding(
+                plugin="headers",
+                target=target,
+                title=f"Weak Security Headers (Grade {r.get('grade', 'N/A')})",
+                issue_type="INSECURE_HEADERS",
+                risk=risk,
+                confidence=conf,
+                description=f"Missing headers: {', '.join(missing_names[:8])}",
+                url=r.get("url", ""),
+                detection={"score": r.get("score", 0), "grade": r.get("grade", "N/A")},
+                validation={"http_status": r.get("status", 0)},
+                evidence={
+                    "request_raw": r.get("request_raw", ""),
+                    "response_raw": r.get("response_raw", ""),
+                    "observable_impact": f"missing_count={r.get('missing_count', 0)}",
+                },
+                metadata=r,
+            )
+        )
+    (outdir / "findings.json").write_text(json.dumps(normalized_findings, indent=2, ensure_ascii=False))
+
     if results:
         avg_score = sum(r["score"] for r in results) / len(results)
         avg_grade = calculate_grade(int(avg_score))
@@ -218,4 +250,4 @@ def run(context: dict):
     else:
         info("   ⚠️ Nenhum resultado obtido.")
 
-    return results
+    return normalized_findings

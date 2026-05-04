@@ -266,6 +266,13 @@ class IntelligenceEngine:
         self.risk_ranking = defaultdict(lambda: {"score": 0.0, "reasons": [], "tags": set()})
         self.knowledge_tips = {}
 
+    def _iter_cookies(self):
+        if isinstance(self.cookies_data, dict):
+            return self.cookies_data.get("cookies", []) or []
+        if isinstance(self.cookies_data, list):
+            return self.cookies_data
+        return []
+
     def _load_urls(self) -> List[str]:
         f = self.base_dir / "urls" / "urls_valid.txt"
         if f.exists():
@@ -275,15 +282,19 @@ class IntelligenceEngine:
     def _load_technologies(self) -> Dict:
         f = self.base_dir / "domain" / "technologies.json"
         if f.exists():
-            try: return json.loads(f.read_text())
-            except: pass
+            try:
+                return json.loads(f.read_text())
+            except Exception as e:
+                warn(f"[intelligence] technologies.json inválido: {e}")
         return {}
 
     def _load_json(self, relative_path: str) -> Any:
         f = self.base_dir / relative_path
         if f.exists():
-            try: return json.loads(f.read_text())
-            except: pass
+            try:
+                return json.loads(f.read_text())
+            except Exception as e:
+                warn(f"[intelligence] JSON inválido em {relative_path}: {e}")
         return []
 
     # ================================================================
@@ -424,7 +435,7 @@ class IntelligenceEngine:
                 priority_data[host]["tags"].append("SENSITIVE_FILES")
 
         # Cookie Security (V11)
-        for cookie in self.cookies_data:
+        for cookie in self._iter_cookies():
             if isinstance(cookie, dict) and cookie.get("risk") in ("CRITICAL", "HIGH"):
                 host = urlparse(cookie.get("url", "")).netloc
                 if host:
@@ -652,12 +663,15 @@ class IntelligenceEngine:
                 })
                 
         # Cookie Security (V11)
-        for cookie in self.cookies_data:
+        for cookie in self._iter_cookies():
             if isinstance(cookie, dict) and cookie.get("risk") in ("CRITICAL", "HIGH"):
+                c_url = cookie.get("url", cookie.get("source_url", ""))
+                c_host = urlparse(c_url).netloc if c_url else ""
                 quick_wins.append({
                     "type": "Cookie Inseguro",
                     "severity": cookie.get("risk", "HIGH"),
-                    "url": cookie.get("url", ""),
+                    "url": c_url,
+                    "subdomain": c_host,
                     "detail": f"{cookie.get('name', '')} — {', '.join(cookie.get('issues', []))}",
                     "action": "Verifique flags HttpOnly, Secure, SameSite",
                     "icon": "🍪"

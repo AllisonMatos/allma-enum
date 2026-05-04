@@ -234,6 +234,17 @@ def run(context):
         # === ETAPA 2: MULTI-SOURCE DISCOVERY ===
         info(f"{C.BOLD}{C.BLUE}[2/8] Multi-source Discovery (crt.sh, haktrails, gau, waybackurls)...{C.END}")
         discover_subdomains(target, subs_file)
+        
+        # === ETAPA 2.2: HORIZONTAL DOMAIN DISCOVERY ===
+        from .horizontal import discover_horizontal
+        horizontal_domains = discover_horizontal(target, outdir)
+        if horizontal_domains:
+            with open(subs_file, "a") as f:
+                f.write("\n" + "\n".join(horizontal_domains) + "\n")
+                
+        # === ETAPA 2.5: PERMUTATIONS ===
+        from .permutations import run_permutations
+        run_permutations(target, subs_file, outdir)
 
     # === ETAPA 3: DNS RESOLUTION + WILDCARD + CDN FILTER ===
     info(f"{C.BOLD}{C.BLUE}[3/8] DNS Resolution + Wildcard Detection + CDN Filter...{C.END}")
@@ -297,13 +308,14 @@ def run(context):
                         "-rate-limit", "50",
                         "-o", str(katana_raw),
                     ]
-                    subprocess.run(katana_cmd, capture_output=True, text=True, timeout=1000)
+                    subprocess.run(katana_cmd, capture_output=True, text=True, timeout=10800)
                     if katana_raw.exists():
-                        urls = set(l.strip() for l in katana_raw.read_text(errors="ignore").splitlines() if l.strip())
+                        from core.config import is_in_scope
+                        urls = set(l.strip() for l in katana_raw.read_text(errors="ignore").splitlines() if l.strip() and is_in_scope(l.strip(), target))
                         round_discovered.update(urls)
-                        info(f"   Katana R{round_num}: {len(urls)} URLs brutas")
+                        info(f"   Katana R{round_num}: {len(urls)} URLs brutas (In-Scope)")
                 except subprocess.TimeoutExpired:
-                    warn(f"   Katana R{round_num}: timeout")
+                    warn(f"   Katana R{round_num}: timeout atingido (3h)")
                 except Exception as e:
                     warn(f"   Katana R{round_num}: {e}")
             
@@ -319,19 +331,22 @@ def run(context):
                         "-c", "10", "-d", "2",
                         "--other-source", "--include-subs", "-q",
                     ]
-                    subprocess.run(gs_cmd, capture_output=True, text=True, timeout=1000)
+                    subprocess.run(gs_cmd, capture_output=True, text=True, timeout=10800)
                     import re as _gs_re
+                    from core.config import is_in_scope
                     url_pattern = _gs_re.compile(r'https?://[^\s\]"\'><]+')
                     for out_file in gospider_dir.glob("*"):
                         if out_file.is_file():
                             try:
                                 for line in out_file.read_text(errors="ignore").splitlines():
-                                    round_discovered.update(url_pattern.findall(line))
+                                    for found_url in url_pattern.findall(line):
+                                        if is_in_scope(found_url, target):
+                                            round_discovered.add(found_url)
                             except Exception:
                                 pass
-                    info(f"   GoSpider: {len(round_discovered)} URLs combinadas")
+                    info(f"   GoSpider: {len(round_discovered)} URLs combinadas (In-Scope)")
                 except subprocess.TimeoutExpired:
-                    warn(f"   GoSpider: timeout")
+                    warn(f"   GoSpider: timeout atingido (3h)")
                 except Exception as e:
                     warn(f"   GoSpider: {e}")
             

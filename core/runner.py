@@ -66,6 +66,7 @@ def execute_chain(target: str, chain: list, params: dict, deep: bool = False, st
         "24": "cookies",
         "25": "asn",
         "26": "screenshots",
+        "27": "cache",
         "99": "intelligence",
     }
 
@@ -228,7 +229,8 @@ def execute_chain(target: str, chain: list, params: dict, deep: bool = False, st
             if res_file:
                 try:
                     all_results[p_dir.name] = json.loads(res_file.read_text())
-                except: pass
+                except Exception as e:
+                    warn(f"[enrich] Falha ao carregar {res_file.name}: {e}")
 
     enrich_report_data(target, all_results)
 
@@ -330,7 +332,8 @@ def enrich_report_data(target: str, results: dict):
     if oast_file.exists():
         try:
             oast_data = json.loads(oast_file.read_text())
-        except: pass
+        except Exception as e:
+            warn(f"[enrich] OAST inválido em {oast_file}: {e}")
 
     data = {
         "target": target,
@@ -440,7 +443,12 @@ def _save_normalized_findings(target: str, plugin_name: str, result: object):
         if isinstance(result, list):
             candidates = result
         elif isinstance(result, dict):
-            candidates = [result]
+            candidates = []
+            # Support both direct finding dicts and nested plugin payloads
+            for v in result.values():
+                if isinstance(v, list):
+                    candidates.extend(v)
+            candidates.append(result)
         else:
             candidates = []
 
@@ -464,5 +472,5 @@ def _save_normalized_findings(target: str, plugin_name: str, result: object):
                     metadata=item
                 ))
         out_file.write_text(json.dumps(findings, indent=2, ensure_ascii=False))
-    except Exception:
-        pass
+    except Exception as e:
+        warn(f"[normalize] Falha ao normalizar findings de {plugin_name}: {e}")

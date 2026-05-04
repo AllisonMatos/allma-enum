@@ -181,53 +181,65 @@ def evaluate_takeover_signal(is_nxdomain: bool, has_fingerprint: bool, verified:
 
 def check_subdomain(subdomain: str, known_cnames: dict = None) -> dict | None:
     """Verifica se um subdomínio é vulnerável a takeover.
-    V10.3: Usa known_cnames como fallback quando resolução live falha."""
+    V11.5: Takeover 2.0 — Verifica CNAMEs e IPs Dangling (Ghost Assets) via HTTP Body."""
     cname = resolve_cname(subdomain)
     
-    # V10.3: Fallback para CNAMEs pré-resolvidos se resolução live falhar
     if not cname and known_cnames:
         cname = known_cnames.get(subdomain)
+        
+    # 1. CNAME-based Takeover Check
+    if cname:
+        for pattern, service, fingerprints, severity in TAKEOVER_FINGERPRINTS:
+            if re.search(pattern, cname, re.I):
+                is_nxdomain = check_nxdomain(subdomain)
+                has_fingerprint = check_http_fingerprint(subdomain, fingerprints)
+
+                if is_nxdomain or has_fingerprint:
+                    generic_services = {"Azure CloudApp", "Firebase", "Fly.io", "Vercel (Now)"}
+                    if service in generic_services and not is_nxdomain:
+                        continue  # Skip FP
+                    
+                    verification = verify_service_available(cname, service, subdomain)
+                    confidence, status = evaluate_takeover_signal(is_nxdomain, has_fingerprint, verification["verified"])
+                    
+                    return finding(
+                        plugin="takeover", target="", title="Subdomain Takeover",
+                        issue_type="SUBDOMAIN_TAKEOVER", risk=severity.upper(), confidence=confidence,
+                        url=f"https://{subdomain}", description=f"{service}: {verification['verification_detail']}",
+                        detection={"cname": cname, "service": service}, validation={"verified": verification["verified"], "status": status},
+                        evidence={"observable_impact": "Subdomain takeover via CNAME claim"}, metadata={"subdomain": subdomain}
+                    )
+                    
+    # 2. Takeover 2.0: Dangling IP / Body-based Detection (Ghost Assets)
+    # Testa os fingerprints de alto impacto independentemente de CNAME
+    high_impact_ghosts = [
+        ("AWS S3", ["NoSuchBucket"], "critical"),
+        ("Azure", ["Error 404 - Web app not found", "404 - Not found"], "high"),
+        ("Fastly", ["Fastly error: unknown domain"], "high"),
+        ("Shopify", ["Sorry, this shop is currently unavailable"], "high"),
+        ("Netlify", ["Not Found - Request ID"], "high"),
+        ("Vercel", ["NOT_FOUND"], "high"),
+    ]
     
-    if not cname:
-        return None
-
-    for pattern, service, fingerprints, severity in TAKEOVER_FINGERPRINTS:
-        if re.search(pattern, cname, re.I):
-            # Verificar NXDOMAIN ou fingerprint HTTP
-            is_nxdomain = check_nxdomain(subdomain)
-            has_fingerprint = check_http_fingerprint(subdomain, fingerprints)
-
-            if is_nxdomain or has_fingerprint:
-                # V11: Para serviços com fingerprints genéricos, exigir NXDOMAIN
-                generic_services = {"Azure CloudApp", "Firebase", "Fly.io", "Vercel (Now)"}
-                if service in generic_services and not is_nxdomain:
-                    return None  # Fingerprint genérico sem NXDOMAIN = FP
-                # Verify if the service is actually available for claiming
-                verification = verify_service_available(cname, service, subdomain)
+    import httpx
+    for scheme in ["http", "https"]:
+        try:
+            with httpx.Client(timeout=5, verify=False, follow_redirects=True) as client:
+                resp = client.get(f"{scheme}://{subdomain}", headers={"User-Agent": DEFAULT_USER_AGENT})
+                content = resp.text[:2000].lower()
                 
-                status = "VULNERABLE"
-                if verification["verified"]:
-                    status = "CONFIRMED"
-                elif is_nxdomain:
-                    status = "VULNERABLE"
-                else:
-                    status = "POTENTIAL"
-                
-                confidence, status = evaluate_takeover_signal(is_nxdomain, has_fingerprint, verification["verified"])
-                return finding(
-                    plugin="takeover",
-                    target="",
-                    title="Potential Subdomain Takeover",
-                    issue_type="SUBDOMAIN_TAKEOVER",
-                    risk=severity.upper(),
-                    confidence=confidence,
-                    url=f"https://{subdomain}",
-                    description=f"{service}: {verification['verification_detail']}",
-                    detection={"cname": cname, "service": service, "nxdomain": is_nxdomain, "http_fingerprint": has_fingerprint},
-                    validation={"verified": verification["verified"], "status": status},
-                    evidence={"observable_impact": verification["verification_detail"]},
-                    metadata={"subdomain": subdomain}
-                )
+                for service, fingerprints, severity in high_impact_ghosts:
+                    for fp in fingerprints:
+                        if fp.lower() in content:
+                            return finding(
+                                plugin="takeover", target="", title="Ghost Asset Takeover (Dangling IP)",
+                                issue_type="DANGLING_IP_TAKEOVER", risk=severity.upper(), confidence="HIGH",
+                                url=f"{scheme}://{subdomain}", description=f"{service}: Dangling IP / Unclaimed Resource detected via response body.",
+                                detection={"service": service, "http_fingerprint": True, "cname": cname}, validation={"status": "POTENTIAL"},
+                                evidence={"observable_impact": "Attacker can claim the cloud resource at this IP"}, metadata={"subdomain": subdomain}
+                            )
+        except Exception:
+            pass
 
     return None
 
@@ -274,7 +286,7 @@ def run(context: dict):
     # Executar em paralelo
     all_findings = []
 
-    with ThreadPoolExecutor(max_workers=10) as executor:
+    with ThreadPoolExecutor(max_workers=50) as executor:
         futures = {executor.submit(check_subdomain, sub, known_cnames): sub for sub in subdomains}
 
         done = 0

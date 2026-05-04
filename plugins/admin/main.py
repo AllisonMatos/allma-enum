@@ -613,14 +613,72 @@ def run(context: dict):
             warn("   ⚠️ Nenhuma porta web de admin respondeu. (Todas instáveis/fechadas).")
             return []
 
-        info(f"   🚀 Testando {len(ADMIN_PATHS)} paths em {len(valid_bases)} bases ativas...")
-        total_tasks = len(valid_bases) * len(ADMIN_PATHS)
-        info(f"   ⏱️  Total de testes otimizados: ~{total_tasks}")
-
-        # Executar testes em paralelo
+        # ============================================================
+        # FAVICON HASHING (Admin Panels Ocultos)
+        # ============================================================
+        info("   🕵️  Testando Favicon Hashing em hosts base para painéis ocultos...")
+        
+        FAVICON_HASHES = {
+            814621588: "Grafana",
+            116323821: "Spring Boot",
+            195150871: "Jenkins",
+            -1142240970: "Jira",
+            1154861226: "Confluence",
+            -1984712165: "Tomcat",
+            -402801449: "cPanel",
+            1398055326: "phpMyAdmin",
+            546305047: "GitLab",
+            -601665640: "Zabbix",
+        }
+        
         found_panels = []
         seen_hashes = set()
         seen_titles_per_host = set()
+
+        try:
+            import mmh3
+            import base64
+            
+            def check_favicon(base_url):
+                try:
+                    r = client.get(base_url.rstrip("/") + "/favicon.ico", timeout=3)
+                    if r.status_code == 200 and r.content:
+                        b64 = base64.encodebytes(r.content)
+                        f_hash = mmh3.hash(b64)
+                        if f_hash in FAVICON_HASHES:
+                            panel = FAVICON_HASHES[f_hash]
+                            return {
+                                "url": base_url,
+                                "path": "/favicon.ico",
+                                "status": 200,
+                                "title": f"{panel} Admin Panel (via Favicon)",
+                                "cms": panel,
+                                "has_login_form": False,
+                                "response_size": len(r.content),
+                                "content_type": r.headers.get("content-type", ""),
+                                "content_hash": str(f_hash),
+                                "category": "ADMIN PANEL",
+                                "bypass_found": False
+                            }
+                except Exception:
+                    pass
+                return None
+                
+            with ThreadPoolExecutor(max_workers=15) as fav_exec:
+                for res in fav_exec.map(check_favicon, valid_bases):
+                    if res:
+                        found_panels.append(res)
+                        info(f"   🕵️  {C.RED}[FAVICON MATCH]{C.END} {res['cms']} detectado em {res['url']}")
+        except ImportError:
+            warn("   ⚠️ Biblioteca 'mmh3' não instalada. O Favicon Hashing será ignorado (pip install mmh3).")
+
+        # ============================================================
+        # PATH BRUTEFORCING
+        # ============================================================
+        
+        info(f"   🚀 Testando {len(ADMIN_PATHS)} paths em {len(valid_bases)} bases ativas...")
+        total_tasks = len(valid_bases) * len(ADMIN_PATHS)
+        info(f"   ⏱️  Total de testes otimizados: ~{total_tasks}")
 
         # V11: Reduzir workers para thread-safety
         with ThreadPoolExecutor(max_workers=15) as executor:

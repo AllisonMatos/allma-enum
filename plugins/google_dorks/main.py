@@ -42,7 +42,74 @@ DORK_TEMPLATES = [
     ("AWS S3 Buckets", 'site:s3.amazonaws.com "{target}"'),
     ("Azure Blob Storage", 'site:blob.core.windows.net "{target}"'),
     ("GCP Storage", 'site:storage.googleapis.com "{target}"'),
+    # Pro mode - aggressive but still relevant
+    ("Env Leaks", 'site:{target} inurl:.env OR intext:"APP_KEY=" OR intext:"DB_PASSWORD="'),
+    ("JWT/Token leaks", 'site:{target} (intext:"eyJ" OR intext:"Bearer " OR intext:"api_key")'),
+    ("Backup keyword leaks", 'site:{target} (intitle:"index of" AND ("backup" OR "dump" OR "old"))'),
+    ("Kibana/Elastic admin", 'site:{target} inurl:(kibana OR _cat/indices OR _search)'),
+    ("Debug endpoints", 'site:{target} inurl:(actuator OR phpinfo OR debug OR whoops OR ignition)'),
+    ("Public buckets references", '"{target}" ("s3.amazonaws.com" OR "blob.core.windows.net" OR "storage.googleapis.com")'),
 ]
+
+TECH_DORKS = {
+    "wordpress": [
+        ("WordPress Exposed Plugins", 'site:{target} inurl:/wp-content/plugins/'),
+        ("WordPress Config Leaks", 'site:{target} inurl:wp-config.php OR inurl:/wp-json/wp/v2/users'),
+    ],
+    "graphql": [
+        ("GraphQL Operations", 'site:{target} ("query {" OR "mutation {" OR "__schema")'),
+    ],
+    "swagger": [
+        ("Swagger Specs", 'site:{target} (inurl:swagger.json OR inurl:openapi.json OR inurl:v3/api-docs)'),
+    ],
+    "django": [
+        ("Django Debug Leaks", 'site:{target} intitle:"Django" OR intext:"SECRET_KEY"'),
+    ],
+    "laravel": [
+        ("Laravel Env Exposure", 'site:{target} intext:"APP_KEY=" OR inurl:.env'),
+    ],
+    "react": [
+        ("React Source Maps", 'site:{target} inurl:.js.map'),
+    ],
+    "next.js": [
+        ("Next.js Data Leaks", 'site:{target} inurl:/_next/data/ filetype:json'),
+    ],
+}
+
+
+def _load_detected_technologies(base_out: Path) -> set[str]:
+    tech_hits = set()
+    candidate_files = [
+        base_out / "domain" / "technologies.json",
+        base_out / "fingerprint" / "wappalyzer.json",
+    ]
+    for f in candidate_files:
+        if not f.exists():
+            continue
+        try:
+            data = json.loads(f.read_text(encoding="utf-8", errors="ignore"))
+        except Exception:
+            continue
+
+        if isinstance(data, dict):
+            # technologies.json => {host: {"technologies":[{"name":"..."}]}}
+            for val in data.values():
+                if isinstance(val, dict) and isinstance(val.get("technologies"), list):
+                    for t in val.get("technologies", []):
+                        if isinstance(t, dict):
+                            n = str(t.get("name", "")).strip().lower()
+                            if n:
+                                tech_hits.add(n)
+                else:
+                    # wappalyzer.json legacy map {tech: {...}}
+                    k = str(val).strip().lower()
+                    if k:
+                        tech_hits.add(k)
+            for k in data.keys():
+                ks = str(k).strip().lower()
+                if ks:
+                    tech_hits.add(ks)
+    return tech_hits
 
 
 def run(context: dict):
@@ -62,15 +129,39 @@ def run(context: dict):
     # V10.5: Usar target diretamente — evita trocar acionista.com.br por com.br
     base_domain = target
 
+    mode = context.get("mode", "pro")
+    detected_techs = _load_detected_technologies(Path("output") / target)
     dorks = []
+    seen_queries = set()
     for category, template in DORK_TEMPLATES:
         query = template.format(target=base_domain)
+        if query in seen_queries:
+            continue
+        seen_queries.add(query)
         google_url = f"https://www.google.com/search?q={quote_plus(query)}"
         dorks.append({
             "category": category,
             "query": query,
             "google_url": google_url,
+            "mode": mode
         })
+
+    # Adaptive expansion based on detected stack/fingerprint.
+    for tech_key, templates in TECH_DORKS.items():
+        if not any(tech_key in t for t in detected_techs):
+            continue
+        for category, template in templates:
+            query = template.format(target=base_domain)
+            if query in seen_queries:
+                continue
+            seen_queries.add(query)
+            google_url = f"https://www.google.com/search?q={quote_plus(query)}"
+            dorks.append({
+                "category": f"{category} [tech:{tech_key}]",
+                "query": query,
+                "google_url": google_url,
+                "mode": mode
+            })
 
     # Salvar JSON
     output_file = outdir / "dorks_results.json"

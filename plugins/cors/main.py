@@ -10,6 +10,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from menu import C
 from plugins import ensure_outdir
+from plugins.validation import finding
 from ..output import info, success, warn, error
 from ..http_utils import format_http_request, format_http_response
 
@@ -228,6 +229,7 @@ def run(context: dict):
 
     # Executar em paralelo (Engine Nativa para JSON)
     all_findings = []
+    normalized_findings = []
 
     from core.config import REQUEST_DELAY
     import time as _time
@@ -250,6 +252,36 @@ def run(context: dict):
     # Salvar
     output_file = outdir / "cors_results.json"
     output_file.write_text(json.dumps(all_findings, indent=2, ensure_ascii=False))
+    sev_to_risk = {"critical": "CRITICAL", "high": "HIGH", "medium": "MEDIUM", "low": "LOW", "info": "INFO"}
+    sev_to_conf = {"critical": "HIGH", "high": "HIGH", "medium": "MEDIUM", "low": "LOW", "info": "LOW"}
+    for c in all_findings:
+        sev = str(c.get("severity", "info")).lower()
+        risk = sev_to_risk.get(sev, "LOW")
+        normalized_findings.append(
+            finding(
+                plugin="cors",
+                target=target,
+                title=f"CORS Misconfiguration: {c.get('issue', 'CORS_ISSUE')}",
+                issue_type="CORS_MISCONFIGURATION",
+                risk=risk,
+                confidence=sev_to_conf.get(sev, "LOW"),
+                description=c.get("issue", ""),
+                url=c.get("url", ""),
+                detection={
+                    "tested_origin": c.get("tested_origin", ""),
+                    "acao": c.get("acao", ""),
+                    "credentials": c.get("credentials", False),
+                },
+                validation={"http_observed": True},
+                evidence={
+                    "request_raw": c.get("request_raw", ""),
+                    "response_raw": c.get("response_raw", ""),
+                    "observable_impact": c.get("issue", ""),
+                },
+                metadata=c,
+            )
+        )
+    (outdir / "findings.json").write_text(json.dumps(normalized_findings, indent=2, ensure_ascii=False))
 
     if all_findings:
         critical = sum(1 for f in all_findings if f["severity"] == "critical")
@@ -262,4 +294,4 @@ def run(context: dict):
     else:
         info("   ✅ Nenhuma CORS misconfiguration encontrada.")
 
-    return all_findings
+    return normalized_findings

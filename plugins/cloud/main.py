@@ -3,6 +3,7 @@
 Plugin CLOUD RECON - Detecta buckets S3/Azure/GCP via DNS e HTTP
 """
 import sys
+import json
 import dns.resolver
 import httpx
 import concurrent.futures
@@ -11,6 +12,7 @@ from pathlib import Path
 import subprocess
 from menu import C
 from plugins import ensure_outdir
+from plugins.validation import finding
 from ..output import info, success, warn, error
 from ..http_utils import check_tool_installed
 # ============================================================
@@ -232,6 +234,7 @@ def run(context: dict):
             except Exception as e:
                 pass
                 
+    normalized_findings = []
     if found_buckets:
         # Testar permissões dos buckets encontrados
         info(f"\n   🔐 Testando permissões dos buckets encontrados...")
@@ -255,10 +258,34 @@ def run(context: dict):
         import json
         json_file = outdir / "buckets.json"
         json_file.write_text(json.dumps(found_buckets, indent=2, ensure_ascii=False))
+        for b in found_buckets:
+            perms = b.get("permissions", [])
+            risk = "MEDIUM"
+            conf = "MEDIUM"
+            if "WRITE" in perms:
+                risk, conf = "CRITICAL", "HIGH"
+            elif "LIST" in perms or b.get("status") == "OPEN":
+                risk, conf = "HIGH", "HIGH"
+            normalized_findings.append(
+                finding(
+                    plugin="cloud",
+                    target=target,
+                    title=f"Cloud Bucket Exposed: {b.get('provider', '')}",
+                    issue_type="CLOUD_BUCKET_EXPOSED",
+                    risk=risk,
+                    confidence=conf,
+                    description=f"{b.get('name', '')} perms={','.join(perms) if perms else b.get('status', '')}",
+                    url=b.get("url", ""),
+                    detection={"provider": b.get("provider", ""), "status": b.get("status", "")},
+                    validation={"permissions": perms},
+                    evidence={"observable_impact": f"bucket_status={b.get('status', '')} perms={','.join(perms)}"},
+                    metadata=b,
+                )
+            )
     else:
         warn("⚠️ Nenhum bucket encontrado.")
-        
-    return found_buckets
+    (outdir / "findings.json").write_text(json.dumps(normalized_findings, indent=2, ensure_ascii=False))
+    return normalized_findings
 
 
 def test_bucket_permissions(provider: str, name: str, url: str, test_write: bool = False) -> list:

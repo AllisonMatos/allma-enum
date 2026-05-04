@@ -14,6 +14,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from menu import C
 from plugins import ensure_outdir
+from plugins.validation import finding
 from ..output import info, success, warn, error
 from ..http_utils import format_raw_request, format_raw_response
 
@@ -374,6 +375,8 @@ def run(context: dict):
     info(f"   📊 {len(jwts)} JWTs encontrados")
     
     all_findings = []
+    normalized_findings = []
+    risk_to_conf = {"CRITICAL": "CONFIRMED", "HIGH": "HIGH", "MEDIUM": "MEDIUM", "LOW": "LOW", "INFO": "LOW"}
     
     # Analisar cada JWT
     for token, source in jwts.items():
@@ -381,6 +384,7 @@ def run(context: dict):
         if findings:
             all_findings.extend(findings)
             for f in findings:
+                f["token"] = token
                 info(f"   🚨 {C.YELLOW}{f['type']}: {f['details'][:60]}{C.END}")
     
     # V10.4: Key Confusion Attack (RS256 → HS256)
@@ -474,11 +478,38 @@ def run(context: dict):
                             live_findings = test_jwt_on_target(client, url, finding.get("token_preview", ""), none_token)
                             all_findings.extend(live_findings)
     
+    for item in all_findings:
+        src = str(item.get("source", ""))
+        url = src if src.startswith("http://") or src.startswith("https://") else ""
+        risk = str(item.get("risk", "LOW")).upper()
+        normalized_findings.append(
+            finding(
+                plugin="jwt_analyzer",
+                target=target,
+                title=f"JWT Issue: {item.get('type', 'JWT_ISSUE')}",
+                issue_type=str(item.get("type", "JWT_ISSUE")).upper(),
+                risk=risk,
+                confidence=risk_to_conf.get(risk, "LOW"),
+                description=item.get("details", ""),
+                url=url,
+                detection={"source": src, "algorithm": item.get("header", {}).get("alg", "")},
+                validation={"token_decoded": True},
+                evidence={
+                    "request_raw": item.get("request_raw", ""),
+                    "response_raw": item.get("response_raw", ""),
+                    "matched_snippet": item.get("token_preview", ""),
+                    "observable_impact": item.get("details", ""),
+                },
+                metadata=item,
+            )
+        )
+
     results_file.write_text(json.dumps(all_findings, indent=2, ensure_ascii=False, default=str))
+    (outdir / "findings.json").write_text(json.dumps(normalized_findings, indent=2, ensure_ascii=False, default=str))
     
     if all_findings:
         success(f"🔑 {len(all_findings)} problemas JWT encontrados!")
     else:
         success("✅ Nenhum problema JWT detectado")
     
-    return [str(results_file)]
+    return normalized_findings

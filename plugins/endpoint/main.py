@@ -12,6 +12,7 @@ import asyncio
 
 from menu import C
 from plugins import ensure_outdir
+from plugins.validation import finding
 from ..output import info, warn, success, error
 # === PATTERNS PARA EXTRAÇÃO ===
 PATTERNS = [
@@ -220,8 +221,40 @@ def run(context: dict):
         f"📁 Output: {C.CYAN}{outdir}{C.END}\n"
     )
 
-    return [
-        str(endpoints_file) if endpoints else "",
-        str(graphql_file) if graphqls else "",
-        str(raw_file)
-    ]
+    findings = []
+    for ep in endpoints:
+        findings.append(
+            finding(
+                plugin="endpoint",
+                target=target,
+                title="Discovered API Endpoint",
+                issue_type="ENDPOINT_DISCOVERED",
+                risk="LOW",
+                confidence="MEDIUM",
+                description="Endpoint extraido de crawl/js discovery",
+                url=ep,
+                detection={"source": "endpoint_discovery"},
+                validation={"in_scope_candidate": True},
+                evidence={"matched_snippet": ep},
+                metadata={"endpoint_type": "rest"},
+            )
+        )
+    for ep in graphqls:
+        findings.append(
+            finding(
+                plugin="endpoint",
+                target=target,
+                title="Discovered GraphQL Endpoint",
+                issue_type="GRAPHQL_ENDPOINT_DISCOVERED",
+                risk="MEDIUM",
+                confidence="MEDIUM",
+                description="Endpoint GraphQL extraido de crawl/js discovery",
+                url=ep,
+                detection={"source": "endpoint_discovery"},
+                validation={"graphql_keyword_match": True},
+                evidence={"matched_snippet": ep},
+                metadata={"endpoint_type": "graphql"},
+            )
+        )
+    (outdir / "findings.json").write_text(json.dumps(findings, indent=2, ensure_ascii=False))
+    return findings

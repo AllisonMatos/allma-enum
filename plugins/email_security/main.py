@@ -13,6 +13,7 @@ from pathlib import Path
 from core.config import DEFAULT_USER_AGENT, DEFAULT_TIMEOUT
 from menu import C
 from plugins import ensure_outdir
+from plugins.validation import finding
 from ..output import info, success, warn, error
 
 # V10.3: ccTLDs compostos conhecidos (2-letter + gTLD)
@@ -206,5 +207,34 @@ def run(context: dict):
     else:
         success(f"\n   ✅ Análise concluída.")
 
+    normalized_findings = []
+    checks = {
+        "spf": spf,
+        "dmarc": dmarc,
+        "dkim": dkim,
+        "bimi": bimi,
+        "mta_sts": mta_sts,
+        "tls_rpt": tls_rpt,
+    }
+    risk_to_conf = {"CRITICAL": "HIGH", "HIGH": "HIGH", "MEDIUM": "MEDIUM", "LOW": "LOW", "INFO": "LOW"}
+    for name, item in checks.items():
+        risk = str(item.get("risk", "LOW")).upper()
+        normalized_findings.append(
+            finding(
+                plugin="email_security",
+                target=target,
+                title=f"Email Security Check: {name.upper()}",
+                issue_type=f"EMAIL_{name.upper()}",
+                risk=risk,
+                confidence=risk_to_conf.get(risk, "LOW"),
+                description=item.get("issue", ""),
+                url=f"dns://{domain}",
+                detection={"check": name, "present": item.get("present", False)},
+                validation={"domain": domain},
+                evidence={"matched_snippet": str(item.get("record", ""))[:300], "observable_impact": item.get("issue", "")},
+                metadata=item,
+            )
+        )
+    (outdir / "findings.json").write_text(json.dumps(normalized_findings, indent=2, ensure_ascii=False))
     success(f"   📂 Resultados salvos em {output_file}")
-    return [results]
+    return normalized_findings

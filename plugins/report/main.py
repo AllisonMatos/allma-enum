@@ -64,6 +64,77 @@ def find_file(base: Path, *relative_paths) -> Path:
 
 
 # ------------------------------------------------------------
+# Login Pages Extraction & Logic
+# ------------------------------------------------------------
+def get_login_pages(target: str) -> List[Dict]:
+    """Extrai, limpa e desduplica páginas de login de múltiplas fontes."""
+    from urllib.parse import urlparse
+    import re
+    
+    base = Path("output") / target
+    login_urls = []
+    seen = set()
+    
+    def _norm(url: str) -> str:
+        # Normalize and remove query strings for strict deduplication
+        return url.split('?')[0].strip().lower().rstrip("/")
+        
+    def _is_real_login(url: str) -> bool:
+        u = url.lower()
+        path = urlparse(u).path
+        
+        # Filtra arquivos estáticos
+        if any(path.endswith(ext) for ext in (".js", ".css", ".json", ".png", ".jpg", ".jpeg", ".gif", ".svg", ".ico", ".woff", ".woff2", ".ttf", ".eot", ".map")):
+            return False
+            
+        if any(x in u for x in ("/blog", "/news", "/article", "/post", "/category", "/tag/")):
+            return False
+            
+        # Match real login paths (Expanded keywords for non-'login' URLs)
+        keywords = r"(login|signin|sign-in|sign_in|logon|sso|auth|authenticate|account|admin|portal|dashboard|entrar|acesso|conectar|cas/login|oauth|saml|adfs|idp|identity|wp-login)"
+        return bool(re.search(r"(?:/|^)" + keywords + r"(?:/|\?|$)", path, re.I))
+
+    # Source 1: domain/login_pages.txt (Detected explicitly)
+    for url in read_file_lines(base / "domain" / "login_pages.txt"):
+        n = _norm(url)
+        if n not in seen and _is_real_login(url):
+            try: host = urlparse(url).netloc.split(":")[0]
+            except: host = "Unknown"
+            login_urls.append({"url": url.split('?')[0], "host": host, "source": "detected", "signal": "Domain Scanner"})
+            seen.add(n)
+            
+    # Source 2: admin_panels.json
+    admin_data = read_json_file(base / "admin" / "admin_panels.json") or []
+    for panel in admin_data:
+        url = panel.get("url", "")
+        n = _norm(url)
+        p_meta = panel.get("metadata", {}) if isinstance(panel.get("metadata"), dict) else {}
+        has_login = panel.get("has_login_form") or p_meta.get("has_login_form")
+        if n not in seen and has_login and _is_real_login(url):
+            try: host = urlparse(url).netloc.split(":")[0]
+            except: host = "Unknown"
+            login_urls.append({"url": url.split('?')[0], "host": host, "source": "admin-scan", "signal": "Login Form (Admin)"})
+            seen.add(n)
+
+    # Source 3: urls_200.txt & urls_valid.txt (Heuristics)
+    login_url_re = re.compile(
+        r'(login|signin|sign-in|sign_in|logon|sso|auth|authenticate|'
+        r'account|admin|portal|dashboard|entrar|conectar|acesso|cas/login|'
+        r'oauth|saml|adfs|idp|identity|wp-login)', re.I
+    )
+    for urls_file in [base / "urls" / "urls_200.txt", base / "domain" / "urls_valid.txt"]:
+        for url in read_file_lines(urls_file):
+            n = _norm(url)
+            if n not in seen and login_url_re.search(url) and _is_real_login(url):
+                try: host = urlparse(url).netloc.split(":")[0]
+                except: host = "Unknown"
+                login_urls.append({"url": url.split('?')[0], "host": host, "source": "url-pattern", "signal": "URL Keyword"})
+                seen.add(n)
+                
+    return login_urls
+
+
+# ------------------------------------------------------------
 # Statistics Calculator
 # ------------------------------------------------------------
 def calculate_stats(target: str) -> Dict:
@@ -73,7 +144,7 @@ def calculate_stats(target: str) -> Dict:
         "subdomains": len(read_file_lines(base / "domain" / "subdomains.txt")),
         "urls_valid": len(read_file_lines(base / "domain" / "urls_valid.txt")),
         "ports_total": 0,
-        "login_pages": len(read_file_lines(base / "domain" / "login_pages.txt")),
+        "login_pages": len(get_login_pages(target)),
         "js_files": 0,
         "keys_found": 0,
         "routes_found": 0,
@@ -2269,6 +2340,7 @@ def build_google_dorks_content(target: str) -> str:
     data = read_json_file(Path("output") / target / "google_dorks" / "dorks_results.json")
     if not data:
         return '<div class="empty-state"><p>Google Dorks não gerados.</p></div>'
+    mode = str((data[0] or {}).get("mode", "pro")).upper() if data else "PRO"
     rows = ""
     for item in data:
         rows += f'''<tr>
@@ -2278,7 +2350,7 @@ def build_google_dorks_content(target: str) -> str:
         </tr>'''
     return f'''
     <div class="card open" style="border-left: 4px solid var(--accent-green);">
-        <div class="card-header"><span class="card-title"> Google Dorks</span><span class="card-badge">{len(data)} dorks</span></div>
+        <div class="card-header"><span class="card-title"> Google Dorks</span><span class="card-badge">{len(data)} dorks</span><span class="tag tag-high">{mode} MODE</span></div>
         <div class="card-content" style="display:block;"><div class="table-wrapper"><table>
             <thead><tr><th>Categoria</th><th>Query</th><th>Link</th></tr></thead>
             <tbody>{rows}</tbody>
@@ -2641,6 +2713,9 @@ def build_urls_content(subdomains: Dict, target: str) -> str:
             <span class="card-title">Found URLs</span>
             <span class="card-badge" id="urlCountBadge">{len(all_urls)} URLs</span>
         </div>
+        <div style="padding:0 16px 10px 16px; color:var(--text-secondary); font-size:12px;">
+            Includes validated URLs (HTTP probe results) plus discovered crawler URLs. Not limited only to non-4xx responses.
+        </div>
         <div class="card-content" id="urls_container" style="display:block;"></div>
     </div>
     <script>
@@ -2744,6 +2819,7 @@ def build_keys_content(target: str) -> str:
         return '<div class="empty-state"><p>No keys or secrets found</p></div>'
     
     html_parts = []
+    secret_types = set()
     
     for key in keys_data:
         risk = key.get("info", {}).get("risk", "UNKNOWN")
@@ -2787,6 +2863,7 @@ def build_keys_content(target: str) -> str:
         
         # Dados principais
         key_type = key.get("type", "Unknown")
+        secret_types.add(key_type)
         match_val = key.get("match", "")
         service = key.get("info", {}).get("service", "Unknown")
         
@@ -2884,7 +2961,7 @@ def build_keys_content(target: str) -> str:
                 </div>'''
         
         html_parts.append(f'''
-        <div class="card open" style="border-left: 4px solid var(--accent-{ 'red' if risk == 'CRITICAL' else 'orange' if risk == 'HIGH' else 'green' });">
+        <div class="card open" data-secret-type="{html.escape(key_type)}" style="border-left: 4px solid var(--accent-{ 'red' if risk == 'CRITICAL' else 'orange' if risk == 'HIGH' else 'green' });">
             <div class="card-header" style="background:transparent; border-bottom:none; padding-bottom:0;">
                 <span class="card-title" style="color:var(--accent-blue); font-size:16px;">{html.escape(key_type)}</span>
                 <span class="tag {risk_class}">{risk}</span>
@@ -2904,8 +2981,26 @@ def build_keys_content(target: str) -> str:
         </div>
         ''')
         
-    
-    return "".join(html_parts)
+    options = "".join(f'<option value="{html.escape(t)}">{html.escape(t)}</option>' for t in sorted(secret_types))
+    cards_html = "".join(html_parts)
+    return f'''
+    <div style="margin-bottom:16px;">
+        <select id="secretTypeFilter" onchange="window._filterSecretsByType()" style="appearance:none;width:100%;max-width:380px;background:var(--bg-secondary);border:1px solid var(--border-color);border-radius:8px;padding:12px 16px;color:var(--text-primary);font-size:14px;">
+            <option value="">All Secret Types ({len(html_parts)})</option>
+            {options}
+        </select>
+    </div>
+    <div id="keys_cards_container">{cards_html}</div>
+    <script>
+      window._filterSecretsByType = function(){{
+        var sel = (document.getElementById('secretTypeFilter')||{{}}).value || '';
+        document.querySelectorAll('#keys_cards_container .card[data-secret-type]').forEach(function(c){{
+          var t = c.getAttribute('data-secret-type') || '';
+          c.style.display = (!sel || t === sel) ? '' : 'none';
+        }});
+      }};
+    </script>
+    '''
 
 
 def build_login_pages_content(subdomains: Dict, target: str) -> str:
@@ -2917,55 +3012,16 @@ def build_login_pages_content(subdomains: Dict, target: str) -> str:
     base = Path("output") / target
     login_urls = []
     seen = set()
-    
-    # Source 1: Detected by domain plugin
-    for url in read_file_lines(base / "domain" / "login_pages.txt"):
-        if url not in seen:
-            try:
-                host = urlparse(url).netloc.split(":")[0]
-            except:
-                host = "Unknown"
-            login_urls.append({"url": url, "host": host, "source": "detected", "signal": "Domain Scanner"})
-            seen.add(url)
-    
-    # Source 2: From subdomain aggregation
-    for host, data in subdomains.items():
-        for url in data.get("login_urls", set()):
-            if url not in seen:
-                login_urls.append({"url": url, "host": host, "source": "heuristic", "signal": "Heuristic"})
-                seen.add(url)
-    
-    # Source 3 (V11): Scan urls_200 for login keywords
-    login_url_re = re.compile(
-        r'(login|signin|sign-in|sign_in|logon|sso|auth|authenticate|'
-        r'account/login|access|entrar|conectar|acesso|cas/login|'
-        r'oauth|saml|adfs|idp|identity|wp-login)', re.I
-    )
-    for urls_file in [
-        base / "urls" / "urls_200.txt",
-        base / "domain" / "urls_valid.txt",
-    ]:
-        for url in read_file_lines(urls_file):
-            if url not in seen and login_url_re.search(url):
-                try:
-                    host = urlparse(url).netloc.split(":")[0]
-                except:
-                    host = "Unknown"
-                login_urls.append({"url": url, "host": host, "source": "url-pattern", "signal": "URL Keyword"})
-                seen.add(url)
-    
-    # Source 4 (V11): From admin panels with has_login_form
-    admin_data = read_json_file(base / "admin" / "admin_panels.json") or []
-    for panel in admin_data:
-        url = panel.get("url", "")
-        if url not in seen and panel.get("has_login_form"):
-            login_urls.append({
-                "url": url,
-                "host": urlparse(url).netloc.split(":")[0] if url else "Unknown",
-                "source": "admin-scan",
-                "signal": "Login Form (Admin)"
-            })
-            seen.add(url)
+    screenshots_idx = read_json_file(base / "screenshots" / "screenshots_index.json") or []
+    shot_by_host = {}
+    for s in screenshots_idx:
+        p = str(s.get("path", ""))
+        for host in subdomains.keys():
+            if host in p and host not in shot_by_host:
+                shot_by_host[host] = p
+
+    # Lógica centralizada agora em get_login_pages
+    login_urls = get_login_pages(target)
     
     if not login_urls:
         return '<div class="empty-state"><p>No login pages found.</p></div>'
@@ -2985,7 +3041,9 @@ def build_login_pages_content(subdomains: Dict, target: str) -> str:
         rows += '<tr>'
         rows += f'<td><a href="{html.escape(item["url"])}" target="_blank" style="color:var(--accent-orange);font-weight:600;">{html.escape(item["url"][:80])}</a></td>'
         rows += f'<td>{html.escape(item["host"])}</td>'
-        rows += f'<td><span class="tag {source_color}">{html.escape(item["signal"])}</span></td>'
+        shot = shot_by_host.get(item["host"], "")
+        shot_html = f' <a class="burp-btn" href="{html.escape(shot)}" target="_blank" style="margin-left:8px;">Print</a>' if shot else ""
+        rows += f'<td><span class="tag {source_color}">{html.escape(item["signal"])}</span>{shot_html}</td>'
         rows += '</tr>'
     
     return f"""
@@ -3227,6 +3285,11 @@ def build_routes_content(target: str) -> str:
     graphql = [g for g in graphql if is_in_scope(g, target)]
             
     flat_routes = sorted(flat_routes, key=lambda x: (x["subdomain"], x["path"]))
+    route_hosts = sorted(set(r.get("subdomain", "Unknown") for r in flat_routes))
+    route_options = "".join(
+        f'<option value="{html.escape(h)}">{html.escape(h)} ({sum(1 for r in flat_routes if r.get("subdomain")==h)})</option>'
+        for h in route_hosts
+    )
     
     html_parts = []
     
@@ -3246,6 +3309,12 @@ def build_routes_content(target: str) -> str:
     json_data = json.dumps(flat_routes).replace("</", "<\\/")
     
     html_parts.append(f'''
+    <div style="margin-bottom:16px;">
+        <select id="routeSubFilter" onchange="window._filterRoutesByHost()" style="appearance:none;width:100%;max-width:360px;background:var(--bg-secondary);border:1px solid var(--border-color);border-radius:8px;padding:12px 16px;color:var(--text-primary);font-size:14px;">
+            <option value="">All Subdomains ({len(flat_routes)} endpoints)</option>
+            {route_options}
+        </select>
+    </div>
     <div class="card open" style="margin-top:20px;">
         <div class="card-header">
             <span class="card-title"> API Routes & Endpoints</span>
@@ -3254,12 +3323,9 @@ def build_routes_content(target: str) -> str:
         <div class="card-content" id="routes_container" style="display:block;"></div>
     </div>
     <script>
+        var _allRoutesData = {json_data};
         setTimeout(function() {{
-            initPaginatedTable(
-                "routes_container", 
-                {json_data}, 
-                ["Subdomain", "Method", "Path", "Source"], 
-                function(row) {{
+            window._renderRouteRow = function(row) {{
                     let method_class = ["POST", "PUT", "DELETE"].includes(row.method) ? "tag-medium" : "tag-low";
                     return `<tr>
                         <td>${{escapeHtml(row.subdomain)}}</td>
@@ -3267,9 +3333,13 @@ def build_routes_content(target: str) -> str:
                         <td style="word-break: break-all;"><a href="${{escapeHtml(row.url)}}" target="_blank">${{escapeHtml(row.path)}}</a></td>
                         <td>${{escapeHtml(row.source)}}</td>
                     </tr>`;
-                }},
-                100
-            );
+                }};
+            window._filterRoutesByHost = function() {{
+                var host = (document.getElementById("routeSubFilter") || {{}}).value || "";
+                var data = host ? _allRoutesData.filter(function(r){{ return r.subdomain === host; }}) : _allRoutesData;
+                initPaginatedTable("routes_container", data, ["Subdomain", "Method", "Path", "Source"], window._renderRouteRow, 100);
+            }};
+            window._filterRoutesByHost();
         }}, 0);
     </script>
     ''')
@@ -3308,9 +3378,20 @@ def build_js_content(target: str) -> str:
         })
         
     json_data_str = json.dumps(flat_js).replace("</", "<\\/")
+    js_hosts = sorted(set(x.get("subdomain", "Unknown") for x in flat_js))
+    js_options = "".join(
+        f'<option value="{html.escape(h)}">{html.escape(h)} ({sum(1 for x in flat_js if x.get("subdomain")==h)})</option>'
+        for h in js_hosts
+    )
     
     html_parts = []
     html_parts.append(f'''
+    <div style="margin-bottom:16px;">
+        <select id="jsSubFilter" onchange="window._filterJsByHost()" style="appearance:none;width:100%;max-width:360px;background:var(--bg-secondary);border:1px solid var(--border-color);border-radius:8px;padding:12px 16px;color:var(--text-primary);font-size:14px;">
+            <option value="">All Subdomains ({len(flat_js)} files)</option>
+            {js_options}
+        </select>
+    </div>
     <div class="card open" style="margin-top:20px;">
         <div class="card-header">
             <span class="card-title"> JavaScript Files</span>
@@ -3320,11 +3401,8 @@ def build_js_content(target: str) -> str:
     </div>
     <script>
         setTimeout(function() {{
-            initPaginatedTable(
-                "js_container", 
-                {json_data_str}, 
-                ["Subdomain", "Filename", "Type", "Size", "Link"], 
-                function(row) {{
+            var _allJsData = {json_data_str};
+            window._renderJsRow = function(row) {{
                     let filename = row.url.split("/").pop() || row.url;
                     return `<tr>
                         <td>${{escapeHtml(row.subdomain)}}</td>
@@ -3333,9 +3411,13 @@ def build_js_content(target: str) -> str:
                         <td>${{row.size}} bytes</td>
                         <td><a href="${{escapeHtml(row.url)}}" target="_blank" style="font-size:12px">View</a></td>
                     </tr>`;
-                }},
-                100
-            );
+                }};
+            window._filterJsByHost = function() {{
+                var host = (document.getElementById("jsSubFilter") || {{}}).value || "";
+                var data = host ? _allJsData.filter(function(r){{ return r.subdomain === host; }}) : _allJsData;
+                initPaginatedTable("js_container", data, ["Subdomain", "Filename", "Type", "Size", "Link"], window._renderJsRow, 100);
+            }};
+            window._filterJsByHost();
         }}, 0);
     </script>
     ''')
@@ -4375,23 +4457,31 @@ def build_admin_content(target: str) -> str:
     
     rows = ""
     for panel in admin_data:
-        status = panel.get("status", 0)
+        meta = panel.get("metadata", {}) if isinstance(panel.get("metadata"), dict) else {}
+        status = meta.get("status", panel.get("status", 0))
         status_class = "tag-high" if status == 200 else "tag-medium" if status in (401, 403) or "BYPASS" in str(status) else "tag-low"
-        title = panel.get("title", "")[:60]
-        cms = panel.get("cms", "")
-        login_icon = "" if panel.get("has_login_form") else ""
+        title = meta.get("title", panel.get("title", ""))[:60]
+        cms = meta.get("cms", panel.get("cms", ""))
+        has_login = meta.get("has_login_form", panel.get("has_login_form"))
         url = panel.get("url", "")
-        
-        cms_html = f'<span class="tag tag-low" style="margin-left:4px;">{html.escape(cms)}</span>' if cms else ""
+        tags = []
+        if cms:
+            tags.append(cms.upper())
+        p = (meta.get("path", "") or "").lower()
+        if "api" in p or "swagger" in p or "graphql" in p:
+            tags.append("API")
+        if has_login:
+            tags.append("LOGIN")
+        tag_html = "".join([f'<span class="tag tag-low" style="margin-left:4px;">{html.escape(t)}</span>' for t in tags])
         
         # Prepare Burp Data if bypass found
         burp_html = ""
-        if "BYPASS" in str(status) and panel.get("raw_request"):
-            req_b64 = panel.get("raw_request", "")
-            res_b64 = panel.get("raw_response", "")
+        if "BYPASS" in str(status) and meta.get("raw_request"):
+            req_b64 = meta.get("raw_request", "")
+            res_b64 = meta.get("raw_response", "")
             row_id = f"admin_{uuid.uuid4().hex[:8]}"
             
-            bypass_methods = panel.get("bypass_methods", [])
+            bypass_methods = meta.get("bypass_methods", [])
             info_text = "Métodos de Bypass Encontrados:\\n" + "\\n".join(f"- {m}" for m in bypass_methods) if bypass_methods else ""
             import json
             info_json = json.dumps(info_text) if info_text else '""'
@@ -4404,7 +4494,7 @@ def build_admin_content(target: str) -> str:
             </div>
             '''
         
-        category = panel.get("category", "")
+        category = meta.get("category", panel.get("category", ""))
         cat_colors = {
             "ARQUIVO SENSÍVEL": ("var(--accent-red)", "rgba(248,81,73,0.12)"),
             "CONFIG EXPOSURE": ("var(--accent-red)", "rgba(248,81,73,0.12)"),
@@ -4422,7 +4512,7 @@ def build_admin_content(target: str) -> str:
             <td>{html.escape(title)}</td>
             <td>
                 {cat_html}
-                {login_icon}{cms_html}
+                {tag_html}
                 {burp_html}
             </td>
         </tr>'''
@@ -4499,6 +4589,7 @@ def build_depconfusion_content(target: str) -> str:
 # ------------------------------------------------------------
 
 def build_js_routes_content(target: str) -> str:
+    from urllib.parse import urlparse
     path = Path("output") / target / "jsscanner" / "js_routes.json"
     data = read_json_file(path)
     if not data: return '<div class="empty-state"><p>No API/JS routes found.</p></div>'
@@ -4513,7 +4604,7 @@ def build_js_routes_content(target: str) -> str:
         except:
             return False
 
-    html_content = ""
+    grouped = {}
     for item in data:
         source = item.get("source", "")
         # Ignora se o arquivo JS origem estiver debulhando rotas externas
@@ -4533,29 +4624,52 @@ def build_js_routes_content(target: str) -> str:
         routes_html = "".join([f'<li><code style="color:var(--accent-green);">{html.escape(r)}</code></li>' for r in routes])
         params_html = "".join([f'<li><code style="color:var(--accent-purple);">{html.escape(p)}</code></li>' for p in params])
         
-        html_content += f'''
-        <div class="card open">
-            <div class="card-header">
-                <span class="card-title"> <a href="{html.escape(source)}" target="_blank" style="color:inherit;text-decoration:none;">{html.escape(source[:70] + '...' if len(source) > 70 else source)}</a></span>
-                <span class="card-badge">{len(routes)} routes, {len(params)} params</span>
-            </div>
-            <div class="card-content" style="display:flex; gap: 20px;">
-                <div style="flex:1;">
-                    <h4>API Routes</h4>
-                    <ul style="list-style-type: none; padding: 0;">{routes_html or '<li>None</li>'}</ul>
-                </div>
-                <div style="flex:1;">
-                    <h4>Parameters</h4>
-                    <ul style="list-style-type: none; padding: 0;">{params_html or '<li>None</li>'}</ul>
-                </div>
-            </div>
-        </div>
-        '''
+        host = "Unknown"
+        try:
+            host = urlparse(source).netloc.split(":")[0] if source else "Unknown"
+        except:
+            pass
+        grouped.setdefault(host, []).append({
+            "source": source,
+            "routes": routes,
+            "params": params
+        })
         
-    if not html_content:
+    if not grouped:
         return '<div class="empty-state"><p>No relevant in-scope API/JS routes found.</p></div>'
-        
-    return html_content
+
+    hosts = sorted(grouped.keys())
+    host_options = "".join(f'<option value="{html.escape(h)}">{html.escape(h)} ({len(grouped[h])} files)</option>' for h in hosts)
+    json_data = json.dumps(grouped).replace("</", "<\\/")
+    return f'''
+    <div style="margin-bottom:16px;">
+        <select id="jsApiHostFilter" onchange="window._filterJsApiByHost()" style="appearance:none;width:100%;max-width:360px;background:var(--bg-secondary);border:1px solid var(--border-color);border-radius:8px;padding:12px 16px;color:var(--text-primary);font-size:14px;">
+            <option value="">All Subdomains ({sum(len(v) for v in grouped.values())} files)</option>
+            {host_options}
+        </select>
+    </div>
+    <div id="js_api_grouped"></div>
+    <script>
+    (function(){{
+      var data = {json_data};
+      function render(host){{
+        var keys = host ? [host] : Object.keys(data).sort();
+        var htmlOut = '';
+        keys.forEach(function(h){{
+          (data[h] || []).forEach(function(item){{
+            var routes = (item.routes||[]).map(function(r){{return '<li><code style="color:var(--accent-green);">'+escapeHtml(r)+'</code></li>';}}).join('');
+            var params = (item.params||[]).map(function(p){{return '<li><code style="color:var(--accent-purple);">'+escapeHtml(p)+'</code></li>';}}).join('');
+            var source = item.source || '';
+            htmlOut += `<div class="card open"><div class="card-header"><span class="card-title"><a href="${{escapeHtml(source)}}" target="_blank" style="color:inherit;text-decoration:none;">${{escapeHtml(source.length>70?source.slice(0,70)+'...':source)}}</a></span><span class="card-badge">${{(item.routes||[]).length}} routes, ${{(item.params||[]).length}} params</span></div><div class="card-content" style="display:flex; gap:20px;"><div style="flex:1;"><h4>API Routes</h4><ul style="list-style-type:none;padding:0;">${{routes||'<li>None</li>'}}</ul></div><div style="flex:1;"><h4>Parameters</h4><ul style="list-style-type:none;padding:0;">${{params||'<li>None</li>'}}</ul></div></div></div>`;
+          }});
+        }});
+        document.getElementById('js_api_grouped').innerHTML = htmlOut || '<div class="empty-state"><p>No relevant in-scope API/JS routes found.</p></div>';
+      }}
+      window._filterJsApiByHost = function(){{ render((document.getElementById('jsApiHostFilter')||{{}}).value||''); }};
+      render('');
+    }})();
+    </script>
+    '''
 
 def build_swagger_content(target: str) -> str:
     path = Path("output") / target / "domain" / "swagger_docs.json"
@@ -4706,15 +4820,15 @@ def build_jwt_content(target: str) -> str:
         burp_script = f'<script>BURP_DATA["{row_id}"] = {{ "url": "{html.escape(item.get("url", "N/A"))}", "req": "{req_b64}", "res": "{res_b64}" }};</script>'
         button_html = f'<button class="burp-btn" onclick="openBurp(\'{row_id}\')">View HTTP</button>{burp_script}' if req_b64 else ''
         
-        # Token preview
-        token_preview = html.escape(item.get("token_preview", "")[:40])
+        full_token_raw = item.get("token") or item.get("jwt") or item.get("full_token") or item.get("token_preview", "")
+        full_token = html.escape(str(full_token_raw))
         source = html.escape(str(item.get("source", "")))
         
         rows += f'''
         <tr>
             <td><span class="tag {risk_class}">{risk}</span></td>
             <td><strong>{html.escape(item.get("type", ""))}</strong></td>
-            <td style="font-size:11px;"><code>{token_preview}...</code><br><span style="color:var(--text-muted);">{source}</span></td>
+            <td style="font-size:11px; max-width:420px; word-break:break-all;"><code>{full_token}</code><br><span style="color:var(--text-muted);">{source}</span></td>
             <td style="font-size:12px;">{html.escape(item.get("details", ""))}</td>
             <td style="text-align:right;">{button_html}</td>
         </tr>
@@ -5022,16 +5136,26 @@ def build_sourcemaps_content(target: str) -> str:
     path = Path("output") / target / "sourcemaps" / "secrets.json"
     data = read_json_file(path)
     if not data:
+        data = read_json_file(Path("output") / target / "sourcemaps" / "findings.json")
+    if not data:
         return '<div class="empty-state"><p>No secrets found in source maps.</p></div>'
 
     rows = ""
     for item in data:
+        issue_type = item.get("type", item.get("title", ""))
+        detection = item.get("phases", {}).get("detection", {}) if isinstance(item.get("phases"), dict) else {}
+        evidence = item.get("evidence", {}) if isinstance(item.get("evidence"), dict) else {}
+        source_file = item.get("source_file") or detection.get("source_file", "")
+        line_num = item.get("line_num", detection.get("line_num", "?"))
+        map_url = item.get("map_url") or item.get("url", "")
+        match = item.get("match") or evidence.get("matched_snippet", "")
+        context = item.get("context") or item.get("description", "")
         rows += f'''
         <tr>
-            <td><span class="tag tag-high">{html.escape(item.get("type", ""))}</span></td>
-            <td style="font-size:12px;">{html.escape(item.get("source_file", ""))} (line {item.get("line_num", "?")})<br><a href="{html.escape(item.get("map_url", ""))}" target="_blank" style="color:var(--text-muted);font-size:10px;">{html.escape(item.get("map_url", ""))}</a></td>
-            <td><code style="color:var(--accent-orange);background:#2d2d2d;padding:2px 6px;border-radius:4px;">{html.escape(item.get("match", "")[:80])}</code></td>
-            <td style="font-size:11px;color:var(--text-secondary);max-width:300px;word-wrap:break-word;">{html.escape(item.get("context", "")[:150])}</td>
+            <td><span class="tag tag-high">{html.escape(issue_type)}</span></td>
+            <td style="font-size:12px;">{html.escape(str(source_file))} (line {line_num})<br><a href="{html.escape(str(map_url))}" target="_blank" style="color:var(--text-muted);font-size:10px;">{html.escape(str(map_url))}</a></td>
+            <td><code style="color:var(--accent-orange);background:#2d2d2d;padding:2px 6px;border-radius:4px;">{html.escape(str(match)[:80])}</code></td>
+            <td style="font-size:11px;color:var(--text-secondary);max-width:300px;word-wrap:break-word;">{html.escape(str(context)[:150])}</td>
         </tr>
         '''
     return f'''
@@ -5162,10 +5286,13 @@ def build_quick_wins_content(target: str) -> str:
     for win in qw_data[:5]:
         sev = win.get("severity", "MEDIUM")
         sev_class = "critical" if sev in ["HIGH", "CRITICAL"] else "warning"
+        win_sub = win.get("subdomain", "")
+        sub_line = f'<span style="font-size:12px; color:#8b949e;">Subdomain: {html.escape(win_sub)}</span><br>' if win_sub else ""
         quick_wins_html += f'''
         <div class="box {sev_class}">
         <b>[{sev}] {html.escape(win.get("type", "Security Finding"))}</b><br>
         <span style="font-size:12px; color:#8b949e;">URL: {html.escape(win.get("url", ""))}</span><br>
+        {sub_line}
         <span style="font-size:12px; color:#8b949e;">Details: {html.escape(win.get("detail", ""))}</span><br>
         → <span style="color:var(--accent-blue);">Action: {html.escape(win.get("action", "Test manually"))}</span>
         </div>

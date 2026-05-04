@@ -117,6 +117,20 @@ class SourceMapScanner:
                            continue
                       source_filename = sources[idx] if idx < len(sources) else f"unknown_{idx}.js"
                       
+                      # Dump original frontend code to disk (Unpacking)
+                      parsed = urlparse(map_url)
+                      host = parsed.netloc
+                      # Clean the webpack/relative paths to be safe on local filesystem
+                      clean_path = source_filename.replace("webpack:///", "").replace("webpack://", "").replace("../", "").replace("~/", "").strip("/")
+                      if not clean_path: clean_path = f"unknown_{idx}.js"
+                      
+                      save_path = self.outdir / "unpacked" / host / clean_path
+                      save_path.parent.mkdir(parents=True, exist_ok=True)
+                      try:
+                          save_path.write_text(source_code, errors="ignore")
+                      except Exception:
+                          pass
+                      
                       # Scan original source code
                       self.scan_original_code(source_code, map_url, source_filename)
          except json.JSONDecodeError:
@@ -230,6 +244,7 @@ async def run_async(context: dict):
         f"\n{C.BOLD}{get_color('GREEN')}✅ SOURCE MAPS CONCLUÍDO EM {elapsed:.1f}s{C.END}\n"
         f"{C.BOLD}{get_color('CYAN')}│   🌐 JS Analisados: {get_color('YELLOW')}{len(js_urls_list)}{C.WHITE if hasattr(C, 'WHITE') else ''}        │{C.END}\n"
         f"{C.BOLD}{get_color('CYAN')}│   🚨 Segredos Encontrados: {get_color('YELLOW')}{len(scanner.findings)}{C.WHITE if hasattr(C, 'WHITE') else ''}        │{C.END}\n"
+        f"{C.BOLD}{get_color('CYAN')}│   📁 Código Desempacotado em: {get_color('GREEN')}output/{target}/sourcemaps/unpacked/{C.END}\n"
     )
     
     return [str(findings_file)]

@@ -16,6 +16,7 @@ from typing import Dict, List, Any
 
 from core.colors import C
 from plugins import ensure_outdir
+from plugins.validation import finding
 from ..output import info, success, warn, error
 
 
@@ -305,6 +306,36 @@ def run(context: dict):
 
     results_file = outdir / "cookies_results.json"
     results_file.write_text(json.dumps(results, indent=2, ensure_ascii=False))
+    normalized_findings = []
+    sev_to_risk = {"CRITICAL": "CRITICAL", "HIGH": "HIGH", "MEDIUM": "MEDIUM", "LOW": "LOW", "INFO": "INFO"}
+    sev_to_conf = {"CRITICAL": "HIGH", "HIGH": "HIGH", "MEDIUM": "MEDIUM", "LOW": "LOW", "INFO": "LOW"}
+    for c in all_cookies:
+        sev = str(c.get("severity", "INFO")).upper()
+        normalized_findings.append(
+            finding(
+                plugin="cookies",
+                target=target,
+                title=f"Insecure Cookie: {c.get('name', '')}",
+                issue_type="INSECURE_COOKIE",
+                risk=sev_to_risk.get(sev, "LOW"),
+                confidence=sev_to_conf.get(sev, "LOW"),
+                description=", ".join(c.get("issues", [])),
+                url=c.get("source_url", ""),
+                detection={
+                    "name": c.get("name", ""),
+                    "httponly": c.get("httponly", False),
+                    "secure": c.get("secure", False),
+                    "samesite": c.get("samesite", "Not Set"),
+                },
+                validation={"cookie_parsed": True},
+                evidence={
+                    "matched_snippet": c.get("name", ""),
+                    "observable_impact": ", ".join(c.get("issues", [])),
+                },
+                metadata=c,
+            )
+        )
+    (outdir / "findings.json").write_text(json.dumps(normalized_findings, indent=2, ensure_ascii=False))
 
     # Print summary
     success(f"\n{C.BOLD}{C.CYAN}🍪 COOKIE ANALYSIS COMPLETO{C.END}")
@@ -320,4 +351,4 @@ def run(context: dict):
         warn(f"   ❌ Sem Secure: {n_no_secure}")
     success(f"   Resultados: {results_file}")
 
-    return [str(results_file)]
+    return normalized_findings

@@ -9,6 +9,7 @@ from pathlib import Path
 
 from menu import C
 from plugins import ensure_outdir
+from plugins.validation import finding
 from ..output import info, success, warn, error
 def run_searchsploit(term: str):
     """Executa searchsploit para um termo e retorna JSON"""
@@ -97,6 +98,7 @@ def run(context: dict):
                 info(f"      🚨 {C.RED}{total} vulnerabilidades encontradas!{C.END} (ExploitDB: {len(exploits)}, NVD: {len(nvd_results)})")
 
     # Salvar resultados
+    normalized_findings = []
     if vulns_found:
         cve_file.write_text(json.dumps(vulns_found, indent=2))
         
@@ -106,8 +108,46 @@ def run(context: dict):
                 f.write(f"=== {data['tech']} {data['version'] or ''} ===\n")
                 for exploit in data['exploits']:
                     f.write(f"- [ExploitDB] {exploit.get('Title')} (Path: {exploit.get('Path')})\n")
+                    normalized_findings.append(
+                        finding(
+                            plugin="cve",
+                            target=target,
+                            title=f"Known Exploit: {data['tech']} {data['version']}",
+                            issue_type="KNOWN_EXPLOIT_AVAILABLE",
+                            risk="MEDIUM",
+                            confidence="MEDIUM",
+                            description=exploit.get("Title", ""),
+                            url="",
+                            detection={"source": "searchsploit", "tech": data["tech"], "version": data["version"]},
+                            validation={"path": exploit.get("Path", "")},
+                            evidence={"matched_snippet": exploit.get("Title", "")},
+                            metadata=exploit,
+                        )
+                    )
                 for cve in data.get('nvd_cves', []):
                     f.write(f"- [NVD] {cve['id']} (CVSS: {cve.get('cvss', 'N/A')}) — {cve.get('description', '')[:120]}\n")
+                    cvss = cve.get("cvss", "N/A")
+                    try:
+                        cvss_f = float(cvss)
+                    except Exception:
+                        cvss_f = 0.0
+                    risk = "HIGH" if cvss_f >= 7 else "MEDIUM" if cvss_f >= 4 else "LOW"
+                    normalized_findings.append(
+                        finding(
+                            plugin="cve",
+                            target=target,
+                            title=f"NVD CVE: {cve.get('id', '')}",
+                            issue_type="KNOWN_CVE",
+                            risk=risk,
+                            confidence="MEDIUM",
+                            description=cve.get("description", ""),
+                            url="",
+                            detection={"source": "nvd", "tech": data["tech"], "version": data["version"]},
+                            validation={"cvss": cvss},
+                            evidence={"matched_snippet": cve.get("id", ""), "observable_impact": f"cvss={cvss}"},
+                            metadata=cve,
+                        )
+                    )
                 f.write("\n")
                 
         success(f"💣 Vulnerabilidades potenciais salvas em {cve_file}")
@@ -120,8 +160,9 @@ def run(context: dict):
         "status": "COMPLETED"
     }
     (outdir / "scan_summary.json").write_text(json.dumps(summary, indent=2))
+    (outdir / "findings.json").write_text(json.dumps(normalized_findings, indent=2, ensure_ascii=False))
 
-    return [str(cve_file)]
+    return normalized_findings
 
 
 # V10.3: Cache global para evitar re-consultar NVD para a mesma tech
