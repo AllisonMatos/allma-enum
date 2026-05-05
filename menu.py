@@ -247,6 +247,10 @@ def main():
         
         if not closed_scope_list:
             print(f"{C.RED}❌ Nenhum subdomínio fornecido. Usando descoberta padrão...{C.END}")
+        else:
+            import core.config as _cfg
+            _cfg.STRICT_SCOPE_HOSTS = closed_scope_list
+            print(f"{C.GREEN}✅ Escopo estrito configurado para {len(closed_scope_list)} host(s).{C.END}")
 
     # V11: Custom User-Agent (Bug Bounty)
     print(f"\n{C.BOLD}{C.CYAN}🌐 USER-AGENT{C.END}")

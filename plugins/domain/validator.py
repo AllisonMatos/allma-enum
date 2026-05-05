@@ -184,11 +184,11 @@ def validate_urls(in_file: Path, out_file: Path, threads: int = 50):
     ]
 
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=10800)
         if result.stderr and result.stderr.strip():
             warn(f"httpx stderr: {result.stderr.strip()[:300]}")
     except subprocess.TimeoutExpired:
-        warn("httpx timeout atingido (600s)")
+        warn("httpx timeout atingido (3 horas)")
     except Exception as e:
         error(f"Erro executando httpx: {e}")
 
@@ -197,7 +197,7 @@ def validate_urls(in_file: Path, out_file: Path, threads: int = 50):
         warn("httpx -o vazio, tentando via pipe...")
         cmd_pipe = [c for c in cmd if c not in ("-o", str(out_file))]
         try:
-            r2 = subprocess.run(cmd_pipe, capture_output=True, text=True, timeout=600)
+            r2 = subprocess.run(cmd_pipe, capture_output=True, text=True, timeout=10800)
             if r2.stdout and r2.stdout.strip():
                 out_file.write_text(r2.stdout)
                 info("   ✅ Fallback via pipe funcionou!")
@@ -249,11 +249,11 @@ def validate_urls(in_file: Path, out_file: Path, threads: int = 50):
         ]
         
         try:
-            subprocess.run(cmd_fallback, capture_output=True, text=True, timeout=600)
+            subprocess.run(cmd_fallback, capture_output=True, text=True, timeout=10800)
             if not fallback_out.exists() or fallback_out.stat().st_size == 0:
                 # Pipe fallback
                 cmd_pipe2 = [c for c in cmd_fallback if c not in ("-o", str(fallback_out))]
-                r3 = subprocess.run(cmd_pipe2, capture_output=True, text=True, timeout=600)
+                r3 = subprocess.run(cmd_pipe2, capture_output=True, text=True, timeout=10800)
                 if r3.stdout and r3.stdout.strip():
                     fallback_out.write_text(r3.stdout)
             if fallback_out.exists():

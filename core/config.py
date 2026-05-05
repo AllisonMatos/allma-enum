@@ -66,14 +66,13 @@ OUT_OF_SCOPE_DOMAINS = {
     "code.jquery.com", "unpkg.com",
 }
 
+STRICT_SCOPE_HOSTS = []
+
 def is_in_scope(url: str, target: str = "") -> bool:
     """Check if a URL belongs to the target's scope.
     Returns True if the URL is in scope, False if out of scope.
     """
     from urllib.parse import urlparse
-    t = target or SCOPE_TARGET
-    if not t:
-        return True  # No target set, allow everything
     
     try:
         parsed = urlparse(url)
@@ -87,8 +86,16 @@ def is_in_scope(url: str, target: str = "") -> bool:
     # Check against known out-of-scope domains
     if host in OUT_OF_SCOPE_DOMAINS:
         return False
+        
+    # If a STRICT_SCOPE_HOSTS list is defined (Escopo Fechado), restrict to exactly these subdomains.
+    if STRICT_SCOPE_HOSTS:
+        return any(host == s.lower() or host.endswith(f".{s.lower()}") for s in STRICT_SCOPE_HOSTS)
     
-    # Must belong to target domain
+    # Fallback to the broad target scope
+    t = target or SCOPE_TARGET
+    if not t:
+        return True  # No target set, allow everything
+        
     t_lower = t.lower()
     if host == t_lower or host.endswith(f".{t_lower}"):
         return True

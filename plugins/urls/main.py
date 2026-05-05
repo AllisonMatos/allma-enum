@@ -253,10 +253,36 @@ def run_katana_discovery(target: str, out_file: Path):
     ]
     
     try:
-        # Timeout otimizado para 10800s (3 horas)
-        subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=10800)
-    except subprocess.TimeoutExpired:
-        warn(f"   [!] Katana atingiu o timeout de 3 horas. Processando o que foi encontrado até agora...")
+        import time
+        proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        
+        start_time = time.time()
+        # Loop monitorando o arquivo de saida
+        while proc.poll() is None:
+            # Check timeout (3 horas = 10800s)
+            if time.time() - start_time > 10800:
+                warn(f"   [!] Katana atingiu o timeout de 3 horas. Processando o que foi encontrado...")
+                proc.kill()
+                break
+                
+            count = 0
+            if out_file.exists():
+                try:
+                    # wc -l super rapido e seguro para arquivos gigantes
+                    wc_res = subprocess.run(["wc", "-l", str(out_file)], capture_output=True, text=True)
+                    if wc_res.stdout:
+                        count = int(wc_res.stdout.split()[0])
+                except Exception:
+                    pass
+            
+            elapsed = time.time() - start_time
+            mins = int(elapsed // 60)
+            secs = int(elapsed % 60)
+            print(f"   ⏳ Katana executando: {mins}m{secs:02d}s | URLs capturadas: {count}    ", end="\r")
+            time.sleep(2)
+            
+        print("") # Quebra de linha para limpar o \r
+        
     except Exception as e:
         error(f"Erro inesperado no Katana: {e}")
         

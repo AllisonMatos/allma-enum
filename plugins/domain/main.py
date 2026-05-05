@@ -308,14 +308,38 @@ def run(context):
                         "-rate-limit", "50",
                         "-o", str(katana_raw),
                     ]
-                    subprocess.run(katana_cmd, capture_output=True, text=True, timeout=10800)
+                    import time
+                    proc = subprocess.Popen(katana_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    start_time = time.time()
+                    
+                    while proc.poll() is None:
+                        if time.time() - start_time > 10800:
+                            warn(f"   Katana R{round_num}: timeout atingido (3h)")
+                            proc.kill()
+                            break
+                            
+                        count = 0
+                        if katana_raw.exists():
+                            try:
+                                wc_res = subprocess.run(["wc", "-l", str(katana_raw)], capture_output=True, text=True)
+                                if wc_res.stdout:
+                                    count = int(wc_res.stdout.split()[0])
+                            except Exception:
+                                pass
+                                
+                        elapsed = time.time() - start_time
+                        mins = int(elapsed // 60)
+                        secs = int(elapsed % 60)
+                        print(f"   ⏳ Katana R{round_num}: {mins}m{secs:02d}s | URLs: {count}    ", end="\r")
+                        time.sleep(2)
+                        
+                    print("") # Limpa o \r
+                    
                     if katana_raw.exists():
                         from core.config import is_in_scope
                         urls = set(l.strip() for l in katana_raw.read_text(errors="ignore").splitlines() if l.strip() and is_in_scope(l.strip(), target))
                         round_discovered.update(urls)
                         info(f"   Katana R{round_num}: {len(urls)} URLs brutas (In-Scope)")
-                except subprocess.TimeoutExpired:
-                    warn(f"   Katana R{round_num}: timeout atingido (3h)")
                 except Exception as e:
                     warn(f"   Katana R{round_num}: {e}")
             
@@ -331,7 +355,34 @@ def run(context):
                         "-c", "10", "-d", "2",
                         "--other-source", "--include-subs", "-q",
                     ]
-                    subprocess.run(gs_cmd, capture_output=True, text=True, timeout=10800)
+                    import time
+                    proc = subprocess.Popen(gs_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    start_time = time.time()
+                    
+                    while proc.poll() is None:
+                        if time.time() - start_time > 10800:
+                            warn(f"   GoSpider: timeout atingido (3h)")
+                            proc.kill()
+                            break
+                            
+                        # Contar as linhas de todos os arquivos gerados pelo GoSpider no diretorio
+                        count = 0
+                        if gospider_dir.exists():
+                            try:
+                                wc_res = subprocess.run(["find", str(gospider_dir), "-type", "f", "-exec", "cat", "{}", "+"], capture_output=True)
+                                if wc_res.stdout:
+                                    count = wc_res.stdout.count(b'\n')
+                            except Exception:
+                                pass
+                                
+                        elapsed = time.time() - start_time
+                        mins = int(elapsed // 60)
+                        secs = int(elapsed % 60)
+                        print(f"   ⏳ GoSpider: {mins}m{secs:02d}s | URLs estimadas: {count}    ", end="\r")
+                        time.sleep(2)
+                        
+                    print("") # Limpa o \r
+                    
                     import re as _gs_re
                     from core.config import is_in_scope
                     url_pattern = _gs_re.compile(r'https?://[^\s\]"\'><]+')
@@ -345,8 +396,6 @@ def run(context):
                             except Exception:
                                 pass
                     info(f"   GoSpider: {len(round_discovered)} URLs combinadas (In-Scope)")
-                except subprocess.TimeoutExpired:
-                    warn(f"   GoSpider: timeout atingido (3h)")
                 except Exception as e:
                     warn(f"   GoSpider: {e}")
             
