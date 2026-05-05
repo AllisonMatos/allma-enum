@@ -471,11 +471,11 @@ def run(context: dict):
             test_urls = [l.strip() for l in urls_file.read_text().splitlines() if l.strip()][:20]
             
             with httpx.Client(verify=False, timeout=10) as client:
-                for finding in all_findings:
-                    none_token = finding.get("alg_none_token")
+                for item in all_findings:
+                    none_token = item.get("alg_none_token")
                     if none_token:
                         for url in test_urls[:5]:
-                            live_findings = test_jwt_on_target(client, url, finding.get("token_preview", ""), none_token)
+                            live_findings = test_jwt_on_target(client, url, item.get("token_preview", ""), none_token)
                             all_findings.extend(live_findings)
     
     for item in all_findings:

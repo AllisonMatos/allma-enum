@@ -2027,19 +2027,41 @@ def build_graphql_content(target: str) -> str:
     
     rows = ""
     for item in data:
-        # Extrair Request Body Style Burp
-        req_b64 = base64.b64encode((item.get("request_raw") or "").encode("utf-8")).decode("utf-8")
-        res_b64 = base64.b64encode((item.get("response_raw") or "").encode("utf-8")).decode("utf-8")
+        evidence = item.get("evidence", {})
+        req_raw = evidence.get("request_raw", "")
+        res_raw = evidence.get("response_raw", "")
+        req_b64 = base64.b64encode(req_raw.encode("utf-8")).decode("utf-8") if req_raw else ""
+        res_b64 = base64.b64encode(res_raw.encode("utf-8")).decode("utf-8") if res_raw else ""
+        
         row_id = f"gql_{uuid.uuid4().hex[:8]}"
         burp_script = f'<script>BURP_DATA["{row_id}"] = {{ "url": "{html.escape(item.get("url", ""))}", "req": "{req_b64}", "res": "{res_b64}" }};</script>'
         button_html = f'<button class="burp-btn" onclick="openBurp(\'{row_id}\')">View HTTP</button>{burp_script}' if req_b64 else '-'
 
+        # Pegar status e length
+        validation = item.get("phases", {}).get("validation", {})
+        status = validation.get("http_status", "-")
+        length = len(res_raw) if res_raw else "-"
+        
+        # Tipo de vulnerabilidade (Introspection, Batch, etc)
+        issue_type = item.get("type", "")
+        feature_html = "-"
+        if issue_type == "INTROSPECTION_ENABLED":
+            feature_html = "<span class='tag tag-high'>Introspection Enabled</span>"
+        elif issue_type == "BATCH_QUERIES_ALLOWED":
+            feature_html = "<span class='tag tag-medium'>Batch Queries</span>"
+        elif issue_type == "DANGEROUS_MUTATIONS_EXPOSED":
+            feature_html = "<span class='tag tag-critical'>Dangerous Mutations</span>"
+        elif issue_type == "FIELD_SUGGESTIONS_ENABLED":
+            feature_html = "<span class='tag tag-low'>Field Suggestions</span>"
+        elif issue_type == "NO_DEPTH_LIMITING":
+            feature_html = "<span class='tag tag-medium'>No Depth Limit (DoS)</span>"
+
         rows += f'''
         <tr>
             <td><a href="{html.escape(item.get("url", ""))}" target="_blank">{html.escape(item.get("url", ""))}</a></td>
-            <td><span class="tag tag-medium">{item.get("status")}</span></td>
-            <td><strong>{item.get("length")}</strong></td>
-            <td>{"<span class='tag tag-high'>Introspection Enabled</span>" if item.get("introspection") else "-"}</td>
+            <td><span class="tag tag-medium">{status}</span></td>
+            <td><strong>{length}</strong></td>
+            <td>{feature_html}</td>
             <td style="text-align:right;">{button_html}</td>
         </tr>
         '''
@@ -2422,8 +2444,15 @@ def _build_generic_security_card_from_data(data: list, title: str, icon: str, bo
     for item in data:
         risk = item.get("risk", "LOW")
         risk_class = f"tag-{risk.lower()}"
-        req_b64 = base64.b64encode((item.get("request_raw") or "").encode("utf-8")).decode("utf-8")
-        res_b64 = base64.b64encode((item.get("response_raw") or "").encode("utf-8")).decode("utf-8")
+        
+        # V11.6: Suporte ao novo schema V1.0 onde req/res ficam dentro de 'evidence'
+        evidence = item.get("evidence", {})
+        req_raw = evidence.get("request_raw") or item.get("request_raw") or ""
+        res_raw = evidence.get("response_raw") or item.get("response_raw") or ""
+        
+        req_b64 = base64.b64encode(req_raw.encode("utf-8")).decode("utf-8")
+        res_b64 = base64.b64encode(res_raw.encode("utf-8")).decode("utf-8")
+        
         row_id = f"sec_{uuid.uuid4().hex[:8]}"
         burp_script = f'<script>BURP_DATA["{row_id}"] = {{ "url": "{html.escape(item.get("url", ""))}", "req": "{req_b64}", "res": "{res_b64}" }};</script>'
         button_html = f'<button class="burp-btn" onclick="openBurp(\'{row_id}\')">View HTTP</button>{burp_script}' if req_b64 else '-'
@@ -2445,6 +2474,9 @@ def _build_generic_security_card_from_data(data: list, title: str, icon: str, bo
 
 def build_ssrf_content(target: str) -> str:
     return _build_generic_security_card(target, "scanners/ssrf.json", "Server-Side Request Forgery", "", "--accent-red")
+
+def build_ssti_content(target: str) -> str:
+    return _build_generic_security_card(target, "ssti/findings.json", "Server-Side Template Injection", "🧨", "--accent-red")
 
 def build_cache_deception_content(target: str) -> str:
     return _build_generic_security_card(target, "scanners/cache_deception.json", "Web Cache Deception", "", "--accent-purple")

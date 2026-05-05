@@ -121,7 +121,8 @@ def run_trufflehog(js_dir: Path) -> list:
         return []
     
     # V11: Timeout para evitar bloqueio indefinido em arquivos grandes
-    cmd = [th, "filesystem", str(js_dir), "--json", "--no-update"]
+    # V11.6: --only-verified valida se chaves/tokens realmente funcionam (-80% falsos positivos)
+    cmd = [th, "filesystem", str(js_dir), "--json", "--no-update", "--only-verified"]
     try:
         res = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
     except subprocess.TimeoutExpired:

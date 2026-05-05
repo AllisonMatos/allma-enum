@@ -38,12 +38,22 @@ class OastClient:
         # Limpar payload_file antigo se existir
         if self.payloads_file.exists():
             self.payloads_file.unlink()
-            
+
+        # V11.6: Token persistence — manter mesmo subdomínio OAST entre execuções
+        token_file = self.payloads_file.parent / ".oast_token"
+        token = None
+        if token_file.exists():
+            token = token_file.read_text().strip()
+        if not token:
+            token = uuid.uuid4().hex
+            token_file.write_text(token)
+
         cmd = [
             self.bin,
             "-json",
             "-o", str(self.results_file),
             "-ps", "-psf", str(self.payloads_file),
+            "-token", token,              # V11.6: Persistência de sessão OAST
         ]
         self._proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         

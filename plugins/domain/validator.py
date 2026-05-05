@@ -183,6 +183,24 @@ def validate_urls(in_file: Path, out_file: Path, threads: int = 50):
         "-o", str(out_file)
     ]
 
+    # V11.6: Tech detection — salvar fingerprint automático em JSON separado
+    tech_out = in_file.parent / "httpx_tech.json"
+    cmd_tech = [
+        httpx_bin,
+        "-l", str(temp_file),
+        "-mc", STATUS,
+        "-retries", "2",
+        "-timeout", "15",
+        "-random-agent",
+        "-no-color",
+        "-follow-redirects",
+        "-silent",
+        "-threads", str(threads),
+        "-td",                    # Tech detect via Wappalyzer DB
+        "-json",
+        "-o", str(tech_out)
+    ]
+
     try:
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=10800)
         if result.stderr and result.stderr.strip():
@@ -191,6 +209,18 @@ def validate_urls(in_file: Path, out_file: Path, threads: int = 50):
         warn("httpx timeout atingido (3 horas)")
     except Exception as e:
         error(f"Erro executando httpx: {e}")
+
+    # V11.6: Tech detection em pass separado (não bloqueia validação principal)
+    try:
+        info(f"{C.BOLD}{C.BLUE}🔍 Executando tech detection (httpx -td)...{C.END}")
+        subprocess.run(cmd_tech, capture_output=True, text=True, timeout=600)
+        if tech_out.exists() and tech_out.stat().st_size > 0:
+            tech_lines = sum(1 for l in tech_out.read_text().splitlines() if l.strip())
+            success(f"   ✅ Tech detection: {tech_lines} hosts fingerprinted → {tech_out.name}")
+    except subprocess.TimeoutExpired:
+        warn("   ⚠️ Tech detection timeout (10min) — resultados parciais")
+    except Exception:
+        pass  # Tech detection é opcional, não bloqueia pipeline
 
     # Fallback via pipe se -o falhar
     if not out_file.exists() or out_file.stat().st_size == 0:

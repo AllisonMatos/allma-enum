@@ -255,7 +255,6 @@ def run(context: dict):
         success(f"📂 {len(found_buckets)} buckets encontrados salvos em {out_file}")
 
         # Salvar JSON detalhado
-        import json
         json_file = outdir / "buckets.json"
         json_file.write_text(json.dumps(found_buckets, indent=2, ensure_ascii=False))
         for b in found_buckets:

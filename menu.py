@@ -34,7 +34,8 @@ MODULES = {
     "25": "asn",
     "26": "screenshots",
     "27": "cache",
-    "28": "all",
+    "28": "ssti",
+    "29": "all",
 }
 
 # --------- DEPENDÊNCIAS ---------
@@ -66,7 +67,9 @@ DEPENDENCIES = {
     "24": ["1", "2", "24"],
     "25": ["1", "25"],
     "26": ["1", "2", "26"],
-    "28": [str(i) for i in range(1, 28)],  # ALL: Roda do 1 ao 27
+    "27": ["1", "2", "27"],
+    "28": ["1", "2", "28"],
+    "29": [str(i) for i in range(1, 29)],  # ALL: Roda do 1 ao 28
 }
 
 
@@ -122,7 +125,8 @@ def print_menu():
         "25": ("asn", "CIDR/ASN Mapping", "🌐"),
         "26": ("screenshots", "Screenshot Capture", "📸"),
         "27": ("cache", "Web Cache Vulnerabilities", "⚡"),
-        "28": ("all", "Execução completa", "🚀")
+        "28": ("ssti", "Server-Side Template Injection", "🧨"),
+        "29": ("all", "Execução completa", "🚀")
     }
 
     for k, (name, desc, emoji) in modules.items():
@@ -263,6 +267,17 @@ def main():
         _cfg.DEFAULT_USER_AGENT = custom_ua
         _cfg._USER_AGENT_POOL = [custom_ua]  # Override pool para usar apenas o custom
         print(f"  {C.GREEN}✅ UA definido: {custom_ua[:60]}...{C.END}" if len(custom_ua) > 60 else f"  {C.GREEN}✅ UA definido: {custom_ua}{C.END}")
+
+    # V11.6: Proxy Support (Burp/ZAP/Tor)
+    print(f"\n{C.BOLD}{C.CYAN}🛡️ PROXY (Opcional){C.END}")
+    print(f"  {C.YELLOW}Tip:{C.END} Útil para rotear tráfego para Burp Suite ou ZAP.")
+    proxy_url = input(f"{C.BOLD}{C.BLUE}Proxy (ex: http://127.0.0.1:8080) [Enter p/ pular]: {C.END}").strip()
+    if proxy_url:
+        import os
+        os.environ["HTTP_PROXY"] = proxy_url
+        os.environ["HTTPS_PROXY"] = proxy_url
+        os.environ["HTTPX_PROXY"] = proxy_url
+        print(f"  {C.GREEN}✅ Todo o tráfego HTTP/HTTPS será roteado para: {proxy_url}{C.END}")
 
     # Seleção de Modo Deep/Stealth
     print(f"\n{C.BOLD}{C.CYAN}🎯 OPÇÕES DE PERFORMANCE (V10){C.END}")

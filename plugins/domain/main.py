@@ -302,6 +302,9 @@ def run(context):
                         "-d", "2",
                         "-jc",                    # JS crawling
                         "-kf", "all",             # known files
+                        "-aff",                   # V11.6: Automatic form fill (descobre URLs atrás de formulários)
+                        "-fx",                    # V11.6: Extract from XML/JSON responses
+                        "-strategy", "depth-first",  # V11.6: Depth-first encontra endpoints escondidos mais rápido
                         "-ef", "css,png,jpg,jpeg,gif,svg,ico,woff,woff2,ttf,eot",
                         "-silent",
                         "-timeout", "20",
@@ -354,6 +357,7 @@ def run(context):
                         "-o", str(gospider_dir),
                         "-c", "10", "-d", "2",
                         "--other-source", "--include-subs", "-q",
+                        "--js",                   # V11.6: Analisa conteúdo de .js para extrair URLs internas
                     ]
                     import time
                     proc = subprocess.Popen(gs_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)

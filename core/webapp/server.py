@@ -72,6 +72,7 @@ def import_target(target: str):
         build_google_dorks_content,
         build_login_pages_content, build_cookies_content,
         build_cors_content, build_headers_content, build_kiterunner_content,
+        build_ssti_content
     )
 
     print(f"  [+] Importing: {target}")
@@ -285,6 +286,7 @@ def import_target(target: str):
         "cors": build_cors_content(target),
         "headers": build_headers_content(target),
         "kiterunner": build_kiterunner_content(target),
+        "ssti_sec": build_ssti_content(target),
     }
 
     # Save to in-memory DB

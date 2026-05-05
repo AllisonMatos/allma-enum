@@ -498,7 +498,7 @@
             </section>
 
             <!-- All other sections — loaded via AJAX on click -->
-            {% set section_ids = ['quickwins_attack','security','subdomains','takeover', 'ssrf_sec', 'open_redirect', 'host_injection', 'ssti_sec', 'xxe_sec', 'proto_pollution', 'oauth_sec', 'file_upload', 'api_versioning', 'email_security', 'google_dorks', 'cache_deception', 'spiderfoot_sec', 'urls', 'login_pages', 'routes','services','keys','emails','waf','files','js','params','sourcemaps','cve','jsroutes','swagger','logic','surfacemap','git','cloud','admin','depconfusion','graphql_scan','api_sec','jwt_sec','crlf_sec','smuggling_sec','deser_sec', 'oast_sec'] %}
+            {% set section_ids = ['quickwins_attack','security','subdomains','takeover', 'ssrf_sec', 'open_redirect', 'host_injection', 'ssti_sec', 'xxe_sec', 'proto_pollution', 'oauth_sec', 'file_upload', 'api_versioning', 'email_security', 'google_dorks', 'cache_deception', 'spiderfoot_sec', 'urls', 'login_pages', 'routes','services','keys','emails','waf','files','js','params','sourcemaps','cve','jsroutes','swagger','logic','surfacemap','git','cloud','admin','depconfusion','graphql_scan','api_sec','jwt_sec','crlf_sec','smuggling_sec','deser_sec', 'oast_sec', 'cookies_sec', 'cors', 'headers', 'kiterunner'] %}
             {% for sid in section_ids %}
             <section class="section" id="section-{{ sid }}">
                 <div class="section-loading" id="loader-{{ sid }}">

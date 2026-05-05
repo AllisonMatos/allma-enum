@@ -36,7 +36,9 @@ def run_naabu(subs_file: Path, out_file: Path, mode: str):
     cmd = [naabu, "-list", str(subs_file), "-silent", "-Pn", "-rate", "3000"]
 
     # Portas HTTP comuns que devem sempre ser testadas
-    http_extra_ports = "80,443,8080,8443,8000,8888,3000,5000,9000,9443"
+    # V11.6: Adicionadas portas de serviços internos com histórico de bounties
+    # (Elasticsearch, Redis, MongoDB, Memcached, Node dev, Grafana, Jenkins, etc)
+    http_extra_ports = "80,443,8080,8443,8000,8888,3000,4443,5000,5432,6379,9000,9090,9200,9443,11211,27017"
 
     if mode == "all":
         cmd += ["-p", "-"]  # scan total

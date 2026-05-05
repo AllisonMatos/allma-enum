@@ -67,6 +67,7 @@ def execute_chain(target: str, chain: list, params: dict, deep: bool = False, st
         "25": "asn",
         "26": "screenshots",
         "27": "cache",
+        "28": "ssti",
         "99": "intelligence",
     }
 
