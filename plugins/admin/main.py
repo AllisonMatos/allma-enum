@@ -512,6 +512,8 @@ def run(context: dict):
     if not target:
         raise ValueError("Target required")
 
+    scope_root = (context.get("scope_root") or target).strip().lower()
+
     info(
         f"\n🟥───────────────────────────────────────────────────────────🟥\n"
         f"   🔐 {C.BOLD}{C.CYAN}ADMIN PANEL DISCOVERY{C.END}\n"
@@ -521,9 +523,12 @@ def run(context: dict):
 
     outdir = ensure_outdir(target, "admin")
 
-    # Ler URLs válidas
+    # Ler URLs válidas (V12: inclui listas do módulo urls)
     urls_files = [
         Path("output") / target / "domain" / "urls_valid.txt",
+        Path("output") / target / "urls" / "urls_alive.txt",
+        Path("output") / target / "urls" / "urls_200.txt",
+        Path("output") / target / "urls" / "url_completas.txt",
         Path("output") / target / "urls_valid.txt",
     ]
 
@@ -540,10 +545,12 @@ def run(context: dict):
     base_urls = set()
     for url in valid_urls:
         parsed = urlparse(url)
-        # 🛡️ Garantir que a URL base pertence ao TARGET escopo!
-        if parsed.netloc == target or parsed.netloc.endswith("." + target):
-            base = f"{parsed.scheme}://{parsed.netloc}"
-            base_urls.add(base)
+        host_key = (parsed.hostname or "").lower()
+        if not host_key or not (host_key == scope_root or host_key.endswith("." + scope_root)):
+            continue
+        # Preserva host:port quando httpx devolve porta explícita
+        base = f"{parsed.scheme}://{parsed.netloc.split('@')[-1]}"
+        base_urls.add(base)
 
     # Adicionar portas alternativas
     extended_bases = set(base_urls)
@@ -793,6 +800,29 @@ def run(context: dict):
     if unique_panels:
         output_file = outdir / "admin_panels.json"
         output_file.write_text(json.dumps(unique_panels, indent=2, ensure_ascii=False))
+        
+        # Bug 8 Fix: Ensure findings.json is generated so the intelligence aggregator picks it up
+        from plugins.validation import finding
+        normalized_findings = []
+        for panel in unique_panels:
+            normalized_findings.append(finding(
+                plugin="admin",
+                target=target,
+                title=f"Admin Panel Detected",
+                issue_type="ADMIN_PANEL_EXPOSED",
+                risk="MEDIUM" if not panel.get("metadata", {}).get("has_login_form") else "HIGH",
+                confidence="HIGH",
+                description="Painel administrativo exposto publicamente.",
+                url=panel["url"],
+                detection={"status": panel.get("metadata", {}).get("status")},
+                validation={"cms": panel.get("metadata", {}).get("cms")},
+                evidence={"observable_impact": "administrative_exposure"},
+                metadata=panel.get("metadata", {})
+            ))
+            
+        findings_file = outdir / "findings.json"
+        findings_file.write_text(json.dumps(normalized_findings, indent=2, ensure_ascii=False))
+        
         success(f"\n   🔐 {len(unique_panels)} admin panels encontrados!")
         success(f"   📂 Salvos em {output_file}")
 

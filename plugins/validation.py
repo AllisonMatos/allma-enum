@@ -84,6 +84,9 @@ def finding(
     detection: Optional[Dict[str, Any]] = None,
     validation: Optional[Dict[str, Any]] = None,
     metadata: Optional[Dict[str, Any]] = None,
+    triage_tier: str = "",
+    scope_status: str = "",
+    http_status: Optional[int] = None,
 ) -> Dict[str, Any]:
     risk_u = (risk or "LOW").upper()
     confidence_u = calibrate_confidence(risk_u, confidence, evidence)
@@ -93,7 +96,7 @@ def finding(
     if "request_raw" in evidence_dict and url and "curl_command" not in evidence_dict:
         evidence_dict["curl_command"] = _generate_curl(evidence_dict["request_raw"], url)
         
-    return {
+    out = {
         "schema_version": "1.0",
         "plugin": plugin,
         "target": target,
@@ -111,3 +114,10 @@ def finding(
         "evidence": evidence_dict,
         "metadata": metadata or {},
     }
+    if triage_tier:
+        out["triage_tier"] = triage_tier.upper()
+    if scope_status:
+        out["scope_status"] = scope_status.upper()
+    if http_status is not None:
+        out["http_status"] = int(http_status)
+    return out

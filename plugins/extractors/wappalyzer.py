@@ -156,6 +156,20 @@ TECH_FINGERPRINTS = {
         "scripts": [r"unpkg\.com"]
     },
     
+    # DevOps / Infrastructure
+    "Portainer": {
+        "html": [r"portainer", r"portainer\.io"],
+        "headers": {"server": r"Portainer"}
+    },
+    "Keycloak": {
+        "html": [r"keycloak", r"kc-login", r"kc-header"],
+        "cookies": ["KEYCLOAK_SESSION", "KEYCLOAK_IDENTITY"]
+    },
+    "Verdaccio": {
+        "html": [r"verdaccio", r"Verdaccio"],
+        "headers": {"x-verdaccio": r".*"}
+    },
+    
     # Outras
     "PHP": {
         "headers": {"x-powered-by": r"PHP/?([\d\.]+)?"}
@@ -301,6 +315,7 @@ def get_tech_category(tech_name: str) -> str:
         "Analytics": ["Google Analytics", "Google Tag Manager", "Facebook Pixel"],
         "Security": ["reCAPTCHA", "hCaptcha"],
         "Programming Language": ["PHP", "Java", "Node.js"],
+        "DevOps/Infra": ["Portainer", "Keycloak", "Verdaccio"]
     }
     
     for category, techs in categories.items():

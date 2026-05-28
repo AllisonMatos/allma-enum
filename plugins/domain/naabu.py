@@ -33,7 +33,8 @@ def run_naabu(subs_file: Path, out_file: Path, mode: str):
     # ============================================================
     info(f"{C.BOLD}{C.BLUE}🔧 Preparando comando Naabu...{C.END}")
 
-    cmd = [naabu, "-list", str(subs_file), "-silent", "-Pn", "-rate", "3000"]
+    # Reduzido rate de 3000 para 1000 para evitar exhaustion/crash durante execução em lote
+    cmd = [naabu, "-list", str(subs_file), "-silent", "-Pn", "-rate", "1000"]
 
     # Portas HTTP comuns que devem sempre ser testadas
     # V11.6: Adicionadas portas de serviços internos com histórico de bounties

@@ -90,7 +90,8 @@ def check_headers(url: str) -> dict | None:
                 "User-Agent": DEFAULT_USER_AGENT
             })
 
-            if resp.status_code >= 500:
+            # V12: só avaliar headers em respostas de aplicação (2xx/3xx). Erros/WAF geram falso positivo.
+            if not (200 <= resp.status_code < 400):
                 return None
 
             headers_lower = {k.lower(): v for k, v in resp.headers.items()}
@@ -162,12 +163,29 @@ def run(context: dict):
 
     outdir = ensure_outdir(target, "headers")
 
-    urls_file = Path("output") / target / "domain" / "urls_valid.txt"
+    from core.url_sources import primary_urls_txt_for_scan
+
+    urls_file = primary_urls_txt_for_scan(target)
+    if not urls_file.exists():
+        urls_file = Path("output") / target / "domain" / "urls_valid.txt"
     if not urls_file.exists():
         warn("⚠️ Nenhuma URL válida encontrada.")
         return []
 
-    valid_urls = [l.strip() for l in urls_file.read_text().splitlines() if l.strip()]
+    valid_urls = []
+    if urls_file.exists():
+        valid_urls.extend([l.strip() for l in urls_file.read_text().splitlines() if l.strip()])
+        
+    subs_active = Path("output") / target / "domain" / "subdomains_active.txt"
+    if subs_active.exists():
+        for sub in subs_active.read_text().splitlines():
+            if sub.strip():
+                valid_urls.append(f"https://{sub.strip()}")
+                valid_urls.append(f"http://{sub.strip()}")
+                
+    if not valid_urls:
+        warn("⚠️ Nenhuma URL válida encontrada para os headers.")
+        return []
 
     # Deduplicar por base URL
     seen = set()
@@ -215,6 +233,7 @@ def run(context: dict):
             risk, conf = "HIGH", "HIGH"
         elif r.get("score", 100) < 60:
             risk, conf = "MEDIUM", "MEDIUM"
+        st = int(r.get("status") or 0)
         normalized_findings.append(
             finding(
                 plugin="headers",
@@ -226,13 +245,16 @@ def run(context: dict):
                 description=f"Missing headers: {', '.join(missing_names[:8])}",
                 url=r.get("url", ""),
                 detection={"score": r.get("score", 0), "grade": r.get("grade", "N/A")},
-                validation={"http_status": r.get("status", 0)},
+                validation={"http_status": st},
                 evidence={
                     "request_raw": r.get("request_raw", ""),
                     "response_raw": r.get("response_raw", ""),
                     "observable_impact": f"missing_count={r.get('missing_count', 0)}",
                 },
                 metadata=r,
+                triage_tier="POTENTIAL",
+                scope_status="IN_SCOPE",
+                http_status=st,
             )
         )
     (outdir / "findings.json").write_text(json.dumps(normalized_findings, indent=2, ensure_ascii=False))

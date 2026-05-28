@@ -96,7 +96,7 @@ async def analyze_url_task(client, url, semaphore):
         # Layer 1: URL path contains auth keywords
         url_auth_keywords = _re.compile(
             r'\b(login|signin|sign-in|sign_in|logon|sso|auth|authenticate|'
-            r'account|access|entrar|conectar|acesso|portal|cas/login|'
+            r'account|access|entrar|conectar|acesso|cas/login|'
             r'oauth|saml|adfs|idp|identity)\b', _re.I
         )
         url_has_auth = bool(url_auth_keywords.search(url_lower))
@@ -122,7 +122,7 @@ async def analyze_url_task(client, url, semaphore):
             title_text = title_match.group(1)
             has_login_title = bool(_re.search(
                 r'login|sign\s*in|log\s*in|entrar|acesso|autenticação|authenticate|'
-                r'iniciar\s*sessão|conectar|sign\s*on|portal', title_text
+                r'iniciar\s*sessão|conectar|sign\s*on', title_text
             ))
         
         # Decision: any strong signal OR combination of weaker signals
@@ -160,7 +160,11 @@ async def analyze_url_task(client, url, semaphore):
                 "keys": keys,
                 "js_files": js_files,
                 "routes": routes,
-                "technologies": tech_result["technologies"]
+                "technologies": tech_result["technologies"],
+                "swagger_docs": [],
+                "git_exposed": [],
+                "hidden_params": [],
+                "logic_flaws": []
             }
             
         except Exception as e:
@@ -203,9 +207,10 @@ def run(context):
     OTIMIZADO: Deep Analysis via AsyncIO.
     """
 
-    target = context["target"]
+    target = context["target"].strip()
     ports_mode = context["ports"]
     closed_scope = context.get("closed_scope", [])
+    scope_root = (context.get("scope_root") or target).strip()
 
     info(
         f"\n[DOMAIN] Iniciando modulo\n"
@@ -233,7 +238,7 @@ def run(context):
 
         # === ETAPA 2: MULTI-SOURCE DISCOVERY ===
         info(f"{C.BOLD}{C.BLUE}[2/8] Multi-source Discovery (crt.sh, haktrails, gau, waybackurls)...{C.END}")
-        discover_subdomains(target, subs_file)
+        discover_subdomains(target, subs_file, outdir)
         
         # === ETAPA 2.2: HORIZONTAL DOMAIN DISCOVERY ===
         from .horizontal import discover_horizontal
@@ -248,11 +253,23 @@ def run(context):
 
     # === ETAPA 3: DNS RESOLUTION + WILDCARD + CDN FILTER ===
     info(f"{C.BOLD}{C.BLUE}[3/8] DNS Resolution + Wildcard Detection + CDN Filter...{C.END}")
-    resolve_and_filter(target, subs_file, outdir)
+    dns_res = resolve_and_filter(target, subs_file, outdir)
+    resolved_subs = list(dns_res.get("resolved", {}).keys())
+
+    subs_active_file = outdir / "subdomains_active.txt"
+    if resolved_subs:
+        subs_active_file.write_text("\n".join(resolved_subs) + "\n")
+    else:
+        # Fallback de segurança se falhar a resolução (ex: WAF bloqueando DNS) mas quisermos tentar na sorte
+        # ou apenas criar arquivo vazio para pular suavemente
+        subs_active_file.write_text("")
 
     # === ETAPA 4: NAABU (PORTAS) ===
     info(f"{C.BOLD}{C.BLUE}[4/8] Varredura de portas (naabu)...{C.END}")
-    run_naabu(subs_file, ports_raw, ports_mode)
+    if resolved_subs:
+        run_naabu(subs_active_file, ports_raw, ports_mode)
+    else:
+        warn(f"   ⚠️ Nenhum IP resolvido no DNS. Pulando Naabu para evitar falhas.")
 
     # === ETAPA 5: ORGANIZAR PORTAS ===
     info(f"{C.BOLD}{C.BLUE}[5/8] Organizando portas encontradas...{C.END}")
@@ -260,7 +277,8 @@ def run(context):
 
     # === ETAPA 6: GERAR URLS ===
     info(f"{C.BOLD}{C.BLUE}[6/8] Gerando URLs possiveis...{C.END}")
-    build_urls(ports_raw, urls_file, subs_file=subs_file)
+    # Usa a lista ativa para gerar URLs fallback base (http/https na porta 80/443)
+    build_urls(ports_raw, urls_file, subs_file=subs_active_file)
 
     # === ETAPA 7: VALIDAR URLS ===
     info(f"{C.BOLD}{C.BLUE}[7/8] Validando URLs ativas...{C.END}")
@@ -299,50 +317,79 @@ def run(context):
                     katana_cmd = [
                         katana_bin,
                         "-list", str(round_input),
-                        "-d", "2",
-                        "-jc",                    # JS crawling
-                        "-kf", "all",             # known files
-                        "-aff",                   # V11.6: Automatic form fill (descobre URLs atrás de formulários)
-                        "-fx",                    # V11.6: Extract from XML/JSON responses
-                        "-strategy", "depth-first",  # V11.6: Depth-first encontra endpoints escondidos mais rápido
+                        "-d", "3",
+                        "-jc",
+                        "-jsl",                       # Static JS link scraping
+                        "-kf", "all",                 # Known files (robots, sitemaps)
+                        "-aff",                       # Automatic form fill
+                        "-fx",                        # Extract from JSON/XML
+                        "-headless",
+                        "-strategy", "depth-first",
                         "-ef", "css,png,jpg,jpeg,gif,svg,ico,woff,woff2,ttf,eot",
+                        "-ct", "300",                 # 5 min total crawl timeout
+                        "-retry", "2",                # Retry failed requests
+                        "-c", "20", "-p", "5",        # Concurrency tuning
+                        "-H", "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                        "-j",                         # Output as JSONL for rich data
                         "-silent",
                         "-timeout", "20",
-                        "-rate-limit", "50",
+                        "-rate-limit", "100",
                         "-o", str(katana_raw),
                     ]
-                    import time
+                    from core.timeouts import smart_wait_process, KATANA_HARD_TIMEOUT, STALE_TIMEOUT
                     proc = subprocess.Popen(katana_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                    start_time = time.time()
-                    
-                    while proc.poll() is None:
-                        if time.time() - start_time > 10800:
-                            warn(f"   Katana R{round_num}: timeout atingido (3h)")
-                            proc.kill()
-                            break
-                            
-                        count = 0
-                        if katana_raw.exists():
-                            try:
-                                wc_res = subprocess.run(["wc", "-l", str(katana_raw)], capture_output=True, text=True)
-                                if wc_res.stdout:
-                                    count = int(wc_res.stdout.split()[0])
-                            except Exception:
-                                pass
-                                
-                        elapsed = time.time() - start_time
-                        mins = int(elapsed // 60)
-                        secs = int(elapsed % 60)
-                        print(f"   ⏳ Katana R{round_num}: {mins}m{secs:02d}s | URLs: {count}    ", end="\r")
-                        time.sleep(2)
-                        
-                    print("") # Limpa o \r
+                    smart_wait_process(
+                        proc, katana_raw,
+                        hard_timeout=KATANA_HARD_TIMEOUT,
+                        stale_timeout=STALE_TIMEOUT,
+                        label=f"Katana R{round_num}"
+                    )
                     
                     if katana_raw.exists():
                         from core.config import is_in_scope
-                        urls = set(l.strip() for l in katana_raw.read_text(errors="ignore").splitlines() if l.strip() and is_in_scope(l.strip(), target))
+                        import json
+                        
+                        urls = set()
+                        forms = []
+                        params_list = []
+                        
+                        try:
+                            for line in katana_raw.read_text(errors="ignore").splitlines():
+                                if not line.strip(): continue
+                                try:
+                                    data = json.loads(line)
+                                    u = data.get("request", {}).get("endpoint") or data.get("request", {}).get("url")
+                                    if u and is_in_scope(u, target, scope_root):
+                                        urls.add(u)
+                                        
+                                    # Extract forms for report
+                                    if data.get("response", {}).get("forms"):
+                                        for f in data["response"]["forms"]:
+                                            f["source"] = u
+                                            forms.append(f)
+                                            
+                                    # Extract params for intelligence
+                                    if data.get("request", {}).get("params"):
+                                        params_list.append({
+                                            "url": u,
+                                            "params": data["request"]["params"]
+                                        })
+                                except Exception:
+                                    # Fallback if line is not JSON
+                                    if is_in_scope(line.strip(), target, scope_root):
+                                        urls.add(line.strip())
+                                        
+                            # Save rich data for report
+                            if forms:
+                                (outdir / "katana_forms_all.json").write_text(json.dumps(forms, indent=2))
+                            if params_list:
+                                (outdir / "katana_params_all.json").write_text(json.dumps(params_list, indent=2))
+                                
+                        except Exception as e:
+                            warn(f"   Erro ao processar JSON da Katana: {e}")
+                            
                         round_discovered.update(urls)
-                        info(f"   Katana R{round_num}: {len(urls)} URLs brutas (In-Scope)")
+                        info(f"   Katana R{round_num}: {len(urls)} URLs válidas (In-Scope)")
                 except Exception as e:
                     warn(f"   Katana R{round_num}: {e}")
             
@@ -359,33 +406,15 @@ def run(context):
                         "--other-source", "--include-subs", "-q",
                         "--js",                   # V11.6: Analisa conteúdo de .js para extrair URLs internas
                     ]
-                    import time
+                    from core.timeouts import smart_wait_process, GOSPIDER_HARD_TIMEOUT, STALE_TIMEOUT, count_dir_lines
                     proc = subprocess.Popen(gs_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                    start_time = time.time()
-                    
-                    while proc.poll() is None:
-                        if time.time() - start_time > 10800:
-                            warn(f"   GoSpider: timeout atingido (3h)")
-                            proc.kill()
-                            break
-                            
-                        # Contar as linhas de todos os arquivos gerados pelo GoSpider no diretorio
-                        count = 0
-                        if gospider_dir.exists():
-                            try:
-                                wc_res = subprocess.run(["find", str(gospider_dir), "-type", "f", "-exec", "cat", "{}", "+"], capture_output=True)
-                                if wc_res.stdout:
-                                    count = wc_res.stdout.count(b'\n')
-                            except Exception:
-                                pass
-                                
-                        elapsed = time.time() - start_time
-                        mins = int(elapsed // 60)
-                        secs = int(elapsed % 60)
-                        print(f"   ⏳ GoSpider: {mins}m{secs:02d}s | URLs estimadas: {count}    ", end="\r")
-                        time.sleep(2)
-                        
-                    print("") # Limpa o \r
+                    smart_wait_process(
+                        proc, gospider_dir,
+                        hard_timeout=GOSPIDER_HARD_TIMEOUT,
+                        stale_timeout=STALE_TIMEOUT,
+                        label="GoSpider",
+                        count_fn=count_dir_lines
+                    )
                     
                     import re as _gs_re
                     from core.config import is_in_scope
@@ -395,7 +424,7 @@ def run(context):
                             try:
                                 for line in out_file.read_text(errors="ignore").splitlines():
                                     for found_url in url_pattern.findall(line):
-                                        if is_in_scope(found_url, target):
+                                        if is_in_scope(found_url, target, scope_root):
                                             round_discovered.add(found_url)
                             except Exception:
                                 pass
@@ -587,9 +616,23 @@ def run(context):
 
         # LOGIN PAGES
         if login_pages:
+            # Melhor deduplicação: preferir https e manter url original sem alterar lowercase permanentemente se não precisar, 
+            # mas deduplicar no ignore case.
+            final_logins = {}
+            for lp in login_pages:
+                clean = lp.strip()
+                if not clean: continue
+                key = clean.lower().rstrip("/")
+                key_no_scheme = key.replace("https://", "").replace("http://", "")
+                
+                if key_no_scheme not in final_logins:
+                    final_logins[key_no_scheme] = clean
+                else:
+                    if clean.startswith("https://") and final_logins[key_no_scheme].startswith("http://"):
+                        final_logins[key_no_scheme] = clean
             with open(login_pages_file, "w") as f:
-                f.write("\n".join(sorted(set(login_pages))) + "\n")
-            info(f"   + {len(set(login_pages))} paginas de login encontradas!")
+                f.write("\n".join(sorted(final_logins.values())) + "\n")
+            info(f"   + {len(final_logins)} paginas de login encontradas!")
             
         # SWAGGER DOCS
         if all_swagger:

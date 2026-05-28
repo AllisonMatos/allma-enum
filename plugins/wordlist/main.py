@@ -28,7 +28,9 @@ RE_WORD = re.compile(r"[A-Za-z0-9\-_]{3,60}")
 RE_PATH_SEG = re.compile(r"/([A-Za-z0-9\-_]{2,80})")
 STOPWORDS = {
     "www", "com", "http", "https", "api", "static", "assets", "index", "home",
-    "true", "false", "null", "undefined", "json", "html", "css", "js"
+    "true", "false", "null", "undefined", "json", "html", "css", "js",
+    "ver", "fonts", "store", "prod", "api_key", "glyph", "woff", "utf",
+    "jquery", "bootstrap", "cdn", "googleapis", "gstatic", "typekit",
 }
 
 def read_lines(p: Path):
@@ -55,6 +57,7 @@ def extract_tokens_from_js(text):
 def run(context: dict):
     start = time.time()
     target = context.get("target")
+    scope_root = (context.get("scope_root") or target or "").strip()
 
     if not target:
         raise ValueError("context['target'] é obrigatório para plugin wordlist")
@@ -76,9 +79,11 @@ def run(context: dict):
     js_words_file = outdir / "js_words.txt"
     combined_file = outdir / "combined.txt"
 
-    # Fontes da wordlist
+    from core.url_sources import primary_urls_txt_for_scan
+
+    # Fontes da wordlist (V12: prioriza URLs vivas 2xx)
     sources = [
-        Path("output") / target / "urls" / "urls_200.txt",
+        primary_urls_txt_for_scan(target),
         Path("output") / target / "urls" / "url_completas.txt",
         Path("output") / target / "files" / "files_by_extension.txt",
         Path("output") / target / "jsscanner" / "jsscanner_list.txt",
@@ -101,8 +106,12 @@ def run(context: dict):
 
         info(f"   🔎 Lendo {C.YELLOW}{src}{C.END} ({len(lines)} linhas)")
 
+        from core.config import is_in_scope
+
         for l in lines:
             if l.startswith("http"):
+                if not is_in_scope(l, target, scope_root):
+                    continue
                 segs, params = extract_from_url(l)
                 path_terms.update(segs)
                 param_terms.update(params)

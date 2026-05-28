@@ -12,7 +12,7 @@ Enum-Allma é uma suíte completa de automação para pentest e bug bounty, foca
 
 ## 🚀 Capacidades
 
-- **27 módulos** de reconhecimento e análise de segurança em pipeline automatizado
+- **36 módulos** de reconhecimento e análise de segurança em pipeline automatizado
 - **OAST nativo** com Interactsh para detecção de falhas blind (SSRF, RCE, XXE out-of-band)
 - **Relatório HTML interativo** com dashboard dark-mode, D3.js network graph, export CSV e resumo executivo
 - **Scope enforcement** — filtra automaticamente URLs de domínios fora do escopo (SSO, CDN, analytics)
@@ -35,29 +35,39 @@ Enum-Allma é uma suíte completa de automação para pentest e bug bounty, foca
 | 6 | **fingerprint** | Stack de tecnologias + certificados TLS (CN, SANs, expiração) |
 | 7 | **endpoint** | Extração de endpoints API com filtro de extensões estáticas |
 | 8 | **wordlist** | Geração de dicionários customizados do alvo para brute force |
+| 25 | **asn** | CIDR/ASN Mapping via Team Cymru DNS |
+| 26 | **screenshots** | Captura visual de URLs via gowitness |
+| 35 | **github_dorks** | GitHub/GitLab Dorking Ativo |
+| 37 | **vhost** | Virtual Host Discovery (ffuf) |
 
 ### Análise de Segurança
 | # | Módulo | Descrição |
 |---|--------|-----------|
 | 9 | **sourcemaps** | Caça source maps (.map) expostos em produção |
-| 10 | **cve** | Lookup de CVEs via Searchsploit + NVD API |
+| 10 | **cve** | Varredura de CVEs conhecidas via Searchsploit + NVD API |
 | 11 | **admin** | Discovery de painéis admin (~80 paths) + bypass 403 + tags de categoria |
 | 12 | **cors** | CORS Misconfiguration Scanner |
-| 13 | **takeover** | Subdomain Takeover detection (AWS S3, Azure, GitHub Pages, Vercel) |
-| 14 | **headers** | HTTP Security Headers grading (A-F) |
-| 15 | **waf** | WAF Detection passivo (Cloudflare, Akamai, AWS WAF) |
-| 16 | **emails** | Email Harvester passivo com classificação internal/external |
-| 17 | **graphql** | Introspection + Batch Queries + Dangerous Mutations |
-| 18 | **jwt_analyzer** | JWT Decoder + teste bypass alg:none |
-| 19 | **api_fuzzer** | Fuzzer de endpoints API com Kiterunner |
-| 20 | **cloud** | Cloud Storage Scanner (S3, Azure Blobs, GCP Buckets) |
-| 21 | **host_header_injection** | Host Header Injection detection |
+| 13 | **takeover** | Subdomain Takeover Check (AWS S3, Azure, GitHub Pages, Vercel) |
+| 14 | **headers** | Análise de Security Headers grading (A-F) |
+| 15 | **waf** | Detecção de WAF passiva e ativa |
+| 16 | **emails** | Extração de e-mails com classificação internal/external |
+| 17 | **graphql** | GraphQL Introspection + Batch Queries + Dangerous Mutations |
+| 18 | **jwt_analyzer** | Análise de JWT Tokens + teste bypass alg:none |
+| 19 | **api_fuzzer** | API Fuzzer de endpoints com Kiterunner |
+| 20 | **cloud** | Cloud Recon (S3/Azure/GCP) |
+| 21 | **host_header** | Host Header Injection detection |
 | 22 | **email_security** | SPF/DMARC/DKIM Check |
-| 23 | **google_dorks** | Gerador de Google Dorks customizados |
-| 24 | **cookies** | Análise de segurança de cookies (HttpOnly, Secure, SameSite) |
-| 25 | **asn** | CIDR/ASN Mapping via Team Cymru DNS |
-| 26 | **screenshots** | Captura visual de URLs via gowitness |
-| 27 | **all** | Execução completa de todos os módulos |
+| 23 | **google_dorks** | Google Dorks Generator |
+| 24 | **cookies** | Análise de Segurança de Cookies |
+| 27 | **cache** | Web Cache Vulnerabilities Scanner |
+| 28 | **ssti** | Server-Side Template Injection Scanner |
+| 30 | **ssrf** | SSRF Scanner (Active Validation) |
+| 31 | **bypass403** | 403 Bypass Scanner |
+| 32 | **crlf** | CRLF Injection Scanner |
+| 33 | **nuclei** | Nuclei Vuln Scanner Automático |
+| 36 | **wayback_diff** | Wayback JS Snapshot Diff (Histórico de alterações em JS) |
+| 38 | **cspt** | Client-Side Path Traversal Scanner (Análise Estática e Dinâmica) |
+| 34 | **all** | Execução completa de todos os módulos |
 
 ### Pós-Scan
 | Módulo | Descrição |

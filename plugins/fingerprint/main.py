@@ -202,12 +202,14 @@ def run(context: dict):
     summary_file = outdir / "fingerprint_summary.txt"
     cert_file = outdir / "cert_info.txt"
 
-    urls_200 = Path("output") / target / "urls" / "urls_200.txt"
+    from core.url_sources import primary_urls_txt_for_scan
+
+    urls_200 = primary_urls_txt_for_scan(target)
 
     # ==========================================================================
     # 🌐 ETAPA 1 — Ler URLs
     # ==========================================================================
-    
+
     if not urls_200.exists():
         warn(f"⚠️ Arquivo não encontrado: {C.RED}{urls_200}{C.END}")
         return []

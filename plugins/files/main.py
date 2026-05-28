@@ -37,10 +37,7 @@ def detect_extension_from_url(url: str) -> str:
             return m.group(1).lower()
 
         # tenta achar extensão no querystring
-        query = unquote(p.query or "")
-        m2 = re.search(r"([a-zA-Z0-9_\-]+\.(?:[a-zA-Z0-9.]+))", query)
-        if m2:
-            return m2.group(1).split(".")[-1].lower()
+        # V12: removido — gerava extensões falsas (.prod, .1) a partir de query strings
 
     except Exception:
         pass
@@ -147,12 +144,14 @@ def run(context: dict):
     )
 
     outdir = ensure_outdir(target, "files")
-    input_file = Path("output") / target / "urls" / "urls_200.txt"
+    from core.url_sources import primary_urls_txt_for_scan
+
+    input_file = primary_urls_txt_for_scan(target)
 
     # ======================================================
     # 📄 ETAPA 1 — Ler URLs
     # ======================================================
-    info(f"{C.BOLD}{C.BLUE}📄 Lendo URLs a partir de urls_200.txt...{C.END}")
+    info(f"{C.BOLD}{C.BLUE}📄 Lendo URLs a partir de {input_file.name}...{C.END}")
 
     if not input_file.exists():
         error(f"❌ Entrada não encontrada: {C.RED}{input_file}{C.END}")

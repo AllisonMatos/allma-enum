@@ -8,6 +8,7 @@ REQUIRED_PYTHON = [
     "httpx",
     "requests",
     "dns",  # dnspython
+    "playwright",
 ]
 
 # Ferramentas obrigatórias do sistema
@@ -116,7 +117,12 @@ def main():
     if missing_py:
         print(f"{YELLOW}[!] Run the following command to install Python dependencies:{RESET}")
         print(f"    pip install -r requirements.txt")
-        print(f"    (Ou especificamente: pip install {' '.join(missing_py)})\n")
+        print(f"    (Ou especificamente: pip install {' '.join(missing_py)})")
+        if "playwright" in missing_py:
+            print(f"    {YELLOW}[!] ATENÇÃO: Após instalar o playwright, execute:{RESET}")
+            print(f"    playwright install chromium\n")
+        else:
+            print("\n")
         
     all_missing_tools = missing_sys + missing_opt
     if all_missing_tools:

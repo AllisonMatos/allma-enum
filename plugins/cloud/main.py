@@ -56,24 +56,36 @@ CLOUD_PERMUTATIONS = [
 ]
 
 def generate_bucket_names(target_domain: str) -> list:
-    """Gera lista de candidatos a buckets baseados no domínio"""
+    """Gera lista de candidatos a buckets baseados no domínio raiz e subdomínios reais."""
     parts = target_domain.split(".")
-    # Heurística: para domínios com 3+ partes (ex: api.example.com.br),
-    # pegar o penúltimo segmento significativo como brand.
-    # Para domínios com 2 partes (example.com), pegar o primeiro.
     if len(parts) >= 3 and parts[-1] in ("br", "uk", "au", "jp", "in", "za", "mx", "ar", "co"):
-        # ccTLD composto (com.br, co.uk, etc.)
-        base = parts[-3] if len(parts) >= 3 else parts[0]
+        base_words = [parts[-3] if len(parts) >= 3 else parts[0]]
     elif len(parts) >= 3:
-        # Subdomínio (api.example.com) → pegar 'example'
-        base = parts[-2]
+        base_words = [parts[-2]]
     else:
-        base = parts[0]
+        base_words = [parts[0]]
+        
+    # Ler subdomínios reais para permutar
+    subs_file = Path("output") / target_domain / "domain" / "subdomains.txt"
+    if subs_file.exists():
+        subs = [l.strip() for l in subs_file.read_text().splitlines() if l.strip()]
+        for sub in subs:
+            sub_parts = sub.split(".")
+            if len(sub_parts) > 2:
+                # Add the first part (e.g. 'api' from 'api.target.com')
+                if sub_parts[0] not in base_words and sub_parts[0] != "www":
+                    base_words.append(f"{sub_parts[0]}-{base_words[0]}")
+                    base_words.append(f"{base_words[0]}-{sub_parts[0]}")
+                    base_words.append(sub_parts[0])
+                    
+    # Limitar para evitar milhões de permutações
+    base_words = list(set(base_words))[:50]
     
     candidates = []
-    for fmt in CLOUD_PERMUTATIONS:
-        name = fmt.format(target=base)
-        candidates.append(name)
+    for word in base_words:
+        for fmt in CLOUD_PERMUTATIONS:
+            name = fmt.format(target=word)
+            candidates.append(name)
         
     return list(set(candidates))
 
@@ -116,7 +128,9 @@ def check_bucket(name: str):
         try:
              dns.resolver.resolve(f"{name}.blob.core.windows.net", 'A')
              r = httpx.head(azure_url, timeout=3)
-             results.append({"provider": "Azure", "name": name, "status": "EXIST", "url": azure_url})
+             if r.status_code in (200, 403):
+                 status = "OPEN" if r.status_code == 200 else "PROTECTED"
+                 results.append({"provider": "Azure", "name": name, "status": status, "url": azure_url})
         except Exception:
              pass
     except:
@@ -259,12 +273,18 @@ def run(context: dict):
         json_file.write_text(json.dumps(found_buckets, indent=2, ensure_ascii=False))
         for b in found_buckets:
             perms = b.get("permissions", [])
+            status = (b.get("status") or "").upper()
+            # V12: bucket só "PROTECTED"/403 não é vulnerabilidade
+            if status == "PROTECTED" and not perms:
+                continue
             risk = "MEDIUM"
             conf = "MEDIUM"
             if "WRITE" in perms:
                 risk, conf = "CRITICAL", "HIGH"
-            elif "LIST" in perms or b.get("status") == "OPEN":
+            elif "LIST" in perms or status == "OPEN":
                 risk, conf = "HIGH", "HIGH"
+            elif not perms and status != "OPEN":
+                continue
             normalized_findings.append(
                 finding(
                     plugin="cloud",

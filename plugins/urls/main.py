@@ -3,9 +3,14 @@
 plugins/urls/main.py - Coleta URLs a partir das URLs válidas do módulo domain
 e valida novamente com httpx.
 
-Saídas:
-  output/<target>/urls/url_completas.txt
-  output/<target>/urls/urls_200.txt
+Saídas principais:
+  output/<target>/urls/url_completas.txt   — todas as URLs dedupadas in-scope (pré-httpx)
+  output/<target>/urls/urls_200.txt        — apenas 2xx (superfície viva; compatível com plugins)
+  output/<target>/urls/urls_alive.txt      — cópia explícita das 2xx
+  output/<target>/urls/urls_protected.txt  — 401/403/405
+  output/<target>/urls/urls_dead.txt       — 404/410/5xx
+  output/<target>/urls/urls_all.json       — registro completo por URL (status, title, content-type, …)
+  output/<target>/urls/data_quality.json   — métricas de higiene do scan
 """
 
 import shutil
@@ -17,7 +22,25 @@ from plugins import ensure_outdir
 
 from ..output import info, success, warn, error
 from .utils import require_binary
-WANT_STATUS = "200,301,302,307,308,401,403,404,405,500"
+WANT_STATUS = "200,201,204,301,302,303,307,308,401,403,404,405,500"
+
+STATIC_PATH_SUFFIXES = (
+    ".css", ".png", ".jpg", ".jpeg", ".gif", ".svg", ".ico", ".webp", ".woff", ".woff2",
+    ".ttf", ".eot", ".map", ".pdf", ".zip",
+)
+
+
+def _path_only(url: str) -> str:
+    from urllib.parse import urlparse
+    try:
+        return (urlparse(url).path or "").split("?")[0].lower()
+    except Exception:
+        return ""
+
+
+def _is_static_path(url: str) -> bool:
+    p = _path_only(url)
+    return any(p.endswith(s) for s in STATIC_PATH_SUFFIXES)
 
 
 def smart_normalize_urls(urls: list[str]) -> list[str]:
@@ -61,37 +84,51 @@ def smart_normalize_urls(urls: list[str]) -> list[str]:
 
 
 # ============================================================
-# Validação com httpx
+# Validação com httpx + buckets (V12)
 # ============================================================
-def httpx_validate(in_file: Path, out_file: Path, want_status: str = WANT_STATUS):
+def httpx_validate(
+    in_file: Path,
+    out_file: Path,
+    *,
+    target: str,
+    scope_root: str,
+    want_status: str = WANT_STATUS,
+) -> list[str]:
+    from core.config import is_in_scope
+    import json as _json
+
     info(f"{C.BOLD}{C.BLUE}🔎 Validando URLs com httpx (mc={want_status})...{C.END}")
 
     httpx = require_binary("httpx")
-
-    # JSON output com status code para alimentar o report
     json_out_file = out_file.with_suffix(".json")
+    outdir = out_file.parent
+    urls_all_path = outdir / "urls_all.json"
 
     cmd = [
         httpx,
         "-l", str(in_file),
         "-mc", want_status,
-        "-threads", "100",   # Aumentado para 100
-        "-retries", "1",     # Reduzido de 2 para 1 para economizar tempo
-        "-timeout", "10",    # Reduzido de 15 para 10s
+        "-threads", "100",
+        "-retries", "1",
+        "-timeout", "10",
         "-random-agent",
         "-no-color",
         "-follow-redirects",
         "-json",
         "-sc",
+        "-title",
+        "-ct",
+        "-location",
         "-o", str(json_out_file),
         "-silent",
     ]
 
+    from core.timeouts import HTTPX_TIMEOUT
+
     info(f"   CMD: {' '.join(cmd)}")
 
-    # Timeout removido ou ampliado drasticamente (10800 = 3h) para mega-scopes
-    result = subprocess.run(cmd, capture_output=True, text=True, timeout=10800)
-    
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=HTTPX_TIMEOUT)
+
     if result.stderr:
         stderr_clean = result.stderr.strip()[:500]
         if stderr_clean:
@@ -100,73 +137,190 @@ def httpx_validate(in_file: Path, out_file: Path, want_status: str = WANT_STATUS
     if result.returncode != 0:
         warn(f"httpx exit code: {result.returncode}")
 
-    # Verificar se output JSON existe e tem dados
     if not json_out_file.exists() or json_out_file.stat().st_size == 0:
-        # Fallback: tentar via pipe (sem -o, com -json -sc)
         warn("⚠️ httpx -o produziu arquivo vazio. Tentando via pipe...")
-        cmd_pipe = [
-            httpx,
-            "-l", str(in_file),
-            "-mc", want_status,
-            "-threads", "100",
-            "-retries", "1",
-            "-timeout", "10",
-            "-random-agent",
-            "-no-color",
-            "-follow-redirects",
-            "-json",
-            "-sc",
-            "-silent",
-        ]
-        result2 = subprocess.run(cmd_pipe, capture_output=True, text=True, timeout=10800)
+        cmd_pipe = [c for c in cmd if c not in ("-o", str(json_out_file))]
+        result2 = subprocess.run(cmd_pipe, capture_output=True, text=True, timeout=HTTPX_TIMEOUT)
         if result2.stdout and result2.stdout.strip():
             json_out_file.write_text(result2.stdout)
-            info(f"   ✅ Fallback via pipe funcionou!")
+            info("   ✅ Fallback via pipe funcionou!")
         else:
             if result2.stderr:
                 warn(f"httpx pipe stderr: {result2.stderr.strip()[:300]}")
-            warn("⚠️ Nenhuma URL válida encontrada via httpx.")
+            warn("⚠️ Nenhuma resposta httpx.")
             return []
 
-    # Parse JSONL e extrair URLs + status codes
-    import json as _json
-    urls = []
-    url_status_map = []
+    def _to_int(v):
+        try:
+            return int(v)
+        except (TypeError, ValueError):
+            return 0
+
+    all_rows = []
+    dropped_oos = 0
+
     for line in json_out_file.read_text(errors="ignore").splitlines():
         line = line.strip()
         if not line:
             continue
         try:
             obj = _json.loads(line)
-            url = obj.get("url", obj.get("input", "")).strip()
-            status = obj.get("status_code", obj.get("status-code", 0))
-            if url:
-                urls.append(url)
-                url_status_map.append({"url": url, "status_code": status})
         except _json.JSONDecodeError:
-            # Linha não é JSON (fallback: tratar como URL plain text)
             if line.startswith("http"):
-                urls.append(line)
-                url_status_map.append({"url": line, "status_code": 0})
+                all_rows.append({
+                    "url": line,
+                    "input": line,
+                    "final_url": line,
+                    "status_code": 0,
+                    "content_type": "",
+                    "title": "",
+                    "location": "",
+                    "source": "httpx-raw-line",
+                    "scope_status": "unknown",
+                })
+            continue
 
-    urls = sorted(set(urls))
-    
-    # Salvar plain text (retrocompatibilidade)
-    out_file.write_text("\n".join(urls) + "\n")
-    
-    # Salvar JSON estruturado (deduplicado por URL, mantendo o status)
-    seen = set()
-    deduped = []
-    for item in url_status_map:
-        if item["url"] not in seen:
-            seen.add(item["url"])
-            deduped.append(item)
-    deduped.sort(key=lambda x: x["url"])
-    json_out_file.write_text(_json.dumps(deduped, indent=2, ensure_ascii=False))
+        url = (obj.get("url") or obj.get("input") or "").strip()
+        if not url:
+            continue
+        if not is_in_scope(url, target, scope_root):
+            dropped_oos += 1
+            continue
 
-    success(f"✨ {len(urls)} URLs válidas salvas em: {C.GREEN}{out_file}{C.END}")
-    success(f"   📊 Status codes salvos em: {C.GREEN}{json_out_file}{C.END}")
-    return urls
+        sc = _to_int(obj.get("status_code", obj.get("status-code")))
+        final_u = (obj.get("final_url") or url).strip()
+        row = {
+            "url": url,
+            "input": (obj.get("input") or url).strip(),
+            "final_url": final_u,
+            "status_code": sc,
+            "content_type": (obj.get("content_type") or obj.get("content-type") or "").strip(),
+            "title": (obj.get("title") or "").strip()[:300],
+            "location": (obj.get("location") or "").strip(),
+            "source": "httpx",
+            "scope_status": "in_scope",
+            "chain": obj.get("chain") or obj.get("chain_status_codes") or [],
+        }
+        all_rows.append(row)
+
+    # Dedup por URL mantendo o pior status (maior) para diagnóstico
+    by_url: dict = {}
+    for r in all_rows:
+        u = r["url"]
+        if u not in by_url or r["status_code"] > by_url[u]["status_code"]:
+            by_url[u] = r
+
+    deduped = sorted(by_url.values(), key=lambda x: x["url"])
+    urls_all_path.write_text(_json.dumps(deduped, indent=2, ensure_ascii=False))
+
+    alive, protected, dead, assets = [], [], [], []
+    for r in deduped:
+        u = r["url"]
+        sc = r["status_code"]
+        if _is_static_path(u):
+            assets.append(u)
+        if 200 <= sc <= 299:
+            alive.append(u)
+        elif sc in (401, 403, 405):
+            protected.append(u)
+        elif sc == 404 or sc == 410 or sc >= 500:
+            dead.append(u)
+
+    alive = sorted(set(alive))
+    protected = sorted(set(protected))
+    dead = sorted(set(dead))
+    assets = sorted(set(assets))
+
+    out_file.write_text("\n".join(alive) + ("\n" if alive else ""))
+    (outdir / "urls_alive.txt").write_text("\n".join(alive) + ("\n" if alive else ""))
+    (outdir / "urls_protected.txt").write_text("\n".join(protected) + ("\n" if protected else ""))
+    (outdir / "urls_dead.txt").write_text("\n".join(dead) + ("\n" if dead else ""))
+    (outdir / "urls_assets.txt").write_text("\n".join(assets) + ("\n" if assets else ""))
+
+    # Retrocompat: urls_200.json com todos os in-scope sondados (mapa de status no report)
+    slim = [{"url": r["url"], "status_code": r["status_code"], "final_url": r["final_url"], "title": r["title"]} for r in deduped]
+    json_out_file.write_text(_json.dumps(slim, indent=2, ensure_ascii=False))
+
+    # V12: Heuristic login detection based on title, final_url, and SPA inference
+    login_keywords = ["login", "signin", "sign in", "sign-in", "logon", "autentica", "auth", "sso"]
+    login_pages = []
+    login_pages_file = outdir.parent / "domain" / "login_pages.txt"
+    if login_pages_file.exists():
+        login_pages.extend([l.strip() for l in login_pages_file.read_text(errors="ignore").splitlines() if l.strip()])
+        
+    # Phase 1: Direct keyword match on title/final_url
+    for r in deduped:
+        u = r["url"]
+        if _is_static_path(u):
+            continue
+        title_lower = r["title"].lower()
+        final_lower = r["final_url"].lower()
+        if any(k in title_lower for k in login_keywords) or any(f"/{k}" in final_lower for k in login_keywords) or any(f"{k}=" in final_lower for k in login_keywords):
+            login_pages.append(u)
+    
+    # Phase 2: SPA inference — if host has /api/signin, /signin, /login endpoint,
+    # then the base URL of that host is also a login page (JS-redirect pattern)
+    from urllib.parse import urlparse as _lp
+    hosts_with_auth_endpoints = set()
+    for r in deduped:
+        path_lower = _lp(r["url"]).path.lower()
+        if any(f"/{k}" in path_lower for k in ["signin", "login", "logon", "auth", "sign-in"]):
+            host = _lp(r["url"]).netloc
+            hosts_with_auth_endpoints.add(host)
+    
+    # Add base URLs for hosts that have auth endpoints
+    for r in deduped:
+        parsed = _lp(r["url"])
+        if parsed.netloc in hosts_with_auth_endpoints and parsed.path in ("", "/") and r["status_code"] == 200:
+            if r["url"] not in login_pages:
+                login_pages.append(r["url"])
+
+    # Phase 3: HTTP 401 Unauthorized (Basic Auth / Bearer)
+    for r in deduped:
+        if r.get("status_code") == 401:
+            login_pages.append(r["url"])
+            
+    if login_pages:
+        login_pages_file.parent.mkdir(parents=True, exist_ok=True)
+        # Merge com dados existentes preservando case e preferindo https
+        final_logins = {}
+        if login_pages_file.exists():
+            for l in login_pages_file.read_text(errors="ignore").splitlines():
+                clean = l.strip()
+                if not clean: continue
+                key = clean.lower().rstrip("/").replace("https://", "").replace("http://", "")
+                final_logins[key] = clean
+                
+        for lp in login_pages:
+            clean = lp.strip()
+            if not clean: continue
+            key = clean.lower().rstrip("/").replace("https://", "").replace("http://", "")
+            
+            if key not in final_logins:
+                final_logins[key] = clean
+            else:
+                if clean.startswith("https://") and final_logins[key].startswith("http://"):
+                    final_logins[key] = clean
+                    
+        login_pages_file.write_text("\n".join(sorted(final_logins.values())) + "\n")
+
+    dq = {
+        "target": target,
+        "scope_root": scope_root,
+        "httpx_match_codes": want_status,
+        "probed_in_scope": len(deduped),
+        "dropped_out_of_scope": dropped_oos,
+        "alive_2xx": len(alive),
+        "protected_401_403_405": len(protected),
+        "dead_404_410_5xx": len(dead),
+        "static_paths_detected": len(assets),
+    }
+    (outdir / "data_quality.json").write_text(_json.dumps(dq, indent=2, ensure_ascii=False))
+
+    success(f"✨ {len(alive)} URLs vivas (2xx) → {C.GREEN}{out_file}{C.END}")
+    success(f"   🛡️  Protegidas (401/403/405): {len(protected)} | 💀 Mortas (404/410/5xx): {len(dead)}")
+    success(f"   📊 Metadados: {C.GREEN}{urls_all_path}{C.END}")
+    return alive
 
 
 # ============================================================
@@ -231,7 +385,7 @@ def run_historical_discovery(target: str, out_file: Path):
 # ============================================================
 # Coleta Ativa (Katana Headless)
 # ============================================================
-def run_katana_discovery(target: str, out_file: Path):
+def run_katana_discovery(target: str, out_file: Path, scope_root: str | None = None):
     """
     Executa katana para crawling ativo profundo e headless mode.
     """
@@ -244,44 +398,30 @@ def run_katana_discovery(target: str, out_file: Path):
     cmd = [
         katana,
         "-u", f"https://{target}",
-        "-jc", "-jsl",   # Parse JS
+        "-jc", "-jsl",   # Parse JS (Static + Dynamic)
+        "-kf", "all",    # Known files (robots, sitemaps)
+        "-aff",          # Form fill (Critical for params)
+        "-fx",           # Extract from JSON/XML
         "-hl",           # Headless browser
-        "-d", "2",       # Max depth 2 (otimizado p/ performance)
-        "-f", "qurl",
+        "-d", "2",       # Max depth 2
+        "-ef", "css,png,jpg,jpeg,gif,svg,ico,woff,woff2,ttf,eot", # Filter garbage
+        "-ct", "180",    # 3 min total crawl timeout
+        "-retry", "2",   # Retry logic
+        "-H", "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "-j",            # Output as JSONL
         "-silent",
         "-o", str(out_file)
     ]
     
     try:
-        import time
+        from core.timeouts import smart_wait_process, KATANA_HARD_TIMEOUT, STALE_TIMEOUT
         proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        
-        start_time = time.time()
-        # Loop monitorando o arquivo de saida
-        while proc.poll() is None:
-            # Check timeout (3 horas = 10800s)
-            if time.time() - start_time > 10800:
-                warn(f"   [!] Katana atingiu o timeout de 3 horas. Processando o que foi encontrado...")
-                proc.kill()
-                break
-                
-            count = 0
-            if out_file.exists():
-                try:
-                    # wc -l super rapido e seguro para arquivos gigantes
-                    wc_res = subprocess.run(["wc", "-l", str(out_file)], capture_output=True, text=True)
-                    if wc_res.stdout:
-                        count = int(wc_res.stdout.split()[0])
-                except Exception:
-                    pass
-            
-            elapsed = time.time() - start_time
-            mins = int(elapsed // 60)
-            secs = int(elapsed % 60)
-            print(f"   ⏳ Katana executando: {mins}m{secs:02d}s | URLs capturadas: {count}    ", end="\r")
-            time.sleep(2)
-            
-        print("") # Quebra de linha para limpar o \r
+        smart_wait_process(
+            proc, out_file,
+            hard_timeout=KATANA_HARD_TIMEOUT,
+            stale_timeout=STALE_TIMEOUT,
+            label="Katana (urls)"
+        )
         
     except Exception as e:
         error(f"Erro inesperado no Katana: {e}")
@@ -289,7 +429,50 @@ def run_katana_discovery(target: str, out_file: Path):
     # Mesmo com timeout ou erro, verificamos se o arquivo de output tem dados salvos parcialmentes
     if out_file.exists() and out_file.stat().st_size > 0:
         from core.config import is_in_scope
-        found = [l.strip() for l in out_file.read_text(errors="ignore").splitlines() if l.strip() and is_in_scope(l.strip(), target)]
+        import json
+        sr = scope_root or target
+        
+        found_urls = set()
+        forms = []
+        params_list = []
+        
+        try:
+            for line in out_file.read_text(errors="ignore").splitlines():
+                if not line.strip(): continue
+                try:
+                    data = json.loads(line)
+                    u = data.get("request", {}).get("endpoint") or data.get("request", {}).get("url")
+                    if u and is_in_scope(u, target, sr):
+                        found_urls.add(u)
+                        
+                    # Extract forms for report
+                    if data.get("response", {}).get("forms"):
+                        for f in data["response"]["forms"]:
+                            f["source"] = u
+                            forms.append(f)
+                            
+                    # Extract params for intelligence
+                    if data.get("request", {}).get("params"):
+                        params_list.append({
+                            "url": u,
+                            "params": data["request"]["params"]
+                        })
+                except Exception:
+                    # Fallback if line is not JSON
+                    if is_in_scope(line.strip(), target, sr):
+                        found_urls.add(line.strip())
+            
+            # Save rich data for report (in urls folder)
+            outdir = out_file.parent
+            if forms:
+                (outdir / "katana_forms_all.json").write_text(json.dumps(forms, indent=2))
+            if params_list:
+                (outdir / "katana_params_all.json").write_text(json.dumps(params_list, indent=2))
+                
+        except Exception as e:
+            warn(f"   Erro ao processar JSON da Katana: {e}")
+            
+        found = sorted(list(found_urls))
         success(f"   🕷️  {len(found)} URLs recuperadas do Katana (crawling ativo - In-Scope).")
         return found
             
@@ -298,7 +481,7 @@ def run_katana_discovery(target: str, out_file: Path):
 # ============================================================
 # Coleta Parametrizada (ParamSpider)
 # ============================================================
-def run_paramspider_discovery(target: str, out_file: Path):
+def run_paramspider_discovery(target: str, out_file: Path, scope_root: str | None = None):
     """Executa ParamSpider para descobrir URLs ricas em parâmetros."""
     info(f"{C.BOLD}{C.BLUE}🕷️ Iniciando descoberta de parâmetros com ParamSpider...{C.END}")
     paramspider = shutil.which("paramspider") or shutil.which("ParamSpider")
@@ -330,8 +513,14 @@ def run_paramspider_discovery(target: str, out_file: Path):
         results_file.unlink(missing_ok=True)
         
     if out_file.exists() and out_file.stat().st_size > 0:
+        from core.config import is_in_scope
+        sr = scope_root or target
         # V11: Filtro mais preciso — exige que a URL comece com http (evita substrings)
-        found = [l.strip() for l in out_file.read_text(errors="ignore").splitlines() if l.strip() and l.strip().startswith("http")]
+        found = [
+            l.strip()
+            for l in out_file.read_text(errors="ignore").splitlines()
+            if l.strip() and l.strip().startswith("http") and is_in_scope(l.strip(), target, sr)
+        ]
         # Rewrite limpo
         out_file.write_text("\n".join(found))
         success(f"   🕷️  {len(found)} URLs com parâmetros recuperadas.")
@@ -348,6 +537,8 @@ def run(context: dict):
 
     if not target:
         raise ValueError("context['target'] é obrigatório para o plugin urls")
+
+    scope_root = (context.get("scope_root") or target).strip()
 
     # ============================================================
     # 🎯 CABEÇALHO PREMIUM
@@ -406,10 +597,10 @@ def run(context: dict):
     # V11: Scope enforcement — filtrar URLs fora do escopo
     from core.config import is_in_scope
     before_scope = len(seed_urls)
-    seed_urls = {u for u in seed_urls if is_in_scope(u, target)}
+    seed_urls = {u for u in seed_urls if is_in_scope(u, target, scope_root)}
     filtered_out = before_scope - len(seed_urls)
     if filtered_out > 0:
-        warn(f"   🔒 Scope filter: removidas {filtered_out} URLs fora do escopo ({target})")
+        warn(f"   🔒 Scope filter: removidas {filtered_out} URLs fora do escopo ({scope_root})")
         
     info(f"   📊 {C.CYAN}Total de seeds (in-scope): {len(seed_urls)}{C.END}")
 
@@ -580,13 +771,15 @@ def run(context: dict):
     run_historical_discovery(target, historical_file)
     
     katana_file = outdir / "katana_urls_raw.txt"
-    run_katana_discovery(target, katana_file)
+    run_katana_discovery(target, katana_file, scope_root)
     
     paramspider_file = outdir / "paramspider_urls_raw.txt"
-    run_paramspider_discovery(target, paramspider_file)
+    run_paramspider_discovery(target, paramspider_file, scope_root)
     
-    # Merge files
+    # Merge files (V12: sempre incluir seeds in-scope — eram perdidas antes do httpx)
     all_raw_urls = []
+    for u in sorted(seed_urls):
+        all_raw_urls.append(u)
     
     if url_completas.exists():
          all_raw_urls.extend(url_completas.read_text(errors="ignore").splitlines())
@@ -619,6 +812,16 @@ def run(context: dict):
     ]
 
     unique = smart_normalize_urls(lines)
+
+    before_scope2 = len(unique)
+    unique = [u for u in unique if is_in_scope(u, target, scope_root)]
+    lost_oos = before_scope2 - len(unique)
+    if lost_oos > 0:
+        warn(f"   🔒 Pós-merge: removidas {lost_oos} URLs fora do escopo ({scope_root})")
+        (outdir / "urls_rejected_out_of_scope.txt").write_text(
+            "\n".join(sorted(set(lines) - set(unique))) + "\n"
+        )
+
     url_completas.write_text("\n".join(unique) + "\n")
 
     success(f"📁 {len(unique)} URLs coletadas em: {C.GREEN}{url_completas}{C.END}")
@@ -628,7 +831,7 @@ def run(context: dict):
     # ============================================================
     info(f"{C.BOLD}{C.BLUE}🔍 Validando URLs com HTTPX...{C.END}")
 
-    valid_urls = httpx_validate(url_completas, urls_200)
+    valid_urls = httpx_validate(url_completas, urls_200, target=target, scope_root=scope_root)
 
     # ============================================================
     # ETAPA 5 — GF Patterns & Qsreplace Routing

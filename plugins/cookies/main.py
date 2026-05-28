@@ -214,8 +214,10 @@ def run(context: dict):
     info(f"\n{C.BOLD}{C.CYAN}🍪 Cookie Security Analyzer{C.END}")
     info(f"   Target: {target}")
 
-    # Collect unique root URLs from validated URLs
-    urls_file = base / "urls" / "urls_200.txt"
+    # Collect unique root URLs from validated URLs (V12: prioriza 2xx)
+    from core.url_sources import primary_urls_txt_for_scan
+
+    urls_file = primary_urls_txt_for_scan(target)
     domain_urls = base / "domain" / "urls_200.txt"
 
     raw_urls = set()

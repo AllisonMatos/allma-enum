@@ -1,0 +1,13 @@
+gateway.gw.trust.loy.net.br
+iam.gw.trust.loy.net.br
+out.gw.trust.loy.net.br
+session.gw.trust.loy.net.br
+tkf.gw.trust.loy.net.br
+web.gw.trust.loy.net.br
+web.test.gw.trust.loy.net.br
+www.gw.trust.loy.net.br
+csm.trust170.loylegal.net
+*.loycloud.com.br
+177.104.165.142:9443
+go.trust.loylegal.net
+

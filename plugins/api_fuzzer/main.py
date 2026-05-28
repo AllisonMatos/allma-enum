@@ -38,7 +38,9 @@ def run(context: dict):
     # Procurar URLs/Hosts para testar
     target_urls = []
     
-    urls_file = Path("output") / target / "urls" / "urls_200.txt"
+    from core.url_sources import primary_urls_txt_for_scan
+
+    urls_file = primary_urls_txt_for_scan(target)
     if urls_file.exists():
         urls = [u for u in urls_file.read_text().splitlines() if u.strip()]
         # Priorizar Base URLs e Paths de API
@@ -97,11 +99,11 @@ def run(context: dict):
                  try:
                      d = json.loads(line)
                      findings.append({
-                         "url": d.get("URL"),
-                         "method": d.get("Method"),
-                         "status": d.get("Status"),
-                         "words": d.get("Words"),
-                         "lines": d.get("Lines")
+                         "url": d.get("url", d.get("URL")),
+                         "method": d.get("method", d.get("Method")),
+                         "status": d.get("status", d.get("Status")),
+                         "words": d.get("words", d.get("Words")),
+                         "lines": d.get("lines", d.get("Lines"))
                      })
                  except Exception: pass
                  

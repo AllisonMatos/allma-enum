@@ -72,7 +72,10 @@ def import_target(target: str):
         build_google_dorks_content,
         build_login_pages_content, build_cookies_content,
         build_cors_content, build_headers_content, build_kiterunner_content,
-        build_ssti_content
+        build_ssti_content, build_network_graph_content, build_dns_records_content,
+        build_tls_certs_content, build_asn_content, build_response_headers_content,
+        build_executive_summary_content, build_next_steps_content,
+        build_screenshots_content, build_wordlist_content, build_wp_plugins_content
     )
 
     print(f"  [+] Importing: {target}")
@@ -123,31 +126,86 @@ def import_target(target: str):
     else:
         risk_label = "INFO"
         risk_color = "#8b949e"
+
+    breakdown_rows = ""
+    if ap_data:
+        for item in ap_data[:6]:
+            mod = item.get("module", "unknown")
+            score_contrib = int(item.get("score", 0) * 5)
+            breakdown_rows += f'<tr><td style="padding:4px 0;">{html.escape(mod)}</td><td style="text-align:right;color:var(--accent-red);padding:4px 0;font-weight:bold;">+{score_contrib}</td></tr>'
+
+    risk_breakdown_html = ""
+    if breakdown_rows:
+        risk_breakdown_html = f'''
+        <div style="border-top:1px solid var(--border-color);border-bottom:1px solid var(--border-color);margin:12px 0;padding:8px 0;">
+            <div style="font-size:10px;font-weight:600;color:var(--text-muted);text-transform:uppercase;margin-bottom:6px;">Fatores Contribuintes</div>
+            <table style="width:100%;font-size:11px;color:var(--text-secondary);">
+                {breakdown_rows}
+            </table>
+        </div>
+        '''
         
     # Tech chips
-    kb_path = Path("output") / target / "intelligence" / "knowledge_tips.json"
-    kb_data = json.loads(kb_path.read_text()) if kb_path.exists() else {}
-    all_techs = set()
-    for kb_info in kb_data.values():
-        all_techs.update(kb_info.get("matched_technologies", []))
+    tech_data = {}
+    tech_path = Path("output") / target / "domain" / "technologies.json"
+    if tech_path.exists():
+        try:
+            tech_json = json.loads(tech_path.read_text())
+            for sub_data in tech_json.values():
+                for tech in sub_data.get("technologies", []):
+                    name = tech.get("name")
+                    conf = tech.get("confidence", 0)
+                    if name not in tech_data or conf > tech_data[name]:
+                        tech_data[name] = conf
+        except: pass
+    
+    # fallback to knowledge_tips if technologies.json empty
+    if not tech_data:
+        kb_path = Path("output") / target / "intelligence" / "knowledge_tips.json"
+        kb_data = json.loads(kb_path.read_text()) if kb_path.exists() else {}
+        for kb_info in kb_data.values():
+            for name in kb_info.get("matched_technologies", []):
+                tech_data[name] = 100
         
     tech_chips_html = ""
-    for tech in sorted(list(all_techs))[:8]:
-        tech_chips_html += f'<span class="tech-chip" style="color:var(--accent-blue);border-color:rgba(88,166,255,0.35);background:rgba(88,166,255,0.08);">{html.escape(tech)}</span>'
+    for name, conf in sorted(tech_data.items(), key=lambda x: x[1], reverse=True)[:10]:
+        if conf >= 80:
+            badge_color = "var(--accent-green)"
+            conf_str = f"Certeza Alta ({conf}%)"
+        elif conf >= 50:
+            badge_color = "var(--accent-blue)"
+            conf_str = f"Provável ({conf}%)"
+        else:
+            badge_color = "var(--text-muted)"
+            conf_str = f"Possível ({conf}%)"
+            
+        tech_chips_html += f'''
+        <div style="display:inline-flex; align-items:center; border:1px solid rgba(139,148,158,0.2); background:rgba(139,148,158,0.05); border-radius:12px; padding:2px 8px; margin:0 6px 6px 0;">
+            <span style="font-size:12px; font-weight:600; color:var(--text-primary); margin-right:6px;">{html.escape(name)}</span>
+            <span style="font-size:10px; color:{badge_color};">{conf_str}</span>
+        </div>
+        '''
     if not tech_chips_html:
         tech_chips_html = '<span style="color:#666;font-size:12px;">Nenhuma stack detectada.</span>'
 
+    executive_summary_html = build_executive_summary_content(target, stats, tech_data, risk_label, risk_color)
+    next_steps_html = build_next_steps_content(target, stats, set(tech_data.keys()))
+    wp_plugins_html = build_wp_plugins_content(target)
+    stats_urls_display = max(stats["urls_valid"], stats.get("urls_200_count", 0))
+    stats_urls_combined = len(read_json_file(Path("output") / target / "urls" / "urls_200.json") or [])
+
     dashboard_html = f'''
+        {executive_summary_html}
         <div class="stats-grid">
             <div class="stat-card highlight"><div class="value">{stats["subdomains"]}</div><div class="label">Subdomains</div></div>
-            <div class="stat-card success"><div class="value">{stats["urls_valid"]}</div><div class="label">Valid URLs</div></div>
+            <div class="stat-card success"><div class="value">{stats_urls_display}</div><div class="label">Valid URLs</div></div>
             <div class="stat-card danger"><div class="value">{stats.get("xss_vulns", 0)}</div><div class="label">XSS Alerts</div></div>
             <div class="stat-card warning"><div class="value">{stats["login_pages"]}</div><div class="label">Login Pages</div></div>
             <div class="stat-card danger"><div class="value">{stats.get("takeover_count", 0)}</div><div class="label">Takeover Risks</div></div>
-            <div class="stat-card danger"><div class="value">{stats["keys_found"]}</div><div class="label">Keys Exposed</div></div>
+            <div class="stat-card danger"><div class="value">{stats["keys_found"]}</div><div class="label">Keys Exposed</div><div class="badge-manual" style="margin-top:6px;display:inline-block;width:fit-content;">⚠ Validação manual</div></div>
             <div class="stat-card warning"><div class="value">{stats.get("waf_count", 0)}</div><div class="label">WAFs Detected</div></div>
             <div class="stat-card"><div class="value">{stats.get("emails_count", 0)}</div><div class="label">Emails</div></div>
-            <div class="stat-card" style="border-left: 3px solid var(--accent-orange);"><div class="value">{stats.get("cors_count", 0)}</div><div class="label">CORS Issues</div></div>
+            <div class="stat-card orange" style="border-left: 3px solid var(--accent-orange);"><div class="value">{stats.get("cors_count", 0)}</div><div class="label">CORS Issues</div><div class="badge-manual" style="margin-top:6px;display:inline-block;width:fit-content;">⚠ Validação manual</div></div>
         </div>
         
         <!-- RISK ASSESSMENT CARD -->
@@ -167,6 +225,7 @@ def import_target(target: str):
                         <div class="risk-gauge-sublabel">Risk Score /100</div>
                     </div>
                     <div style="flex:1;min-width:180px;">
+                        {risk_breakdown_html}
                         <div style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px;">Stack Detectado</div>
                         <div class="tech-grid">
                             {tech_chips_html}
@@ -174,9 +233,9 @@ def import_target(target: str):
                         <div style="margin-top:14px;">
                             <div class="test-progress-label">
                                 <span>Progresso dos Testes</span>
-                                <span id="testProgressPct">0%</span>
+                                <span id="testProgressPct">100%</span>
                             </div>
-                            <div class="test-progress-bar"><div class="test-progress-fill" id="testProgressFill" style="width:0%;"></div></div>
+                            <div class="test-progress-bar"><div class="test-progress-fill" id="testProgressFill" style="width:100%;"></div></div>
                         </div>
                     </div>
                 </div>
@@ -194,6 +253,10 @@ def import_target(target: str):
             </div>
         </div>
 
+        {next_steps_html}
+
+        {wp_plugins_html}
+
         <div style="margin-top:0;">
             <div class="card open" style="border-left: 4px solid var(--accent-blue);">
                  <div class="card-header">
@@ -210,7 +273,7 @@ def import_target(target: str):
     # Calculate stats for sidebar badges  
     stats_for_db = {
         "stats_subdomains": stats["subdomains"],
-        "stats_urls": stats["urls_valid"],
+        "stats_urls": stats_urls_display,
         "stats_ports": stats["ports_total"],
         "stats_login": stats["login_pages"],
         "stats_keys": stats["keys_found"],
@@ -222,7 +285,7 @@ def import_target(target: str):
         "stats_cves": stats.get("cve_vulns", 0),
         "stats_endpoints": stats.get("endpoints_count", 0) + stats.get("routes_found", 0),
         "stats_xss": stats.get("xss_vulns", 0),
-        "stats_urls_combined": stats["urls_valid"] + len(read_file_lines(Path("output") / target / "crawlers" / "katana_valid.txt") or read_file_lines(Path("output") / target / "domain" / "crawlers" / "katana_valid.txt")),
+        "stats_urls_combined": stats_urls_combined,
         "stats_forms": len(read_json_file(Path("output") / target / "crawlers" / "katana_forms.json") or read_json_file(Path("output") / target / "domain" / "crawlers" / "katana_forms.json") or []),
         "stats_params": len(read_json_file(Path("output") / target / "crawlers" / "katana_params_all.json") or read_json_file(Path("output") / target / "domain" / "crawlers" / "katana_params_all.json") or read_json_file(Path("output") / target / "domain" / "katana_params_all.json") or {}),
         "stats_sourcemaps": stats.get("sourcemaps_count", 0),
@@ -245,14 +308,17 @@ def import_target(target: str):
         "stats_email_sec": 1 if (Path("output") / target / "email_security" / "email_security_results.json").exists() else 0,
         "stats_google_dorks": len(read_json_file(Path("output") / target / "google_dorks" / "dorks_results.json") or []),
         "stats_cookies": len(read_json_file(Path("output") / target / "cookies" / "cookies_results.json") or []),
+        "stats_wordlist": stats.get("wordlist_count", 0),
     }
 
-    # Build all section content
+    # Build all section content using the same section IDs/order as the static report.
     section_content_map = {
         "subdomains": build_subdomains_content(subdomains, target),
-        "security": build_security_content(target),
+        "cors": build_cors_content(target),
+        "headers": build_headers_content(target),
         "services": build_services_content(target),
         "urls": build_urls_content(subdomains, target),
+        "screenshots": build_screenshots_content(target),
         "login_pages": build_login_pages_content(subdomains, target),
         "keys": build_keys_content(target),
         "routes": build_routes_content(target),
@@ -260,33 +326,44 @@ def import_target(target: str):
         "params": build_params_content(target),
         "jsroutes": build_js_routes_content(target),
         "swagger": build_swagger_content(target),
-        "logic": build_logic_content(target),
         "git": build_git_content(target),
-        "surfacemap": build_surfacemap_content(subdomains),
+        "surfacemap": build_surfacemap_content(subdomains, target),
         "sourcemaps": build_sourcemaps_content(target),
         "cloud": build_cloud_content(target),
         "cve": build_cve_content(subdomains),
         "admin": build_admin_content(target),
-        "depconfusion": build_depconfusion_content(target),
         "graphql_scan": build_graphql_content(target),
-        "api_sec": build_api_security_content(target),
         "files": build_files_content(target),
+        "forms": build_forms_content(target),
         "takeover": build_takeover_content(target),
         "waf": build_waf_content(target),
         "emails": build_emails_content(target),
         "jwt_sec": build_jwt_content(target),
-        "quickwins_attack": build_quick_wins_content(target),
-        "knowledge_tips": build_knowledge_tips_content(target),
         "oast_sec": build_oast_content(target),
-        "open_redirect": build_open_redirect_content(target),
-        "host_injection": build_host_injection_content(target),
-        "email_security": build_email_security_content(target),
-        "google_dorks": build_google_dorks_content(target),
-        "cookies_sec": build_cookies_content(target),
-        "cors": build_cors_content(target),
-        "headers": build_headers_content(target),
-        "kiterunner": build_kiterunner_content(target),
-        "ssti_sec": build_ssti_content(target),
+        "wordlist_sec": build_wordlist_content(target),
+        "quickwins_attack": build_quick_wins_content(target),
+        "email_sec": build_email_security_content(target),
+        "dorks_sec": build_google_dorks_content(target),
+        "network_graph": build_network_graph_content(target),
+        "dns_records": build_dns_records_content(target),
+        "tls_certs": build_tls_certs_content(target),
+        "asn_mapping": build_asn_content(target),
+        "resp_headers": build_response_headers_content(target),
+    }
+
+    def _is_empty_section(section_html: str) -> bool:
+        if not section_html or not section_html.strip():
+            return True
+        has_empty_state = "empty-state" in section_html
+        has_content = any(marker in section_html for marker in (
+            'class="card', "class='card", 'class="table-wrapper', "class='table-wrapper",
+            'class="stats-grid', "class='stats-grid", "<pre", "<table"
+        ))
+        return has_empty_state and not has_content
+
+    stats_for_db["empty_sections"] = {
+        sec_id: _is_empty_section(sec_html)
+        for sec_id, sec_html in section_content_map.items()
     }
 
     # Save to in-memory DB
@@ -307,9 +384,12 @@ def import_target(target: str):
 
 def import_all_targets():
     """Scan output/ directory and import all targets."""
+    import time as _time
+    
     output_dir = Path("output")
     if not output_dir.exists():
         print("[!] No output/ directory found. Start scans to generate data.")
+        _import_status["status"] = "done"
         return
     
     targets = [d.name for d in sorted(output_dir.iterdir()) 
@@ -317,22 +397,59 @@ def import_all_targets():
     
     if not targets:
         print("[!] No target directories found in output/")
+        _import_status["status"] = "done"
         return
+    
+    _import_status["status"] = "running"
+    _import_status["total"] = len(targets)
+    _import_status["current"] = 0
+    _import_status["current_target"] = ""
+    _import_status["imported"] = []
+    _import_status["errors"] = []
     
     print(f"\n{'='*60}")
     print(f"  Enum-Allma Web Report — Importing {len(targets)} targets")
     print(f"{'='*60}")
     
-    for target in targets:
+    for i, target in enumerate(targets):
+        _import_status["current"] = i + 1
+        _import_status["current_target"] = target
+        t_start = _time.time()
         try:
             import_target(target)
+            elapsed = _time.time() - t_start
+            _import_status["imported"].append(target)
+            print(f"  ⏱️  {target}: {elapsed:.1f}s")
         except Exception as e:
-            print(f"  [-] Error importing {target}: {e}")
+            elapsed = _time.time() - t_start
+            _import_status["errors"].append(f"{target}: {str(e)[:100]}")
+            print(f"  [-] Error importing {target} ({elapsed:.1f}s): {e}")
             traceback.print_exc()
     
+    _import_status["status"] = "done"
+    _import_status["current_target"] = ""
+    
     print(f"{'='*60}")
-    print(f"  Import complete! {len(targets)} targets loaded.")
+    print(f"  Import complete! {len(_import_status['imported'])}/{len(targets)} targets loaded.")
     print(f"{'='*60}\n")
+
+
+# ── Background Import State ──────────────────────────────────────────
+_import_status = {
+    "status": "idle",     # idle | running | done
+    "total": 0,
+    "current": 0,
+    "current_target": "",
+    "imported": [],
+    "errors": [],
+}
+
+
+def _background_import():
+    """Run import in a background thread so Flask starts instantly."""
+    import time as _time
+    _time.sleep(0.5)  # Let Flask bind the port first
+    import_all_targets()
 
 
 # ── Flask Routes ─────────────────────────────────────────────────────
@@ -356,6 +473,12 @@ def get_targets():
     return jsonify(targets)
 
 
+@app.route("/api/import_status")
+def get_import_status():
+    """Return the current status of background data import."""
+    return jsonify(_import_status)
+
+
 @app.route("/report/<target>")
 def view_report(target):
     """Serve the report shell for a target (dashboard + empty sections)."""
@@ -366,6 +489,18 @@ def view_report(target):
     row = cur.fetchone()
     
     if not row:
+        # If import is still running, show a loading message instead of 404
+        if _import_status["status"] == "running":
+            return f"""<html><head><meta http-equiv="refresh" content="5">
+            <style>body{{background:#0d1117;color:#c9d1d9;font-family:Inter,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;}}
+            .loader{{text-align:center;}}.spinner{{width:40px;height:40px;border:3px solid #21262d;border-top:3px solid #58a6ff;border-radius:50%;animation:spin 1s linear infinite;margin:0 auto 20px;}}
+            @keyframes spin{{0%{{transform:rotate(0deg)}}100%{{transform:rotate(360deg)}}}}</style></head>
+            <body><div class="loader"><div class="spinner"></div>
+            <h2>⏳ Importando dados...</h2>
+            <p>Target: <b>{html.escape(_import_status.get('current_target',''))}</b></p>
+            <p>{_import_status['current']}/{_import_status['total']} targets processados</p>
+            <p style="color:#8b949e;font-size:13px;">Esta página recarrega automaticamente a cada 5 segundos.</p>
+            </div></body></html>"""
         abort(404, description=f"No report found for target: {target}")
     
     stats = json.loads(row["stats_json"])
@@ -378,7 +513,9 @@ def view_report(target):
                            target=target,
                            stats=stats,
                            dashboard_html=dashboard_html,
-                           all_targets=all_targets)
+                           all_targets=all_targets,
+                           date=datetime.now().strftime("%Y-%m-%d"),
+                           time=datetime.now().strftime("%H:%M:%S"))
 
 
 @app.route("/api/section/<target>/<section_id>")
@@ -409,7 +546,18 @@ def reload_data():
 
 # ── Startup ──────────────────────────────────────────────────────────
 if __name__ == "__main__":
-    import_all_targets()
-    print("  Server running at: http://127.0.0.1:5000")
-    print("  Reload data without restart: http://127.0.0.1:5000/api/reload\n")
+    import threading
+    
+    # Start import in background thread — Flask starts INSTANTLY
+    import_thread = threading.Thread(target=_background_import, daemon=True)
+    import_thread.start()
+    
+    print(f"\n  {'='*60}")
+    print(f"  🚀 Server starting at: http://127.0.0.1:5000")
+    print(f"  📊 Import status:      http://127.0.0.1:5000/api/import_status")
+    print(f"  🔄 Reload data:        http://127.0.0.1:5000/api/reload")
+    print(f"  {'='*60}\n")
+    print(f"  ℹ️  Data is being imported in the background.")
+    print(f"     Targets will appear as they are processed.\n")
+    
     app.run(host="127.0.0.1", port=5000, debug=False)

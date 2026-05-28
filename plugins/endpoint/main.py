@@ -37,7 +37,34 @@ STATIC_EXTENSIONS = {
     '.map', '.min.js', '.chunk.js', '.bundle.js',
 }
 
-# === EXTRAÇÃO DE ENDPOINTS EM TEXTO (CPU Bound) ===
+
+def _sanitize_http_candidate(u: str, target: str, scope_root: str) -> str | None:
+    """Rejeita URLs quebradas de regex, fora de escopo ou com caracteres inválidos no host."""
+    from urllib.parse import urlparse
+    from core.config import is_in_scope
+
+    if not u or not isinstance(u, str):
+        return None
+    u = u.strip()
+    if len(u) > 2048 or "\n" in u or "\r" in u:
+        return None
+    if any(ch in u for ch in ('"', "'", "{", "}", "<", ">", "`")):
+        return None
+    if not u.startswith(("http://", "https://")):
+        return None
+    try:
+        p = urlparse(u)
+    except Exception:
+        return None
+    if p.scheme not in ("http", "https") or not p.hostname:
+        return None
+    if ".." in (p.path or ""):
+        return None
+    if not is_in_scope(u, target, scope_root):
+        return None
+    return u
+
+
 def _is_static(url: str) -> bool:
     """Check if URL points to a static asset."""
     path = url.split('?')[0].split('#')[0].lower()
@@ -117,6 +144,7 @@ async def run_full_scan_async(target, pages):
 def run(context: dict):
     start = time.time()
     target = context.get("target")
+    scope_root = (context.get("scope_root") or target).strip()
 
     if not target:
         raise ValueError("context['target'] é obrigatório para plugin endpoint")
@@ -140,12 +168,13 @@ def run(context: dict):
     candidates = set()
 
     # ==============================
-    # 🌐 ETAPA 1 — ANALISAR URLS_200
+    # 🌐 ETAPA 1 — ANALISAR URLs vivas (2xx)
     # ==============================
-    
-    urls_200 = Path("output") / target / "urls" / "urls_200.txt"
-    if urls_200.exists():
-        pages = read_list_file(urls_200)
+    from core.url_sources import primary_urls_txt_for_scan
+
+    urls_live = primary_urls_txt_for_scan(target)
+    if urls_live.exists():
+        pages = read_list_file(urls_live)
         if pages:
             # Check httpx
             try:
@@ -157,7 +186,7 @@ def run(context: dict):
             except Exception as e:
                 error(f"Erro no scan async: {e}")
     else:
-        warn(f"⚠️ Nenhum arquivo urls_200 encontrado para {target}")
+        warn(f"⚠️ Nenhum arquivo de URLs vivas encontrado para {target}")
 
     # ==============================
     # ⚡ ETAPA 2 — ANALISAR JS E LISTAS (LOCAL)
@@ -178,12 +207,21 @@ def run(context: dict):
             candidates.update(found)
 
     # ==============================
-    # 🔍 ORGANIZAR RESULTADOS
+    # 🔍 ORGANIZAR + saneamento (V12)
     # ==============================
     info(f"\n{C.BOLD}{C.BLUE}🔍 Organizandos endpoints...{C.END}")
 
-    endpoints = sorted([e for e in candidates if "graphql" not in e.lower()])
-    graphqls = sorted([e for e in candidates if "graphql" in e.lower()])
+    cleaned = set()
+    for e in candidates:
+        if e.startswith("http"):
+            se = _sanitize_http_candidate(e, target, scope_root)
+            if se:
+                cleaned.add(se)
+        elif e.startswith("/") and len(e) <= 512 and not any(c in e for c in ('"', "'", "{", "}", "`")):
+            cleaned.add(e)
+
+    endpoints = sorted([e for e in cleaned if "graphql" not in e.lower()])
+    graphqls = sorted([e for e in cleaned if "graphql" in e.lower()])
 
     # salvar endpoints
     if endpoints:
@@ -223,6 +261,8 @@ def run(context: dict):
 
     findings = []
     for ep in endpoints:
+        if not ep.startswith("http"):
+            continue
         findings.append(
             finding(
                 plugin="endpoint",
@@ -237,9 +277,12 @@ def run(context: dict):
                 validation={"in_scope_candidate": True},
                 evidence={"matched_snippet": ep},
                 metadata={"endpoint_type": "rest"},
+                triage_tier="POTENTIAL",
             )
         )
     for ep in graphqls:
+        if not ep.startswith("http"):
+            continue
         findings.append(
             finding(
                 plugin="endpoint",
@@ -254,6 +297,7 @@ def run(context: dict):
                 validation={"graphql_keyword_match": True},
                 evidence={"matched_snippet": ep},
                 metadata={"endpoint_type": "graphql"},
+                triage_tier="POTENTIAL",
             )
         )
     (outdir / "findings.json").write_text(json.dumps(findings, indent=2, ensure_ascii=False))

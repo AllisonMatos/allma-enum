@@ -243,8 +243,12 @@ def run(context: dict):
     outdir = ensure_outdir(target, "graphql")
     results_file = outdir / "graphql.json"
     
-    # Carregar URLs
-    urls_file = Path("output") / target / "domain" / "urls_valid.txt"
+    # Carregar URLs (V12: prioriza superfície viva 2xx)
+    from core.url_sources import primary_urls_txt_for_scan
+
+    urls_file = primary_urls_txt_for_scan(target)
+    if not urls_file.exists():
+        urls_file = Path("output") / target / "domain" / "urls_valid.txt"
     if not urls_file.exists():
         urls_file = Path("output") / target / "urls" / "urls_200.txt"
     

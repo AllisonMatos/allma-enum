@@ -3,6 +3,7 @@ httpx
 requests
 dnspython
 flask
+playwright
 
 # Core libs (used by plugins)
 rich

@@ -155,7 +155,9 @@ def run(context: dict):
     info(f"🧪 {C.BOLD}{C.CYAN}HOST HEADER SCANNER (V10.3 PRECISION){C.END}")
     outdir = ensure_outdir(target, "host_header_injection")
 
-    urls_file = Path("output") / target / "urls" / "urls_200.txt"
+    from core.url_sources import primary_urls_txt_for_scan
+
+    urls_file = primary_urls_txt_for_scan(target)
     candidates = []
     if urls_file.exists():
         candidates = [l.strip() for l in urls_file.read_text().splitlines() if l.strip()]

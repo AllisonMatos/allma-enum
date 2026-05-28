@@ -225,9 +225,14 @@ async def run_async(context: dict):
     outdir = scanner.outdir
     findings_file = outdir / "secrets.txt"
     json_file = outdir / "secrets.json"
+    normalized_file = outdir / "findings.json"
     
     if scanner.findings:
          with json_file.open('w') as f:
+             json.dump(scanner.findings, f, indent=4)
+             
+         with normalized_file.open('w') as f:
+             # scanner.findings are already normalized finding() objects
              json.dump(scanner.findings, f, indent=4)
              
          with findings_file.open('w') as f:
@@ -247,7 +252,7 @@ async def run_async(context: dict):
         f"{C.BOLD}{get_color('CYAN')}│   📁 Código Desempacotado em: {get_color('GREEN')}output/{target}/sourcemaps/unpacked/{C.END}\n"
     )
     
-    return [str(findings_file)]
+    return scanner.findings
 
 def run(context: dict):
     try:

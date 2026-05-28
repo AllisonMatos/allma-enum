@@ -17,7 +17,7 @@ from ..output import info, warn, success, error
 # Rule sets for URL Classification
 ClassificationRules = {
     "LOGIN": r"(?i)(/login|/signin|/auth|/oauth|/sso|/logon)",
-    "API": r"(?i)(/api/|/graphql|/v[0-9]+/|/rest)",
+    "API": r"(?i)(/api/|/graphql|/v[0-9]+/|/rest|/wp-json)",
     "ADMIN": r"(?i)(/admin|/administrator|/manage|/dashboard|/panel|/wp-admin)",
     "UPLOAD": r"(?i)(/upload|/import|/media|/file|/attachment)",
     "DEBUG": r"(?i)(/debug|/test|/dev|/trace|/console|phpinfo)",
@@ -274,10 +274,26 @@ class IntelligenceEngine:
         return []
 
     def _load_urls(self) -> List[str]:
-        f = self.base_dir / "urls" / "urls_valid.txt"
-        if f.exists():
-            return [line.strip() for line in f.read_text().splitlines() if line.strip()]
-        return []
+        """URLs para classificação — agrega fontes reais do pipeline (V12)."""
+        seen: set[str] = set()
+        out: List[str] = []
+        for rel in (
+            "urls/url_completas.txt",
+            "urls/urls_alive.txt",
+            "urls/urls_200.txt",
+            "urls/urls_protected.txt",
+            "domain/urls_valid.txt",
+            "urls/urls_valid.txt",  # legado
+        ):
+            f = self.base_dir / rel
+            if not f.exists():
+                continue
+            for line in f.read_text(errors="ignore").splitlines():
+                u = line.strip()
+                if u and u not in seen:
+                    seen.add(u)
+                    out.append(u)
+        return out
         
     def _load_technologies(self) -> Dict:
         f = self.base_dir / "domain" / "technologies.json"

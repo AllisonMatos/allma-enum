@@ -48,15 +48,18 @@ MAX_CONNECTIONS_TOTAL = 100
 # ============================================================
 # Definido em runtime pelo menu.py
 SCOPE_TARGET = ""
+# V12: domínio raiz real para checagem de escopo (pode diferir do nome da pasta de output)
+SCOPE_ROOT = ""
 
 # Domínios que NUNCA são escopo (SSO, CDN, analytics)
 OUT_OF_SCOPE_DOMAINS = {
     "accounts.google.com", "login.microsoftonline.com", "login.microsoft.com",
     "login.live.com", "auth0.com", "okta.com", "onelogin.com",
     "cloudflareaccess.com", "fonts.googleapis.com", "fonts.gstatic.com",
+    "fonts.google.com", "www.googleapis.com",
     "cdn.jsdelivr.net", "cdnjs.cloudflare.com", "ajax.googleapis.com",
     "www.google.com", "www.gstatic.com", "apis.google.com",
-    "play.google.com", "maps.googleapis.com",
+    "play.google.com", "play.googleapis.com", "maps.googleapis.com",
     "www.facebook.com", "connect.facebook.net",
     "platform.twitter.com", "analytics.google.com",
     "www.googletagmanager.com", "www.google-analytics.com",
@@ -64,41 +67,44 @@ OUT_OF_SCOPE_DOMAINS = {
     "github.com", "raw.githubusercontent.com",
     "maxcdn.bootstrapcdn.com", "stackpath.bootstrapcdn.com",
     "code.jquery.com", "unpkg.com",
+    "vimeo.com", "player.vimeo.com", "i.vimeocdn.com",
+    "youtube.com", "www.youtube.com", "youtu.be", "googlevideo.com",
 }
 
 STRICT_SCOPE_HOSTS = []
 
-def is_in_scope(url: str, target: str = "") -> bool:
+def is_in_scope(url: str, target: str = "", scope_root: str | None = None) -> bool:
     """Check if a URL belongs to the target's scope.
     Returns True if the URL is in scope, False if out of scope.
+
+    scope_root: domínio raiz do programa (ex.: avenue.us) quando a pasta de scan
+    usa outro nome (ex.: avenue2.us). Se None, usa SCOPE_ROOT ou target/SCOPE_TARGET.
     """
     from urllib.parse import urlparse
-    
+
     try:
         parsed = urlparse(url)
         host = parsed.netloc.lower().split(":")[0]  # Remove port
     except Exception:
-        return True
-    
+        return False
+
     if not host:
-        return True
-    
+        return False
+
     # Check against known out-of-scope domains
     if host in OUT_OF_SCOPE_DOMAINS:
         return False
-        
+
     # If a STRICT_SCOPE_HOSTS list is defined (Escopo Fechado), restrict to exactly these subdomains.
     if STRICT_SCOPE_HOSTS:
         return any(host == s.lower() or host.endswith(f".{s.lower()}") for s in STRICT_SCOPE_HOSTS)
-    
-    # Fallback to the broad target scope
-    t = target or SCOPE_TARGET
-    if not t:
-        return True  # No target set, allow everything
-        
-    t_lower = t.lower()
-    if host == t_lower or host.endswith(f".{t_lower}"):
+
+    root = (scope_root or SCOPE_ROOT or target or SCOPE_TARGET or "").lower().strip()
+    if not root:
+        return False
+
+    if host == root or host.endswith(f".{root}"):
         return True
-    
+
     return False
 

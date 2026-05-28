@@ -208,33 +208,38 @@ def run(context: dict):
         success(f"\n   ✅ Análise concluída.")
 
     normalized_findings = []
-    checks = {
-        "spf": spf,
-        "dmarc": dmarc,
-        "dkim": dkim,
-        "bimi": bimi,
-        "mta_sts": mta_sts,
-        "tls_rpt": tls_rpt,
-    }
     risk_to_conf = {"CRITICAL": "HIGH", "HIGH": "HIGH", "MEDIUM": "MEDIUM", "LOW": "LOW", "INFO": "LOW"}
-    for name, item in checks.items():
+
+    def _emit(check_key: str, item: dict, title_suffix: str):
         risk = str(item.get("risk", "LOW")).upper()
+        if risk == "INFO":
+            return
+        if check_key in ("spf", "dmarc", "dkim", "bimi") and risk in ("LOW",) and item.get("present"):
+            return
         normalized_findings.append(
             finding(
                 plugin="email_security",
                 target=target,
-                title=f"Email Security Check: {name.upper()}",
-                issue_type=f"EMAIL_{name.upper()}",
+                title=f"Email Security: {title_suffix}",
+                issue_type=f"EMAIL_{check_key.upper()}",
                 risk=risk,
                 confidence=risk_to_conf.get(risk, "LOW"),
                 description=item.get("issue", ""),
                 url=f"dns://{domain}",
-                detection={"check": name, "present": item.get("present", False)},
+                detection={"check": check_key, "present": item.get("present", False)},
                 validation={"domain": domain},
                 evidence={"matched_snippet": str(item.get("record", ""))[:300], "observable_impact": item.get("issue", "")},
                 metadata=item,
+                triage_tier="POTENTIAL" if risk in ("HIGH", "CRITICAL", "MEDIUM") else "INFORMATIONAL",
             )
         )
+
+    _emit("spf", spf, "SPF")
+    _emit("dmarc", dmarc, "DMARC")
+    _emit("dkim", dkim, "DKIM")
+    # BIMI opcional — não gera finding positivo
+    _emit("mta_sts", mta_sts, "MTA-STS")
+    _emit("tls_rpt", tls_rpt, "TLS-RPT")
     (outdir / "findings.json").write_text(json.dumps(normalized_findings, indent=2, ensure_ascii=False))
     success(f"   📂 Resultados salvos em {output_file}")
     return normalized_findings

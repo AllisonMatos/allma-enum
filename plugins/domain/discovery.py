@@ -32,10 +32,11 @@ def _extract_hostnames_from_urls(lines: list, target: str) -> set:
     return subs
 
 
-def discover_crtsh(target: str) -> set:
+def discover_crtsh(target: str, outdir: Path = None) -> set:
     """
     Consulta Certificate Transparency via crt.sh (API HTTP pública).
     Retorna subdomínios encontrados em certificados SSL com suporte a retry robusto.
+    Salva a timeline bruta dos certificados emitidos para análise de infra antiga.
     """
     import time
     subs = set()
@@ -48,6 +49,8 @@ def discover_crtsh(target: str) -> set:
             resp = client.get(url)
             if resp.status_code == 200:
                 data = resp.json()
+                if outdir:
+                    (outdir / "crtsh_timeline.json").write_text(json.dumps(data, indent=2))
                 for entry in data:
                     name_value = entry.get("name_value", "")
                     for name in name_value.split("\n"):
@@ -142,7 +145,7 @@ def discover_waybackurls(target: str) -> set:
     return subs
 
 
-def discover_subdomains(target: str, existing_subs_file: Path) -> set:
+def discover_subdomains(target: str, existing_subs_file: Path, outdir: Path = None) -> set:
     """
     Executa todas as fontes de descoberta em paralelo e faz merge
     dos resultados com os subdomínios já encontrados pelo subfinder.
@@ -177,7 +180,13 @@ def discover_subdomains(target: str, existing_subs_file: Path) -> set:
     ]
 
     with ThreadPoolExecutor(max_workers=4) as executor:
-        futures = {executor.submit(fn, target): name for name, fn in sources}
+        futures = {}
+        for name, fn in sources:
+            if name == "crt.sh":
+                futures[executor.submit(fn, target, outdir)] = name
+            else:
+                futures[executor.submit(fn, target)] = name
+                
         for future in as_completed(futures):
             try:
                 result = future.result()

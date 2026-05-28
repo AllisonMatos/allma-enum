@@ -58,6 +58,31 @@ def is_cdn_ip(ip_str: str) -> bool:
         pass
     return False
 
+def check_zone_transfer(target: str) -> list:
+    """Tenta DNS Zone Transfer (AXFR) nos NameServers do alvo."""
+    import dns.query
+    import dns.zone
+    import dns.resolver
+    results = []
+    try:
+        ns_records = dns.resolver.resolve(target, 'NS')
+        for ns in ns_records:
+            ns_server = str(ns)
+            try:
+                zone = dns.zone.from_xfr(dns.query.xfr(ns_server, target, timeout=5))
+                for name, node in zone.nodes.items():
+                    sub = str(name)
+                    if sub == "@":
+                        results.append(target)
+                    else:
+                        results.append(f"{sub}.{target}")
+                info(f"   🚨 Zone Transfer vulnerável em {ns_server}! Encontrados {len(zone.nodes)} registros.")
+            except Exception:
+                pass
+    except Exception:
+        pass
+    return results
+
 
 def resolve_host(hostname: str) -> list:
     """Resolve um hostname para lista de IPs (A records)."""
@@ -134,6 +159,16 @@ def resolve_and_filter(target: str, subs_file: Path, outdir: Path) -> dict:
         return {}
 
     subdomains = [l.strip() for l in subs_file.read_text().splitlines() if l.strip()]
+    
+    # 2.5 Zone Transfer
+    info(f"   🔄 Testando DNS Zone Transfer (AXFR)...")
+    axfr_results = check_zone_transfer(target)
+    if axfr_results:
+        warn(f"   ⚠️  Zone Transfer permitiu descoberta de {len(axfr_results)} registros!")
+        (dns_dir / "axfr_results.txt").write_text("\n".join(axfr_results))
+        subdomains.extend(axfr_results)
+        subdomains = list(set(subdomains))
+        
     info(f"   📋 Resolvendo {len(subdomains)} subdomínios...")
 
     # 3. Resolver em paralelo

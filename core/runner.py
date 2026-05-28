@@ -37,7 +37,7 @@ def format_duration(seconds: float) -> str:
 
 
 # --------- EXECUÇÃO EM CADEIA ---------
-def execute_chain(target: str, chain: list, params: dict, deep: bool = False, stealth: bool = False):
+def execute_chain(target: str, chain: list, params: dict, deep: bool = False, stealth: bool = False, auto_resume: bool = False):
     # V11: Sincronizado com menu.py MODULES
     PLUGIN_MAP = {
         "1": "domain",
@@ -68,6 +68,13 @@ def execute_chain(target: str, chain: list, params: dict, deep: bool = False, st
         "26": "screenshots",
         "27": "cache",
         "28": "ssti",
+        "30": "ssrf",
+        "31": "bypass403",
+        "32": "crlf",
+        "33": "nuclei",
+        "35": "github_dorks",
+        "36": "wayback_diff",
+        "37": "vhost",
         "99": "intelligence",
     }
 
@@ -77,6 +84,8 @@ def execute_chain(target: str, chain: list, params: dict, deep: bool = False, st
     # V11: Set global scope target
     import core.config as _cfg
     _cfg.SCOPE_TARGET = target
+    domp = params.get("domain") or {}
+    _cfg.SCOPE_ROOT = (domp.get("scope_root") or target).strip()
 
     # ==========================================
     #  CHECKPOINT: Resume / Skip
@@ -94,11 +103,16 @@ def execute_chain(target: str, chain: list, params: dict, deep: bool = False, st
         completed_names = [PLUGIN_MAP.get(s, s) for s in completed_steps if s in PLUGIN_MAP]
         if completed_names:
             info(f"\n📋 Scan anterior detectado! Módulos já completos: {', '.join(completed_names)}")
-            resume = input(
-                f"\n  [S] Pular módulos já completos (resume)\n"
-                f"  [R] Recomeçar tudo do zero\n"
-                f"  Escolha [S/r]: "
-            ).strip().lower()
+            
+            if auto_resume:
+                resume = "s"
+                info("⏩ Resumindo automaticamente (auto_resume=True)")
+            else:
+                resume = input(
+                    f"\n  [S] Pular módulos já completos (resume)\n"
+                    f"  [R] Recomeçar tudo do zero\n"
+                    f"  Escolha [S/r]: "
+                ).strip().lower()
             
             if resume in ("r", "recomeçar", "reset"):
                 completed_steps = set()
@@ -184,6 +198,7 @@ def execute_chain(target: str, chain: list, params: dict, deep: bool = False, st
             "stealth": stealth,
             "oast_url": oast_url,          # mantido para plugins antigos
             "oast": oast_client,           # NOVO: cliente OAST para plugins modernos
+            "scope_root": _cfg.SCOPE_ROOT,
             **params.get(name, {})
         }
 

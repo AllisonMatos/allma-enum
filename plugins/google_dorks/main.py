@@ -187,4 +187,5 @@ def run(context: dict):
     (outdir / "scan_summary.json").write_text(json.dumps(summary, indent=2))
 
     success(f"   📂 Dorks salvos em {txt_file}")
-    return dorks
+    # V12: dorks são utilitários — não gerar findings normalizados (evita poluir score do report)
+    return []

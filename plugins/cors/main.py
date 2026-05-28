@@ -42,10 +42,10 @@ def check_cors(url: str, target: str) -> dict | None:
                     acao = resp.headers.get("access-control-allow-origin", "")
                     acac = resp.headers.get("access-control-allow-credentials", "")
 
-                    if not acao:
+                    if not acao or resp.status_code >= 400:
                         continue
 
-                    finding = {
+                    cors_finding = {
                         "url": url,
                         "tested_origin": origin,
                         "acao": acao,
@@ -58,22 +58,22 @@ def check_cors(url: str, target: str) -> dict | None:
 
                     # Classificar severidade
                     if acao == origin and origin != "null":
-                        finding["severity"] = "critical" if acac.lower() == "true" else "high"
-                        finding["issue"] = "Origin reflected (arbitrary)"
+                        cors_finding["severity"] = "critical" if acac.lower() == "true" else "high"
+                        cors_finding["issue"] = "Origin reflected (arbitrary)"
                     elif acao == "*":
                         # V10.4: Wildcard sem credentials é comportamento padrão seguro
                         if acac.lower() == "true":
-                            finding["severity"] = "critical"
-                            finding["issue"] = "Wildcard ACAO (*) + Credentials: true — PERIGOSO"
+                            cors_finding["severity"] = "critical"
+                            cors_finding["issue"] = "Wildcard ACAO (*) + Credentials: true — PERIGOSO"
                         else:
-                            finding["severity"] = "info"
-                            finding["issue"] = "Wildcard ACAO (*) sem credentials (padrão seguro)"
+                            cors_finding["severity"] = "info"
+                            cors_finding["issue"] = "Wildcard ACAO (*) sem credentials (padrão seguro)"
                     elif acao == "null" and origin == "null":
-                        finding["severity"] = "high" if acac.lower() == "true" else "medium"
-                        finding["issue"] = "Null origin accepted"
+                        cors_finding["severity"] = "high" if acac.lower() == "true" else "medium"
+                        cors_finding["issue"] = "Null origin accepted"
 
-                    if finding["issue"]:
-                        results.append(finding)
+                    if cors_finding["issue"]:
+                        results.append(cors_finding)
 
                 except Exception:
                     pass
@@ -88,7 +88,7 @@ def check_cors(url: str, target: str) -> dict | None:
                 acao = resp.headers.get("access-control-allow-origin", "")
                 acac = resp.headers.get("access-control-allow-credentials", "")
 
-                if acao == subdomain_origin:
+                if acao == subdomain_origin and resp.status_code < 400:
                     results.append({
                         "url": url,
                         "tested_origin": subdomain_origin,
@@ -116,7 +116,7 @@ def check_cors(url: str, target: str) -> dict | None:
                     })
                     acao = resp.headers.get("access-control-allow-origin", "")
                     acac = resp.headers.get("access-control-allow-credentials", "")
-                    if acao == so:
+                    if acao == so and resp.status_code < 400:
                         results.append({
                             "url": url,
                             "tested_origin": so,
@@ -145,7 +145,7 @@ def check_cors(url: str, target: str) -> dict | None:
                     acac = resp.headers.get("access-control-allow-credentials", "").lower()
                     # V11: Métodos perigosos + origin aceito = real finding
                     if acam and any(m in acam.upper() for m in ["PUT", "DELETE", "PATCH"]):
-                        if acao == origin:  # Origin malicioso ACEITO
+                        if acao == origin and resp.status_code < 400:  # Origin malicioso ACEITO e requisição permitida
                             results.append({
                                 "url": url,
                                 "tested_origin": origin,
@@ -180,8 +180,12 @@ def run(context: dict):
 
     outdir = ensure_outdir(target, "cors")
 
-    # V10.3: Ler de urls_200 (mais URLs) com fallback para urls_valid
-    urls_file = Path("output") / target / "urls" / "urls_200.txt"
+    # V12: prioriza URLs com resposta 2xx
+    from core.url_sources import primary_urls_txt_for_scan
+
+    urls_file = primary_urls_txt_for_scan(target)
+    if not urls_file.exists():
+        urls_file = Path("output") / target / "urls" / "urls_200.txt"
     if not urls_file.exists():
         urls_file = Path("output") / target / "domain" / "urls_valid.txt"
     if not urls_file.exists():

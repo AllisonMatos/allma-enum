@@ -422,49 +422,51 @@
         <button class="sidebar-toggle" onclick="document.querySelector('.sidebar').classList.toggle('collapsed'); localStorage.setItem('sidebar_collapsed', document.querySelector('.sidebar').classList.contains('collapsed'))">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
         </button>
-        <button class="nav-btn active" data-section="dashboard" data-always-show="true"><div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"//></svg></div><div class="nav-label">Dashboard</div></button>
-        <button class="nav-btn" data-section="quickwins_attack" data-always-show="true"><div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"//></svg></div><div class="nav-label">Quick Wins <span class="count">{{ stats.stats_quickwins }}</span></div></button>
-        
-        <div class="sidebar-category"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg> SUPERFÍCIE</div>
-        <button class="nav-btn" data-section="subdomains" data-always-show="true"><div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"//></svg></div><div class="nav-label">Subdomains <span class="count">{{ stats.stats_subdomains }}</span></div></button>
-        <button class="nav-btn" data-section="urls" data-always-show="true"><div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"//></svg></div><div class="nav-label">URLs <span class="count">{{ stats.stats_urls_combined }}</span></div></button>
-        <button class="nav-btn" data-section="login_pages"><div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"//></svg></div><div class="nav-label">Login Pages <span class="count">{{ stats.stats_login }}</span></div></button>
-        <button class="nav-btn" data-section="routes"><div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="2"/><path d="M16.24 7.76a6 6 0 0 1 0 8.49m-8.48-.01a6 6 0 0 1 0-8.49m11.31-2.82a10 10 0 0 1 0 14.14m-14.14 0a10 10 0 0 1 0-14.14"//></svg></div><div class="nav-label">Endpoints <span class="count">{{ stats.stats_endpoints }}</span></div></button>
-        <button class="nav-btn" data-section="files"><div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"//></svg></div><div class="nav-label">Files</div></button>
-        <button class="nav-btn" data-section="params"><div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"//></svg></div><div class="nav-label">Params <span class="count">{{ stats.stats_params }}</span></div></button>
-        <button class="nav-btn" data-section="surfacemap"><div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"//></svg></div><div class="nav-label">Surface Map</div></button>
-        <button class="nav-btn" data-section="js"><div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"//></svg></div><div class="nav-label">JS Files <span class="count">{{ stats.stats_js }}</span></div></button>
-        <button class="nav-btn" data-section="jsroutes"><div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"//></svg></div><div class="nav-label">API & JS <span class="count">{{ stats.stats_js_routes }}</span></div></button>
-        <button class="nav-btn" data-section="sourcemaps"><div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7"/><path d="M11 18H8a2 2 0 0 1-2-2V9"//></svg></div><div class="nav-label">Source Maps <span class="count">{{ stats.stats_sourcemaps }}</span></div></button>
+        <button class="nav-btn active" data-section="dashboard" data-always-show="true"><div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg></div><div class="nav-label">Dashboard</div></button>
 
-        <div class="sidebar-category"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg> VULNS</div>
-        <button class="nav-btn" data-section="security"><div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"//></svg></div><div class="nav-label">Security <span class="count">{{ stats.stats_xss }}</span></div></button>
-        <button class="nav-btn" data-section="api_sec"><div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"//></svg></div><div class="nav-label">API Security <span class="count">{{ stats.stats_api_security }}</span></div></button>
-        <button class="nav-btn" data-section="logic"><div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"//></svg></div><div class="nav-label">Logic & Smug. <span class="count">{{ stats.stats_logic }}</span></div></button>
-        <button class="nav-btn" data-section="takeover"><div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"//></svg></div><div class="nav-label">Takeover <span class="count">{{ stats.stats_takeover }}</span></div></button>
-        <button class="nav-btn" data-section="cve"><div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19.69 14a6.9 6.9 0 0 0 .31-2V5l-8-3-3.16 1.18"/><path d="M4.73 4.73L4 5v7c0 6 8 10 8 10a20.29 20.29 0 0 0 5.62-4.38"/><line x1="1" y1="1" x2="23" y2="23"//></svg></div><div class="nav-label">CVEs <span class="count">{{ stats.stats_cves }}</span></div></button>
-        <button class="nav-btn" data-section="depconfusion"><div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"//></svg></div><div class="nav-label">Dep. Conf. <span class="count">{{ stats.stats_depconfusion }}</span></div></button>
+        <div class="sidebar-category"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg> FINDINGS ATIVOS</div>
+        <button class="nav-btn" data-section="cors"><div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></div><div class="nav-label">CORS <span class="count">{{ stats.stats_cors }}</span></div></button>
+        <button class="nav-btn" data-section="cloud"><div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/></svg></div><div class="nav-label">Cloud Storage <span class="count">{{ stats.stats_buckets }}</span></div></button>
+        <button class="nav-btn" data-section="keys"><div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg></div><div class="nav-label">Keys & Secrets <span class="count">{{ stats.stats_keys }}</span></div></button>
+        <button class="nav-btn" data-section="admin"><div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></div><div class="nav-label">Admin Panels <span class="count">{{ stats.stats_admin }}</span></div></button>
+        <button class="nav-btn" data-section="git"><div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><line x1="1.05" y1="12" x2="7" y2="12"/><line x1="17.01" y1="12" x2="22.96" y2="12"/></svg></div><div class="nav-label">Git Exposed <span class="count">{{ stats.stats_git }}</span></div></button>
+        <button class="nav-btn" data-section="jwt_sec"><div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></div><div class="nav-label">JWT <span class="count">{{ stats.stats_jwt }}</span></div></button>
+        <button class="nav-btn" data-section="oast_sec"><div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></div><div class="nav-label" style="color:#ff7b72">Blind Bugs <span class="count">{{ stats.stats_oast }}</span></div></button>
 
-        <div class="sidebar-category"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg> EXPOSURES</div>
-        <button class="nav-btn" data-section="admin"><div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"//></svg></div><div class="nav-label">Admin Panels <span class="count">{{ stats.stats_admin }}</span></div></button>
-        <button class="nav-btn" data-section="keys"><div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"//></svg></div><div class="nav-label">Keys & Secrets <span class="count">{{ stats.stats_keys }}</span></div></button>
-        <button class="nav-btn" data-section="emails"><div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"//></svg></div><div class="nav-label">Emails <span class="count">{{ stats.stats_emails }}</span></div></button>
-        <button class="nav-btn" data-section="git"><div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><line x1="1.05" y1="12" x2="7" y2="12"/><line x1="17.01" y1="12" x2="22.96" y2="12"//></svg></div><div class="nav-label">Git Exposed <span class="count">{{ stats.stats_git }}</span></div></button>
-        <button class="nav-btn" data-section="cloud"><div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"//></svg></div><div class="nav-label">Cloud Storage <span class="count">{{ stats.stats_buckets }}</span></div></button>
-        <button class="nav-btn" data-section="graphql_scan"><div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="2"/><path d="M16.24 7.76a6 6 0 0 1 0 8.49m-8.48-.01a6 6 0 0 1 0-8.49"//></svg></div><div class="nav-label">GraphQL <span class="count">{{ stats.stats_graphql }}</span></div></button>
-        <button class="nav-btn" data-section="swagger"><div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"//></svg></div><div class="nav-label">Swagger UI <span class="count">{{ stats.stats_swagger }}</span></div></button>
-        <button class="nav-btn" data-section="services"><div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"//></svg></div><div class="nav-label">Ports/Services <span class="count">{{ stats.stats_ports }}</span></div></button>
-        <button class="nav-btn" data-section="waf"><div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"//></svg></div><div class="nav-label">WAF Detection <span class="count">{{ stats.stats_waf }}</span></div></button>
-        
-        <button class="nav-btn" data-section="open_redirect"><div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><path d="M21 3l-7 7"/><path d="M10 14L3 21"//></svg></div><div class="nav-label">Redirect <span class="count">{{ stats.stats_open_redirect }}</span></div></button>
-        <button class="nav-btn" data-section="host_injection"><div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"//></svg></div><div class="nav-label">Host Inj. <span class="count">{{ stats.stats_host_injection }}</span></div></button>
-        <button class="nav-btn" data-section="email_security"><div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"//></svg></div><div class="nav-label">Mail Sec. <span class="count">{{ stats.stats_email_sec }}</span></div></button>
-        <button class="nav-btn" data-section="google_dorks"><div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"//></svg></div><div class="nav-label">Dorks <span class="count">{{ stats.stats_google_dorks }}</span></div></button>
-        <button class="nav-btn" data-section="jwt_sec"><div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"//></svg></div><div class="nav-label">JWT <span class="count">{{ stats.stats_jwt }}</span></div></button>
-        <button class="nav-btn" data-section="cookies_sec"><div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"//></svg></div><div class="nav-label">Cookies <span class="count">{{ stats.stats_cookies }}</span></div></button>
-        <button class="nav-btn" data-section="cors"><div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"//></svg></div><div class="nav-label">CORS <span class="count">{{ stats.stats_cors }}</span></div></button>
-        <button class="nav-btn" data-section="headers"><div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"//></svg></div><div class="nav-label">Headers <span class="count">{{ stats.stats_headers }}</span></div></button>
-        <button class="nav-btn" data-section="oast_sec"><div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"//></svg></div><div class="nav-label">Blind Bugs <span class="count">{{ stats.stats_oast }}</span></div></button>
+        <div class="sidebar-category"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg> SUPERFÍCIE</div>
+        <button class="nav-btn" data-section="subdomains" data-always-show="true"><div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></div><div class="nav-label">Subdomains <span class="count">{{ stats.stats_subdomains }}</span></div></button>
+        <button class="nav-btn" data-section="routes"><div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="2"/><path d="M16.24 7.76a6 6 0 0 1 0 8.49m-8.48-.01a6 6 0 0 1 0-8.49m11.31-2.82a10 10 0 0 1 0 14.14m-14.14 0a10 10 0 0 1 0-14.14"/></svg></div><div class="nav-label">Endpoints <span class="count">{{ stats.stats_endpoints }}</span></div></button>
+        <button class="nav-btn" data-section="params"><div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/></svg></div><div class="nav-label">Params <span class="count">{{ stats.stats_params }}</span></div></button>
+        <button class="nav-btn" data-section="services"><div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg></div><div class="nav-label">Ports/Services <span class="count">{{ stats.stats_ports }}</span></div></button>
+        <button class="nav-btn" data-section="waf"><div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></div><div class="nav-label">WAF Detection <span class="count">{{ stats.stats_waf }}</span></div></button>
+        <button class="nav-btn" data-section="urls" data-always-show="true"><div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg></div><div class="nav-label">URLs <span class="count">{{ stats.stats_urls_combined }}</span></div></button>
+        <button class="nav-btn" data-section="login_pages"><div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></div><div class="nav-label">Login Pages <span class="count">{{ stats.stats_login }}</span></div></button>
+        <button class="nav-btn" data-section="js"><div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg></div><div class="nav-label">JS Files <span class="count">{{ stats.stats_js }}</span></div></button>
+        <button class="nav-btn" data-section="jsroutes"><div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg></div><div class="nav-label">API & JS <span class="count">{{ stats.stats_js_routes }}</span></div></button>
+        <button class="nav-btn" data-section="screenshots" data-empty="{{ 1 if stats.empty_sections.get('screenshots') else 0 }}"><div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg></div><div class="nav-label">Screenshots</div></button>
+        <button class="nav-btn" data-section="surfacemap" data-empty="{{ 1 if stats.empty_sections.get('surfacemap') else 0 }}"><div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg></div><div class="nav-label">Surface Map</div></button>
+
+        <div class="sidebar-category"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg> INTELIGÊNCIA</div>
+        <button class="nav-btn" data-section="dns_records" data-empty="{{ 1 if stats.empty_sections.get('dns_records') else 0 }}"><div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></div><div class="nav-label">DNS Records</div></button>
+        <button class="nav-btn" data-section="tls_certs" data-empty="{{ 1 if stats.empty_sections.get('tls_certs') else 0 }}"><div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></div><div class="nav-label">TLS Certs</div></button>
+        <button class="nav-btn" data-section="asn_mapping" data-empty="{{ 1 if stats.empty_sections.get('asn_mapping') else 0 }}"><div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg></div><div class="nav-label">ASN/CIDR</div></button>
+        <button class="nav-btn" data-section="network_graph" data-empty="{{ 1 if stats.empty_sections.get('network_graph') else 0 }}"><div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg></div><div class="nav-label">Network Graph</div></button>
+        <button class="nav-btn" data-section="email_sec" data-empty="{{ 1 if stats.empty_sections.get('email_sec') else 0 }}"><div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg></div><div class="nav-label">Email Sec</div></button>
+        <button class="nav-btn" data-section="emails"><div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg></div><div class="nav-label">Emails <span class="count">{{ stats.stats_emails }}</span></div></button>
+        <button class="nav-btn" data-section="resp_headers" data-empty="{{ 1 if stats.empty_sections.get('resp_headers') else 0 }}"><div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></div><div class="nav-label">Headers Raw</div></button>
+
+        <div class="sidebar-category"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> UTILITÁRIOS</div>
+        <button class="nav-btn" data-section="dorks_sec"><div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></div><div class="nav-label">Dorks <span class="count">{{ stats.stats_google_dorks }}</span></div></button>
+        <button class="nav-btn" data-section="sourcemaps"><div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7"/><path d="M11 18H8a2 2 0 0 1-2-2V9"/></svg></div><div class="nav-label">Source Maps <span class="count">{{ stats.stats_sourcemaps }}</span></div></button>
+        <button class="nav-btn" data-section="forms"><div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg></div><div class="nav-label">Forms <span class="count">{{ stats.stats_forms }}</span></div></button>
+        <button class="nav-btn" data-section="files" data-empty="{{ 1 if stats.empty_sections.get('files') else 0 }}"><div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg></div><div class="nav-label">Files</div></button>
+        <button class="nav-btn" data-section="wordlist_sec"><div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg></div><div class="nav-label">Wordlists <span class="count">{{ stats.stats_wordlist }}</span></div></button>
+
+        <div style="margin-top: auto; padding: 12px; width: 100%; border-top: 1px solid var(--border-color);">
+            <button onclick="toggleEmptySections()" class="nav-btn" style="border:1px dashed var(--border-color); border-radius:4px; height:32px; justify-content:center; color:var(--text-muted); font-size:11px;">
+                👁️ Toggle Empty Sections
+            </button>
+        </div>
     </nav>
 
     <div class="content-wrapper">
@@ -472,6 +474,10 @@
         <header class="top-bar">
             <div class="page-title">
                 <h1>Enum-Allma: <span>{{ target }}</span></h1>
+            </div>
+
+            <div style="font-size: 11px; color: var(--text-secondary); background: var(--bg-tertiary); padding: 4px 10px; border-radius: 20px; border: 1px solid var(--border-color); white-space: nowrap; margin-left: 10px;">
+                Cobertura: {{ stats.stats_urls }} URLs · {{ stats.stats_subdomains }} subdomínio(s) · {{ stats.stats_js }} JS files
             </div>
             
             <div style="position:relative; flex:1; max-width:400px; margin: 0 20px;">
@@ -498,7 +504,7 @@
             </section>
 
             <!-- All other sections — loaded via AJAX on click -->
-            {% set section_ids = ['quickwins_attack','security','subdomains','takeover', 'ssrf_sec', 'open_redirect', 'host_injection', 'ssti_sec', 'xxe_sec', 'proto_pollution', 'oauth_sec', 'file_upload', 'api_versioning', 'email_security', 'google_dorks', 'cache_deception', 'spiderfoot_sec', 'urls', 'login_pages', 'routes','services','keys','emails','waf','files','js','params','sourcemaps','cve','jsroutes','swagger','logic','surfacemap','git','cloud','admin','depconfusion','graphql_scan','api_sec','jwt_sec','crlf_sec','smuggling_sec','deser_sec', 'oast_sec', 'cookies_sec', 'cors', 'headers', 'kiterunner'] %}
+            {% set section_ids = ['subdomains','cors','headers','services','urls','screenshots','login_pages','keys','routes','js','params','jsroutes','swagger','git','surfacemap','sourcemaps','cloud','cve','admin','graphql_scan','files','forms','takeover','waf','emails','jwt_sec','oast_sec','wordlist_sec','quickwins_attack','email_sec','dorks_sec','network_graph','dns_records','tls_certs','asn_mapping','resp_headers'] %}
             {% for sid in section_ids %}
             <section class="section" id="section-{{ sid }}">
                 <div class="section-loading" id="loader-{{ sid }}">
@@ -543,6 +549,70 @@
     <script>
         const currentTarget = "{{ target }}";
         const loadedSections = {};
+
+        // ==================== Static-report parity helpers ====================
+        const SEARCH_INDEX = [];
+
+        function initRiskGauge() {
+            const scoreEl = document.getElementById('riskScore');
+            const needle = document.getElementById('riskNeedle');
+            if (!scoreEl || !needle) return;
+            const score = parseInt(scoreEl.textContent || '0', 10) || 0;
+            const angle = ((score / 100) * 180) - 90;
+            setTimeout(() => {
+                needle.style.setProperty('transform', `translateX(-50%) rotate(${angle}deg)`);
+            }, 100);
+        }
+
+        function buildSearchIndex() {
+            SEARCH_INDEX.length = 0;
+            document.querySelectorAll('.nav-btn').forEach(btn => {
+                const section = btn.dataset.section;
+                if (!section) return;
+                const label = btn.querySelector('.nav-label');
+                const count = btn.querySelector('.count');
+                if (!label) return;
+                SEARCH_INDEX.push({
+                    section,
+                    label: (label.textContent || '').replace(/\d+/g, '').trim(),
+                    count: count ? parseInt(count.textContent) || 0 : 0,
+                    btn
+                });
+            });
+        }
+
+        function globalSearchHandler(q) {
+            const drop = document.getElementById('searchDrop');
+            if (!drop) return;
+            if (!q || q.length < 1) { drop.style.display = 'none'; return; }
+            const matches = SEARCH_INDEX.filter(item =>
+                item.label.toLowerCase().includes(q.toLowerCase()) ||
+                item.section.toLowerCase().includes(q.toLowerCase())
+            ).slice(0, 8);
+            if (!matches.length) { drop.style.display = 'none'; return; }
+            drop.innerHTML = matches.map(m =>
+                `<div class="search-drop-item" onclick="document.querySelector('[data-section=${m.section}]').click(); document.getElementById('searchDrop').style.display='none'; document.getElementById('globalSearch').value='';">
+                    <span class="search-drop-section">${m.label}</span>
+                    ${m.count > 0 ? `<span class="search-drop-count">${m.count}</span>` : ''}
+                </div>`
+            ).join('');
+            drop.style.display = 'block';
+        }
+
+        function exportMarkdown() {
+            const date = "{{ date }}";
+            let md = `# Recon Report: ${currentTarget}\n**Date:** ${date}  \n**Tool:** Enum-Allma\n\n---\n\n`;
+            md += `## Executive Summary\n\n| Category | Count |\n|---|---|\n`;
+            md += `| Subdomains | {{ stats.stats_subdomains }} |\n| Valid URLs | {{ stats.stats_urls }} |\n| Open Ports | {{ stats.stats_ports }} |\n| JWTs Exposed | {{ stats.stats_jwt }} |\n| CORS Issues | {{ stats.stats_cors }} |\n| WAFs Detected | {{ stats.stats_waf }} |\n| Login Pages | {{ stats.stats_login }} |\n| Admin Panels | {{ stats.stats_admin }} |\n| GraphQL Endpoints | {{ stats.stats_graphql }} |\n`;
+            md += `\n---\n\n## Dashboard\n\n${document.getElementById('section-dashboard')?.innerText || ''}\n`;
+
+            const blob = new Blob([md], { type: 'text/markdown' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = `recon_${currentTarget}_${date}.md`;
+            a.click();
+            URL.revokeObjectURL(a.href);
+        }
 
         // ==================== Navigation ====================
         document.querySelectorAll('.nav-btn').forEach(btn => {
@@ -797,16 +867,34 @@
 
         // ==========================================
         // AUTO-HIDE EMPTY SECTIONS IN SIDEBAR
+        // Mirrors the static report behavior, but uses DB-provided
+        // empty-section flags for lazy-loaded webapp sections.
         // ==========================================
-        document.addEventListener('DOMContentLoaded', () => {
+        let showingEmpty = false;
+        function updateEmptySections() {
             document.querySelectorAll('.nav-btn').forEach(btn => {
+                if (btn.dataset.alwaysShow) return;
+
                 const countSpan = btn.querySelector('.count');
-                if (countSpan && !btn.dataset.alwaysShow) {
+                let isEmpty = false;
+
+                if (countSpan) {
                     const count = parseInt(countSpan.textContent.trim(), 10);
-                    if (!isNaN(count) && count === 0) {
-                        btn.style.display = 'none';
+                    if (!isNaN(count) && count === 0) isEmpty = true;
+                } else if (btn.dataset.empty === '1') {
+                    isEmpty = true;
+                } else {
+                    const sectionId = btn.dataset.section;
+                    const section = sectionId ? document.getElementById('section-' + sectionId) : null;
+                    if (section) {
+                        const hasEmpty = section.querySelector('.empty-state');
+                        const hasContent = section.querySelector('.card, .table-wrapper, .stats-grid, pre');
+                        if (hasEmpty && !hasContent) isEmpty = true;
                     }
                 }
+
+                if (isEmpty) btn.style.display = showingEmpty ? 'flex' : 'none';
+                else btn.style.display = '';
             });
 
             document.querySelectorAll('.sidebar-category').forEach(cat => {
@@ -819,11 +907,21 @@
                     }
                     sibling = sibling.nextElementSibling;
                 }
-                if (!hasVisible) {
-                    cat.style.display = 'none';
-                }
+                cat.style.display = (!hasVisible && !showingEmpty) ? 'none' : 'flex';
             });
+        }
+
+        function toggleEmptySections() {
+            showingEmpty = !showingEmpty;
+            updateEmptySections();
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            initRiskGauge();
+            buildSearchIndex();
+            updateEmptySections();
         });
     </script>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
 </body>
 </html>

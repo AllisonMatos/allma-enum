@@ -81,7 +81,7 @@ def get_login_pages(target: str) -> List[Dict]:
         
     def _is_real_login(url: str) -> bool:
         u = url.lower()
-        path = urlparse(u).path
+        path = urlparse(u).path + (f"#{urlparse(u).fragment}" if urlparse(u).fragment else "")
         
         # Filtra arquivos estáticos
         if any(path.endswith(ext) for ext in (".js", ".css", ".json", ".png", ".jpg", ".jpeg", ".gif", ".svg", ".ico", ".woff", ".woff2", ".ttf", ".eot", ".map")):
@@ -94,10 +94,10 @@ def get_login_pages(target: str) -> List[Dict]:
         keywords = r"(login|signin|sign-in|sign_in|logon|sso|auth|authenticate|account|admin|portal|dashboard|entrar|acesso|conectar|cas/login|oauth|saml|adfs|idp|identity|wp-login)"
         return bool(re.search(r"(?:/|^)" + keywords + r"(?:/|\?|$)", path, re.I))
 
-    # Source 1: domain/login_pages.txt (Detected explicitly)
+    # Source 1: domain/login_pages.txt (Detected explicitly by pipeline — trusted)
     for url in read_file_lines(base / "domain" / "login_pages.txt"):
         n = _norm(url)
-        if n not in seen and _is_real_login(url):
+        if n not in seen:
             try: host = urlparse(url).netloc.split(":")[0]
             except: host = "Unknown"
             login_urls.append({"url": url.split('?')[0], "host": host, "source": "detected", "signal": "Domain Scanner"})
@@ -122,13 +122,69 @@ def get_login_pages(target: str) -> List[Dict]:
         r'account|admin|portal|dashboard|entrar|conectar|acesso|cas/login|'
         r'oauth|saml|adfs|idp|identity|wp-login)', re.I
     )
-    for urls_file in [base / "urls" / "urls_200.txt", base / "domain" / "urls_valid.txt"]:
+    for urls_file in [base / "urls" / "urls_alive.txt", base / "urls" / "urls_200.txt", base / "domain" / "urls_valid.txt"]:
         for url in read_file_lines(urls_file):
             n = _norm(url)
             if n not in seen and login_url_re.search(url) and _is_real_login(url):
                 try: host = urlparse(url).netloc.split(":")[0]
                 except: host = "Unknown"
                 login_urls.append({"url": url.split('?')[0], "host": host, "source": "url-pattern", "signal": "URL Keyword"})
+                seen.add(n)
+
+    # Source 4: SPA inference via urls_all.json — if a host has auth endpoints
+    # (/api/signin, /login, etc.), then its base URL (status 200) is a login page
+    urls_all_data = read_json_file(base / "urls" / "urls_all.json") or []
+    if isinstance(urls_all_data, list) and urls_all_data:
+        hosts_with_auth = set()
+        auth_path_kw = ["signin", "login", "logon", "auth", "sign-in"]
+        for r in urls_all_data:
+            url_path = urlparse(r.get("url", "")).path.lower()
+            if any(f"/{kw}" in url_path for kw in auth_path_kw):
+                hosts_with_auth.add(urlparse(r["url"]).netloc)
+        
+        for r in urls_all_data:
+            u = r.get("url", "")
+            parsed = urlparse(u)
+            n = _norm(u)
+            if parsed.netloc in hosts_with_auth and parsed.path in ("", "/") and r.get("status_code", 0) == 200 and n not in seen:
+                host = parsed.netloc.split(":")[0]
+                login_urls.append({"url": u, "host": host, "source": "spa-inference", "signal": "SPA Auth (JS redirect)"})
+                seen.add(n)
+
+        # Source 5: Shared-title fingerprint — if a host is confirmed login and
+        # another host has the same non-generic title (200 OK), infer login too
+        confirmed_hosts = {urlparse(lp["url"]).netloc for lp in login_urls}
+        confirmed_titles = set()
+        generic_titles = {"", "404", "not found", "error", "forbidden", "301 moved", "redirect"}
+        for r in urls_all_data:
+            parsed = urlparse(r.get("url", ""))
+            title = r.get("title", "").strip()
+            if parsed.netloc in confirmed_hosts and parsed.path in ("", "/") and title.lower() not in generic_titles and len(title) > 3:
+                confirmed_titles.add(title)
+        
+        if confirmed_titles:
+            for r in urls_all_data:
+                u = r.get("url", "")
+                parsed = urlparse(u)
+                n = _norm(u)
+                title = r.get("title", "").strip()
+                if (title in confirmed_titles and parsed.path in ("", "/") 
+                    and r.get("status_code", 0) == 200 and n not in seen):
+                    host = parsed.netloc.split(":")[0]
+                    login_urls.append({"url": u, "host": host, "source": "title-fingerprint", "signal": f"Same App Title ({title[:30]})"})
+                    seen.add(n)
+                    
+        # Source 6: HTTP 401 Unauthorized (Basic Auth / Bearer)
+        for r in urls_all_data:
+            u = r.get("url", "")
+            n = _norm(u)
+            parsed = urlparse(u)
+            # Only flag 401s as login pages if they are the root of a subdomain.
+            # This prevents 500 protected API endpoints from polluting the login pages tab,
+            # while correctly catching Basic Auth gateways like gw.sqs.2adv.me.
+            if r.get("status_code", 0) == 401 and parsed.path in ("", "/") and n not in seen:
+                host = parsed.netloc.split(":")[0]
+                login_urls.append({"url": u, "host": host, "source": "http-401", "signal": "HTTP 401 Unauthorized (Basic Auth)"})
                 seen.add(n)
                 
     return login_urls
@@ -178,7 +234,14 @@ def calculate_stats(target: str) -> Dict:
         
     keys_data = read_json_file(base / "domain" / "extracted_keys.json")
     if keys_data:
-        stats["keys_found"] = len(keys_data)
+        valid_count = 0
+        for k in keys_data:
+            match_val = k.get("match", "").lower()
+            full_match = k.get("full_match", "").lower()
+            context_str = str(k.get("context", {})).lower()
+            if "data:image/" not in match_val and "data:image/" not in full_match and "data:image/" not in context_str:
+                valid_count += 1
+        stats["keys_found"] = valid_count
         
     routes_data = read_json_file(base / "domain" / "extracted_routes.json")
     if routes_data:
@@ -202,11 +265,14 @@ def calculate_stats(target: str) -> Dict:
             stats["cve_vulns"] = len(cve_data)
         except: pass
             
-    # Endpoints (try JSON first, then txt fallback)
     endpoints_json = base / "endpoint" / "raw_endpoints.json"
     if endpoints_json.exists():
         try:
-            stats["endpoints_count"] = len(json.loads(endpoints_json.read_text(errors="ignore")))
+            ep_data = json.loads(endpoints_json.read_text(errors="ignore"))
+            if isinstance(ep_data, dict):
+                stats["endpoints_count"] = len(ep_data.get("endpoints", [])) + len(ep_data.get("graphql", []))
+            elif isinstance(ep_data, list):
+                stats["endpoints_count"] = len(ep_data)
         except: pass
     
     endpoints_file = base / "endpoint" / "endpoints.txt"
@@ -317,6 +383,7 @@ def calculate_stats(target: str) -> Dict:
 
     # JS Routes (try multiple possible paths)
     for js_routes_path in [
+        base / "jsscanner" / "js_routes.json",
         base / "domain" / "extracted_js_routes.json",
         base / "domain" / "extracted_routes.json",
     ]:
@@ -326,9 +393,12 @@ def calculate_stats(target: str) -> Dict:
                 stats["js_routes_count"] = len(data) if isinstance(data, list) else sum(len(v) if isinstance(v, list) else 1 for v in data.values()) if isinstance(data, dict) else 0
             except: pass
 
-    # URLs combined (count from multiple sources)
+    # URLs combined (count from multiple sources) — V12: prioriza urls vivas 2xx
+    urls_alive = base / "urls" / "urls_alive.txt"
     urls_200 = base / "urls" / "urls_200.txt"
-    if urls_200.exists():
+    if urls_alive.exists():
+        stats["urls_200_count"] = len([l for l in urls_alive.read_text(errors="ignore").splitlines() if l.strip()])
+    elif urls_200.exists():
         stats["urls_200_count"] = len([l for l in urls_200.read_text(errors="ignore").splitlines() if l.strip()])
 
     # Swagger
@@ -852,7 +922,162 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             color: var(--text-muted);
         }}
         
-        .stat-card.highlight {{ border-left: 3px solid var(--accent-blue); }}
+        /* Screenshot lightbox */
+        #eaScreenshotLightbox {{
+            display: none;
+            position: fixed;
+            inset: 0;
+            z-index: 10000;
+            background: rgba(0, 0, 0, 0.9);
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            padding: 48px 24px 24px;
+        }}
+        #eaScreenshotLightbox.is-open {{
+            display: flex;
+        }}
+        #eaScreenshotLightboxClose {{
+            position: fixed;
+            top: 16px;
+            right: 20px;
+            z-index: 10001;
+            width: 44px;
+            height: 44px;
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+            background: var(--bg-secondary);
+            color: var(--text-primary);
+            font-size: 24px;
+            line-height: 1;
+            cursor: pointer;
+        }}
+        #eaScreenshotLightboxClose:hover {{
+            background: var(--bg-tertiary);
+        }}
+        #eaScreenshotLightboxImg {{
+            max-width: min(96vw, 2200px);
+            max-height: calc(90vh - 48px);
+            width: auto;
+            height: auto;
+            object-fit: contain;
+            border-radius: 8px;
+            box-shadow: 0 12px 48px rgba(0, 0, 0, 0.55);
+        }}
+        #eaScreenshotLightboxCaption {{
+            margin-top: 16px;
+            max-width: 92vw;
+            text-align: center;
+            font-size: 12px;
+            color: #c9d1d9;
+            font-family: ui-monospace, monospace;
+            word-break: break-all;
+        }}
+        
+        /* Surface map — hosts colapsáveis + pastas aninhadas */
+        .surfacemap-host {{
+            margin-bottom: 12px;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            overflow: hidden;
+            background: var(--bg-secondary);
+        }}
+        .surfacemap-host > summary {{
+            list-style: none;
+            padding: 12px 16px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 15px;
+            color: var(--accent-green);
+            background: var(--bg-tertiary);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }}
+        .surfacemap-host > summary::-webkit-details-marker {{
+            display: none;
+        }}
+        .surfacemap-host > summary::before {{
+            content: "▶";
+            font-size: 10px;
+            opacity: 0.8;
+            transition: transform 0.15s;
+        }}
+        .surfacemap-host[open] > summary::before {{
+            transform: rotate(90deg);
+        }}
+        .surfacemap-host[open] > summary {{
+            border-bottom: 1px solid var(--border-color);
+        }}
+        .surfacemap-host-body {{
+            padding: 10px 12px 14px 18px;
+        }}
+        details.surfacemap-folder {{
+            margin: 4px 0;
+            border-left: 2px solid var(--border-color);
+            padding-left: 10px;
+        }}
+        details.surfacemap-folder > summary {{
+            list-style: none;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--accent-blue);
+            padding: 4px 0;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }}
+        details.surfacemap-folder > summary::-webkit-details-marker {{
+            display: none;
+        }}
+        details.surfacemap-folder > summary::before {{
+            content: "▶";
+            font-size: 9px;
+            opacity: 0.75;
+        }}
+        details.surfacemap-folder[open] > summary::before {{
+            content: "▼";
+        }}
+        .surfacemap-folder-inner {{
+            margin-top: 4px;
+            padding-left: 4px;
+        }}
+        .surfacemap-leaf {{
+            font-size: 12px;
+            color: var(--text-secondary);
+            margin: 3px 0 3px 18px;
+            font-family: ui-monospace, monospace;
+            padding: 2px 0;
+        }}
+        /* Surface map — rich accordion extras */
+        .surfacemap-host > summary {{ justify-content: space-between; }}
+        .sm-badges {{ margin-left: auto; display: flex; gap: 6px; align-items: center; }}
+        .sm-badge {{ padding: 2px 8px; border-radius: 10px; font-size: 10px; font-weight: 600; }}
+        .sm-badge.sm-url {{ background: rgba(88,166,255,0.12); color: var(--accent-blue); }}
+        .sm-badge.sm-port {{ background: rgba(63,185,80,0.12); color: var(--accent-green); }}
+        .sm-badge.sm-tech {{ background: rgba(163,113,247,0.12); color: var(--accent-purple); }}
+        .sm-section {{ margin: 8px 0; font-size: 12px; }}
+        .sm-section-label {{ font-weight: 600; color: var(--text-secondary); margin-right: 6px; }}
+        .sm-tech-tag {{ display: inline-block; padding: 2px 8px; margin: 2px; border-radius: 6px; font-size: 11px; background: var(--bg-tertiary); color: var(--text-primary); border: 1px solid var(--border-color); }}
+        .sm-url-row {{ display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 12px; border-bottom: 1px solid rgba(48,54,61,0.3); }}
+        .sm-url-row:last-child {{ border-bottom: none; }}
+        .sm-sc {{ padding: 1px 6px; border-radius: 6px; font-size: 10px; font-weight: 700; min-width: 32px; text-align: center; flex-shrink: 0; }}
+        .sm-url-link {{ color: var(--text-secondary); text-decoration: none; word-break: break-all; }}
+        .sm-url-link:hover {{ color: var(--accent-blue); }}
+        .sm-urls-list {{ max-height: 400px; overflow-y: auto; padding: 6px 0; }}
+        .sm-inner-summary {{ font-size: 12px; font-weight: 600; color: var(--text-secondary); cursor: pointer; padding: 6px 0; list-style: none; }}
+        .sm-inner-summary:hover {{ color: var(--text-primary); }}
+        .sm-inner-summary::-webkit-details-marker {{ display: none; }}
+        .sm-inner-summary::before {{ content: "▶ "; font-size: 9px; opacity: 0.7; }}
+        details[open] > .sm-inner-summary::before {{ content: "▼ "; }}
+        .sm-urls-detail, .sm-tree-detail {{ margin: 8px 0; border-left: 2px solid var(--border-color); padding-left: 12px; }}
+        .sm-tree-body {{ padding: 4px 0; }}
+        /* Status filter select — reusable */
+        .status-filter-wrap {{ display: inline-flex; align-items: center; gap: 8px; }}
+        .status-filter-wrap label {{ font-size: 11px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }}
+        .status-filter-select {{ appearance: none; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 8px; padding: 8px 32px 8px 12px; color: var(--text-primary); font-size: 12px; font-weight: 500; cursor: pointer; outline: none; background-image: url('data:image/svg+xml;utf8,<svg fill="%23a0a0a0" height="24" viewBox="0 0 24 24" width="24" xmlns="http://www.w3.org/2000/svg"><path d="M7 10l5 5 5-5z"/></svg>'); background-repeat: no-repeat; background-position: right 8px center; transition: border-color 0.2s, box-shadow 0.2s; }}
+        .status-filter-select:focus {{ border-color: var(--accent-blue); box-shadow: 0 0 0 3px rgba(88,166,255,0.2); }}
         .stat-card.success {{ border-left: 3px solid var(--accent-green); }}
         .stat-card.warning {{ border-left: 3px solid var(--accent-orange); }}
         .stat-card.danger {{ border-left: 3px solid var(--accent-red); }}
@@ -1176,6 +1401,16 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         .exec-cell .ec-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); margin-bottom: 4px; }
         .exec-cell .ec-val { font-size: 15px; font-weight: 700; color: var(--text-primary); }
         .exec-cell .ec-sub { font-size: 11px; color: var(--text-secondary); margin-top: 2px; }
+        /* Tooltips & Badges */
+        [data-tooltip] { position: relative; cursor: help; border-bottom: 1px dotted var(--text-muted); }
+        [data-tooltip]:hover::after {
+            content: attr(data-tooltip);
+            position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%);
+            background: rgba(0,0,0,0.8); color: white; padding: 4px 8px; border-radius: 4px;
+            font-size: 11px; white-space: nowrap; z-index: 9999; margin-bottom: 5px;
+        }
+        .badge-auto { font-size: 10px; background: rgba(88,166,255,0.1); color: var(--accent-blue); padding: 2px 6px; border-radius: 10px; border: 1px solid rgba(88,166,255,0.2); }
+        .badge-manual { font-size: 10px; background: rgba(210,153,34,0.1); color: var(--accent-orange); padding: 2px 6px; border-radius: 10px; border: 1px solid rgba(210,153,34,0.2); margin-left: 6px; }
     </style>
 
     <script>const BURP_DATA = {{}};</script>
@@ -1225,111 +1460,53 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
         </button>
         
-        <button class="nav-btn active" data-section="dashboard" data-always-show="true">
-            <div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"//></svg></div><div class="nav-label">Dashboard</div>
-        </button>
-        <button class="nav-btn" data-section="quickwins_attack" data-always-show="true">
-            <div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"//></svg></div><div class="nav-label">Quick Wins <span class="count">{stats_quickwins}</span></div>
-        </button>
+        <button class="nav-btn active" data-section="dashboard" data-always-show="true"><div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg></div><div class="nav-label">Dashboard</div></button>
 
-        <div class="sidebar-category"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg> SUPERFÍCIE</div>
+        <div class="sidebar-category"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg> FINDINGS ATIVOS</div>
+        <button class="nav-btn" data-section="security"><div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="7.86 2 16.14 2 22 7.86 22 16.14 16.14 22 7.86 22 2 16.14 2 7.86 7.86 2"></polygon><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg></div><div class="nav-label" style="color:#ff7b72; font-weight:600;">Vulnerabilities</div></button>
+        <button class="nav-btn" data-section="cve"><div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></div><div class="nav-label" style="color:#ff7b72; font-weight:600;">CVEs Known <span class="count">{stats_cves}</span></div></button>
+        <button class="nav-btn" data-section="cors"><div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></div><div class="nav-label">CORS <span class="count">{stats_cors}</span></div></button>
+        <button class="nav-btn" data-section="cloud"><div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/></svg></div><div class="nav-label">Cloud Storage <span class="count">{stats_buckets}</span></div></button>
+        <button class="nav-btn" data-section="keys"><div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg></div><div class="nav-label">Keys & Secrets <span class="count">{stats_keys}</span></div></button>
+        <button class="nav-btn" data-section="admin"><div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></div><div class="nav-label">Admin Panels <span class="count">{stats_admin}</span></div></button>
+        <button class="nav-btn" data-section="git"><div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><line x1="1.05" y1="12" x2="7" y2="12"/><line x1="17.01" y1="12" x2="22.96" y2="12"/></svg></div><div class="nav-label">Git Exposed <span class="count">{stats_git}</span></div></button>
+        <button class="nav-btn" data-section="jwt_sec"><div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></div><div class="nav-label">JWT <span class="count">{stats_jwt}</span></div></button>
+        <button class="nav-btn" data-section="oast_sec"><div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></div><div class="nav-label" style="color:#ff7b72">Blind Bugs <span class="count">{stats_oast}</span></div></button>
 
-        <button class="nav-btn" data-section="subdomains" data-always-show="true">
-            <div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"//></svg></div><div class="nav-label">Subdomains <span class="count">{stats_subdomains}</span></div>
-        </button>
-        <button class="nav-btn" data-section="urls" data-always-show="true">
-            <div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"//></svg></div><div class="nav-label">URLs <span class="count">{stats_urls_combined}</span></div>
-        </button>
-        <button class="nav-btn" data-section="login_pages">
-            <div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"//></svg></div><div class="nav-label">Login Pages <span class="count">{stats_login}</span></div>
-        </button>
-        <button class="nav-btn" data-section="routes">
-            <div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="2"/><path d="M16.24 7.76a6 6 0 0 1 0 8.49m-8.48-.01a6 6 0 0 1 0-8.49m11.31-2.82a10 10 0 0 1 0 14.14m-14.14 0a10 10 0 0 1 0-14.14"//></svg></div><div class="nav-label">Endpoints <span class="count">{stats_endpoints}</span></div>
-        </button>
-        <button class="nav-btn" data-section="files">
-            <div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"//></svg></div><div class="nav-label">Files</div>
-        </button>
-        <button class="nav-btn" data-section="params">
-            <div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"//></svg></div><div class="nav-label">Params <span class="count">{stats_params}</span></div>
-        </button>
-        <button class="nav-btn" data-section="surfacemap">
-            <div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"//></svg></div><div class="nav-label">Surface Map</div>
-        </button>
-        <button class="nav-btn" data-section="js">
-            <div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"//></svg></div><div class="nav-label">JS Files <span class="count">{stats_js}</span></div>
-        </button>
-        <button class="nav-btn" data-section="jsroutes">
-            <div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"//></svg></div><div class="nav-label">API & JS <span class="count">{stats_js_routes}</span></div>
-        </button>
-        <button class="nav-btn" data-section="sourcemaps">
-            <div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7"/><path d="M11 18H8a2 2 0 0 1-2-2V9"//></svg></div><div class="nav-label">Source Maps <span class="count">{stats_sourcemaps}</span></div>
-        </button>
+        <div class="sidebar-category"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg> SUPERFÍCIE</div>
+        <button class="nav-btn" data-section="subdomains" data-always-show="true"><div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></div><div class="nav-label">Subdomains <span class="count">{stats_subdomains}</span></div></button>
+        <button class="nav-btn" data-section="routes"><div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="2"/><path d="M16.24 7.76a6 6 0 0 1 0 8.49m-8.48-.01a6 6 0 0 1 0-8.49m11.31-2.82a10 10 0 0 1 0 14.14m-14.14 0a10 10 0 0 1 0-14.14"/></svg></div><div class="nav-label">Endpoints <span class="count">{stats_endpoints}</span></div></button>
+        <button class="nav-btn" data-section="params"><div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/></svg></div><div class="nav-label">Params <span class="count">{stats_params}</span></div></button>
+        <button class="nav-btn" data-section="services"><div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg></div><div class="nav-label">Ports/Services <span class="count">{stats_ports}</span></div></button>
+        <button class="nav-btn" data-section="waf"><div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></div><div class="nav-label">WAF Detection <span class="count">{stats_waf}</span></div></button>
+        <button class="nav-btn" data-section="urls" data-always-show="true"><div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg></div><div class="nav-label">URLs <span class="count">{stats_urls_combined}</span></div></button>
+        <button class="nav-btn" data-section="login_pages"><div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></div><div class="nav-label">Login Pages <span class="count">{stats_login}</span></div></button>
+        <button class="nav-btn" data-section="js"><div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg></div><div class="nav-label">JS Files <span class="count">{stats_js}</span></div></button>
+        <button class="nav-btn" data-section="jsroutes"><div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg></div><div class="nav-label">API & JS <span class="count">{stats_js_routes}</span></div></button>
+        <button class="nav-btn" data-section="screenshots"><div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg></div><div class="nav-label">Screenshots</div></button>
+        <button class="nav-btn" data-section="surfacemap"><div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg></div><div class="nav-label">Surface Map</div></button>
 
-        <button class="nav-btn" data-section="takeover">
-            <div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"//></svg></div><div class="nav-label">Takeover <span class="count">{stats_takeover}</span></div>
-        </button>
-        <button class="nav-btn" data-section="cve">
-            <div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19.69 14a6.9 6.9 0 0 0 .31-2V5l-8-3-3.16 1.18"/><path d="M4.73 4.73L4 5v7c0 6 8 10 8 10a20.29 20.29 0 0 0 5.62-4.38"/><line x1="1" y1="1" x2="23" y2="23"//></svg></div><div class="nav-label">CVEs <span class="count">{stats_cves}</span></div>
-        </button>
-        <button class="nav-btn" data-section="network_graph">
-            <div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"//></svg></div><div class="nav-label">Network Graph</div>
-        </button>
-        <button class="nav-btn" data-section="dns_records">
-            <div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"//></svg></div><div class="nav-label">DNS Records</div>
-        </button>
-        <button class="nav-btn" data-section="tls_certs">
-            <div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"//></svg></div><div class="nav-label">TLS Certs</div>
-        </button>
-        <button class="nav-btn" data-section="asn_mapping">
-            <div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"//></svg></div><div class="nav-label">ASN/CIDR</div>
-        </button>
-        <button class="nav-btn" data-section="resp_headers">
-            <div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"//></svg></div><div class="nav-label">Headers Raw</div>
-        </button>
+        <div class="sidebar-category"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg> INTELIGÊNCIA</div>
+        <button class="nav-btn" data-section="dns_records"><div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></div><div class="nav-label">DNS Records</div></button>
+        <button class="nav-btn" data-section="tls_certs"><div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></div><div class="nav-label">TLS Certs</div></button>
+        <button class="nav-btn" data-section="asn_mapping"><div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg></div><div class="nav-label">ASN/CIDR</div></button>
+        <button class="nav-btn" data-section="network_graph"><div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg></div><div class="nav-label">Network Graph</div></button>
+        <button class="nav-btn" data-section="email_sec"><div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg></div><div class="nav-label">Email Sec</div></button>
+        <button class="nav-btn" data-section="emails"><div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg></div><div class="nav-label">Emails <span class="count">{stats_emails}</span></div></button>
+        <button class="nav-btn" data-section="resp_headers"><div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></div><div class="nav-label">Headers Raw</div></button>
 
-        <div class="sidebar-category"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg> EXPOSURES</div>
-        <button class="nav-btn" data-section="admin">
-            <div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"//></svg></div><div class="nav-label">Admin Panels <span class="count">{stats_admin}</span></div>
-        </button>
-        <button class="nav-btn" data-section="keys">
-            <div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"//></svg></div><div class="nav-label">Keys & Secrets <span class="count">{stats_keys}</span></div>
-        </button>
-        <button class="nav-btn" data-section="emails">
-            <div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"//></svg></div><div class="nav-label">Emails <span class="count">{stats_emails}</span></div>
-        </button>
-        <button class="nav-btn" data-section="git">
-            <div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><line x1="1.05" y1="12" x2="7" y2="12"/><line x1="17.01" y1="12" x2="22.96" y2="12"//></svg></div><div class="nav-label">Git Exposed <span class="count">{stats_git}</span></div>
-        </button>
-        <button class="nav-btn" data-section="cloud">
-            <div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"//></svg></div><div class="nav-label">Cloud Storage <span class="count">{stats_buckets}</span></div>
-        </button>
-        <button class="nav-btn" data-section="graphql_scan">
-            <div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="2"/><path d="M16.24 7.76a6 6 0 0 1 0 8.49m-8.48-.01a6 6 0 0 1 0-8.49"//></svg></div><div class="nav-label">GraphQL <span class="count">{stats_graphql}</span></div>
-        </button>
-        <button class="nav-btn" data-section="swagger">
-            <div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"//></svg></div><div class="nav-label">Swagger UI <span class="count">{stats_swagger}</span></div>
-        </button>
-        <button class="nav-btn" data-section="jwt_sec">
-            <div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"//></svg></div><div class="nav-label">JWT <span class="count">{stats_jwt}</span></div>
-        </button>
-        <button class="nav-btn" data-section="services">
-            <div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"//></svg></div><div class="nav-label">Ports/Services <span class="count">{stats_ports}</span></div>
-        </button>
-        <button class="nav-btn" data-section="waf">
-            <div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"//></svg></div><div class="nav-label">WAF Detection <span class="count">{stats_waf}</span></div>
-        </button>
-        <button class="nav-btn" data-section="email_sec">
-            <div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"//></svg></div><div class="nav-label">Email Sec</div>
-        </button>
-        <button class="nav-btn" data-section="oast_sec">
-            <div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"//></svg></div><div class="nav-label" style="color:#ff7b72">Blind Bugs <span class="count">{stats_oast}</span></div>
-        </button>
-        <button class="nav-btn" data-section="wordlist_sec">
-            <div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"//></svg></div><div class="nav-label">Wordlists <span class="count">{stats_wordlist}</span></div>
-        </button>
-        <button class="nav-btn" data-section="dorks_sec">
-            <div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"//></svg></div><div class="nav-label">Dorks <span class="count">{stats_google_dorks}</span></div>
-        </button>
+        <div class="sidebar-category"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> UTILITÁRIOS</div>
+        <button class="nav-btn" data-section="dorks_sec"><div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></div><div class="nav-label">Dorks <span class="count">{stats_google_dorks}</span></div></button>
+        <button class="nav-btn" data-section="sourcemaps"><div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7"/><path d="M11 18H8a2 2 0 0 1-2-2V9"/></svg></div><div class="nav-label">Source Maps <span class="count">{stats_sourcemaps}</span></div></button>
+        <button class="nav-btn" data-section="forms"><div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg></div><div class="nav-label">Forms <span class="count">{stats_forms}</span></div></button>
+        <button class="nav-btn" data-section="files"><div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg></div><div class="nav-label">Files</div></button>
+        <button class="nav-btn" data-section="wordlist_sec"><div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg></div><div class="nav-label">Wordlists <span class="count">{stats_wordlist}</span></div></button>
+
+        <div style="margin-top: auto; padding: 12px; width: 100%; border-top: 1px solid var(--border-color);">
+            <button onclick="toggleEmptySections()" class="nav-btn" style="border:1px dashed var(--border-color); border-radius:4px; height:32px; justify-content:center; color:var(--text-muted); font-size:11px;">
+                👁️ Toggle Empty Sections
+            </button>
+        </div>
     </nav>
     
     <div class="content-wrapper">
@@ -1337,6 +1514,10 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         <header class="top-bar">
             <div class="page-title">
                 <h1>Enum-Allma: <span>{target}</span></h1>
+            </div>
+            
+            <div style="font-size: 11px; color: var(--text-secondary); background: var(--bg-tertiary); padding: 4px 10px; border-radius: 20px; border: 1px solid var(--border-color); white-space: nowrap; margin-left: 10px;">
+                Cobertura: {coverage_urls} URLs · {coverage_subs} subdomínio(s) · {coverage_js} JS files
             </div>
             
             <div style="position:relative; flex:1; max-width:400px; margin: 0 20px;">
@@ -1359,6 +1540,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         <main class="main-content">
             <!-- Dashboard -->
             <section class="section active" id="dashboard">
+                {executive_summary_content}
                 <div class="stats-grid">
                     <div class="stat-card highlight">
                         <div class="value">{stats_subdomains}</div>
@@ -1383,6 +1565,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                      <div class="stat-card danger">
                         <div class="value">{stats_keys}</div>
                         <div class="label">Keys Exposed</div>
+                        <div class="badge-manual" style="margin-top:6px;display:inline-block;width:fit-content;">⚠ Validação manual</div>
                     </div>
                     <div class="stat-card warning">
                          <div class="value">{stats_waf}</div>
@@ -1395,6 +1578,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                     <div class="stat-card orange" style="border-left: 3px solid var(--accent-orange);">
                          <div class="value">{stats_cors}</div>
                         <div class="label">CORS Issues</div>
+                        <div class="badge-manual" style="margin-top:6px;display:inline-block;width:fit-content;">⚠ Validação manual</div>
                     </div>
                 </div>
                 
@@ -1415,7 +1599,8 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                                 <div class="risk-gauge-sublabel">Risk Score /100</div>
                             </div>
                             <div style="flex:1;min-width:180px;">
-                                <div style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px;">Stack Detectado</div>
+                                {risk_breakdown_html}
+                                <div style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px;margin-top:10px;">Stack Detectado</div>
                                 <div class="tech-grid">
                                     {tech_chips}
                                 </div>
@@ -1442,6 +1627,10 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                     </div>
                 </div>
 
+                {next_steps_content}
+
+                {wp_plugins_content}
+
                 <div style="margin-top:0;">
                     <div class="card open" style="border-left: 4px solid var(--accent-blue);">
                          <div class="card-header">
@@ -1458,9 +1647,13 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 
             
             <section class="section" id="subdomains">{subdomains_content}</section>
+            
+            <section class="section" id="cors">{cors_content}</section>
+            <section class="section" id="headers">{headers_content}</section>
 
             <section class="section" id="services">{services_content}</section>
             <section class="section" id="urls">{urls_content}</section>
+            <section class="section" id="screenshots">{screenshots_content}</section>
             <section class="section" id="login_pages">{login_pages_content}</section>
             <section class="section" id="keys">{keys_content}</section>
             <section class="section" id="routes">{routes_content}</section>
@@ -1473,10 +1666,12 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             <section class="section" id="surfacemap">{surfacemap_content}</section>
             <section class="section" id="sourcemaps">{sourcemaps_content}</section>
             <section class="section" id="cloud">{cloud_content}</section>
+            <section class="section" id="security">{security_content}</section>
             <section class="section" id="cve">{cve_content}</section>
             <section class="section" id="admin">{admin_content}</section>
             <section class="section" id="graphql_scan">{graphql_content}</section>
             <section class="section" id="files">{files_content}</section>
+            <section class="section" id="forms">{forms_content}</section>
             <section class="section" id="takeover">{takeover_content}</section>
             <section class="section" id="waf">{waf_content}</section>
             <section class="section" id="emails">{emails_content}</section>
@@ -1572,7 +1767,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }
 
         function makeStatusBadge(rowId) {
-            const saved = (() => { try { return localStorage.getItem('status_' + rowId) || 'untested'; } catch(e){ return 'untested'; }})();
+            const saved = (() => { try { return localStorage.getItem('status_' + rowId) || 'untested'; } catch(e){ return 'untested'; } })();
             return `<button class="status-badge ${STATUS_CLASSES[saved]}" data-status="${saved}" onclick="cycleStatus(this,'${rowId}')">${STATUS_LABELS[saved]}</button>`;
         }
 
@@ -1906,6 +2101,24 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 renderPaginatedTable(tableId);
             }}
         }}
+        // --- Generic status filter for static tables ---
+        function _filterTableStatus(tableId, filter, statusColIdx) {{
+            var tbl = document.getElementById(tableId);
+            if (!tbl) return;
+            var rows = tbl.querySelectorAll('tbody tr');
+            rows.forEach(function(row) {{
+                if (!filter) {{ row.style.display = ''; return; }}
+                var cell = row.cells[statusColIdx];
+                var text = cell ? cell.textContent.trim() : '';
+                var num = parseInt(text);
+                var show = false;
+                if (filter === '2xx') show = num >= 200 && num < 300;
+                else if (filter === '3xx') show = num >= 300 && num < 400;
+                else if (filter === '4xx') show = num >= 400 && num < 500;
+                else if (filter === '5xx') show = num >= 500 && num < 600;
+                row.style.display = show ? '' : 'none';
+            }});
+        }}
         function goToSubdomain(host) {{
             host = host.trim();
             // Switch to subdomains section
@@ -1981,14 +2194,32 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         // ==========================================
         // AUTO-HIDE EMPTY SECTIONS IN SIDEBAR
         // ==========================================
-        document.addEventListener('DOMContentLoaded', () => {{
+        let showingEmpty = false;
+        function updateEmptySections() {{
             document.querySelectorAll('.nav-btn').forEach(btn => {{
+                if (btn.dataset.alwaysShow) return;
                 const countSpan = btn.querySelector('.count');
-                if (countSpan && !btn.dataset.alwaysShow) {{
+                let isEmpty = false;
+                
+                // Check by count span
+                if (countSpan) {{
                     const count = parseInt(countSpan.textContent.trim(), 10);
-                    if (!isNaN(count) && count === 0) {{
-                        btn.style.display = 'none';
+                    if (!isNaN(count) && count === 0) isEmpty = true;
+                }} else {{
+                    // No counter — check if linked section is empty
+                    const sectionId = btn.dataset.section;
+                    if (sectionId) {{
+                        const section = document.getElementById(sectionId);
+                        if (section) {{
+                            const hasEmpty = section.querySelector('.empty-state');
+                            const hasContent = section.querySelector('.card, .table-wrapper, .stats-grid, pre');
+                            if (hasEmpty && !hasContent) isEmpty = true;
+                        }}
                     }}
+                }}
+                
+                if (isEmpty) {{
+                    btn.style.display = showingEmpty ? 'flex' : 'none';
                 }}
             }});
 
@@ -2002,12 +2233,21 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                     }}
                     sibling = sibling.nextElementSibling;
                 }}
-                if (!hasVisible) {{
-                    cat.style.display = 'none';
-                }}
+                cat.style.display = (!hasVisible && !showingEmpty) ? 'none' : 'block';
             }});
+        }}
+        
+        function toggleEmptySections() {{
+            showingEmpty = !showingEmpty;
+            updateEmptySections();
+        }}
+
+        document.addEventListener('DOMContentLoaded', () => {{
+            updateEmptySections();
+
         }});
     </script>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
 </body>
 </html>'''
 
@@ -2065,6 +2305,7 @@ def build_graphql_content(target: str) -> str:
             <td style="text-align:right;">{button_html}</td>
         </tr>
         '''
+    uid = uuid.uuid4().hex[:6]
     return f'''
     <div class="card open" style="border-left: 4px solid var(--accent-purple);">
         <div class="card-header">
@@ -2072,8 +2313,17 @@ def build_graphql_content(target: str) -> str:
             <span class="card-badge">{len(data)} endpoints</span>
         </div>
         <div class="card-content" style="display:block;">
+            <div style="margin-bottom:10px;">
+                <select class="status-filter-select" onchange="_filterTableStatus('gqlTbl_{uid}', this.value, 1)">
+                    <option value="">All Status</option>
+                    <option value="2xx">2xx Success</option>
+                    <option value="3xx">3xx Redirect</option>
+                    <option value="4xx">4xx Client Error</option>
+                    <option value="5xx">5xx Server Error</option>
+                </select>
+            </div>
             <div class="table-wrapper">
-                <table>
+                <table id="gqlTbl_{uid}">
                     <thead><tr><th>URL</th><th>Status</th><th>Length</th><th>Features</th><th>PoC</th></tr></thead>
                     <tbody>{rows}</tbody>
                 </table>
@@ -2326,8 +2576,8 @@ def build_cookies_content(target: str) -> str:
     
     rows = ""
     for item in cookies_list:
-        url = html.escape(item.get("url", ""))
-        name = html.escape(item.get("cookie_name", ""))
+        url = html.escape(item.get("source_url", item.get("url", "")))
+        name = html.escape(item.get("name", item.get("cookie_name", "")))
         issues = "<br>".join([html.escape(i) for i in item.get("issues", [])])
         sev = item.get("severity", "LOW")
         cls = {"HIGH": "tag-high", "MEDIUM": "tag-medium", "LOW": "tag-low"}.get(sev, "tag-info")
@@ -2473,7 +2723,21 @@ def _build_generic_security_card_from_data(data: list, title: str, icon: str, bo
     </div>'''
 
 def build_ssrf_content(target: str) -> str:
-    return _build_generic_security_card(target, "scanners/ssrf.json", "Server-Side Request Forgery", "", "--accent-red")
+    data = read_json_file(Path("output") / target / "ssrf" / "findings.json")
+    if not data:
+        data = read_json_file(Path("output") / target / "scanners" / "ssrf.json")
+    if not data: return ""
+    return _build_generic_security_card_from_data(data, "Server-Side Request Forgery (SSRF)", "🌐", "--accent-red")
+
+def build_bypass403_content(target: str) -> str:
+    data = read_json_file(Path("output") / target / "bypass403" / "findings.json")
+    if not data: return ""
+    return _build_generic_security_card_from_data(data, "403 Bypass Vulnerabilities", "🔓", "--accent-red")
+
+def build_nuclei_content(target: str) -> str:
+    data = read_json_file(Path("output") / target / "nuclei" / "findings.json")
+    if not data: return ""
+    return _build_generic_security_card_from_data(data, "Nuclei Vuln Scanner", "☢️", "--accent-red")
 
 def build_ssti_content(target: str) -> str:
     return _build_generic_security_card(target, "ssti/findings.json", "Server-Side Template Injection", "🧨", "--accent-red")
@@ -2537,7 +2801,7 @@ def build_subdomains_content(subdomains: Dict, target: str) -> str:
                     <div style="flex:1;">
                         <p style="margin:0;">
                             <span class="tag tag-medium" style="font-size:10px;"> LOGIN</span>
-                            <a href="{html.escape(login_url)}" target="_blank" style="color:var(--accent-orange); font-weight:bold; margin-left:8px;">{html.escape(login_url)}</a>
+                            <a href="{html.escape(login_url)}" target="_blank" style="color:var(--accent-orange); font-weight:bold; margin-left:8px;">🔗 {html.escape(login_url)}</a>
                         </p>
                     </div>
                 </div>'''
@@ -2621,24 +2885,35 @@ def build_subdomains_content(subdomains: Dict, target: str) -> str:
             </div>
         </div>'''
         
-    import json
-    json_data = json.dumps(html_parts).replace("</", "<\\/")
+    # Join all HTML parts directly
+    subdomains_html = "".join(html_parts)
     
     return f'''
     <div style="margin-bottom:15px; display:flex; gap:10px;">
-        <input type="text" id="subdomainSearch" placeholder=" Search subdomains..." style="flex:1; background:var(--bg-secondary); border:1px solid var(--border-color); border-radius:6px; padding:8px 12px; color:var(--text-primary); font-size:13px;" onkeyup="filterSubdomains(this.value)">
+        <input type="text" id="subdomainSearch" placeholder=" Search subdomains..." style="flex:1; background:var(--bg-secondary); border:1px solid var(--border-color); border-radius:6px; padding:8px 12px; color:var(--text-primary); font-size:13px;" onkeyup="filterSubdomainsDOM(this.value)">
     </div>
-    <div id="subdomains_container"></div>
+    <div id="subdomains_container">
+        {subdomains_html}
+    </div>
     {ips_card}
     <script>
-        setTimeout(function() {{
-            initPaginatedTable("subdomains_container", {json_data}, [], function(row) {{ return row; }}, 100);
-        }}, 0);
+        function filterSubdomainsDOM(query) {{
+            query = query.toLowerCase().trim();
+            const cards = document.querySelectorAll('#subdomains_container .card');
+            cards.forEach(card => {{
+                if (!query || card.textContent.toLowerCase().includes(query)) {{
+                    card.style.display = '';
+                }} else {{
+                    card.style.display = 'none';
+                }}
+            }});
+        }}
     </script>
     '''
 
 
 def build_ports_content(target: str) -> str:
+    import re as _re
     base = Path("output") / target
     ports_file = base / "domain" / "ports.txt"
     
@@ -2646,13 +2921,101 @@ def build_ports_content(target: str) -> str:
     if not content.strip():
         return '<div class="empty-state"><p>No ports found</p></div>'
     
+    PORT_HINTS = {
+        21: ("FTP", "info"), 22: ("SSH", "info"), 23: ("Telnet", "warning"),
+        25: ("SMTP", "info"), 53: ("DNS", "info"), 80: ("HTTP", "info"),
+        110: ("POP3", "info"), 111: ("RPCBind", "warning"), 135: ("MSRPC", "warning"),
+        139: ("NetBIOS", "warning"), 143: ("IMAP", "info"), 161: ("SNMP", "warning"),
+        389: ("LDAP", "warning"), 443: ("HTTPS", "info"), 445: ("SMB", "warning"),
+        465: ("SMTPS", "info"), 587: ("SMTP Submission", "info"),
+        993: ("IMAPS", "info"), 995: ("POP3S", "info"),
+        1433: ("MSSQL", "warning"), 1521: ("Oracle DB", "warning"),
+        2049: ("NFS", "warning"), 3306: ("MySQL", "warning"),
+        3389: ("RDP", "critical"), 4444: ("Metasploit/Trojan", "critical"),
+        5432: ("PostgreSQL", "warning"), 5900: ("VNC", "warning"),
+        5985: ("WinRM HTTP", "warning"), 5986: ("WinRM HTTPS", "warning"),
+        6379: ("Redis", "critical"), 6443: ("Kubernetes API", "warning"),
+        8080: ("HTTP Proxy", "info"), 8443: ("HTTPS Alt", "info"),
+        8888: ("HTTP Alt", "info"), 9090: ("Web Admin", "info"),
+        9200: ("Elasticsearch", "warning"), 9300: ("Elasticsearch Transport", "warning"),
+        11211: ("Memcached", "critical"), 27017: ("MongoDB", "critical"),
+        27018: ("MongoDB Shard", "critical"),
+    }
+    
+    # Parse ports from various formats
+    parsed_ports = []
+    current_host = "*"
+    for line in content.strip().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        # Format 1: "Host: hostname"
+        host_match = _re.match(r'^Host:\s*(.+)$', line, _re.IGNORECASE)
+        if host_match:
+            current_host = host_match.group(1).strip()
+            continue
+        # Format 2: " - PORT/tcp" or " - PORT/udp"  
+        port_match = _re.match(r'^-?\s*(\d+)/(tcp|udp)', line)
+        if port_match:
+            parsed_ports.append((current_host, int(port_match.group(1))))
+            continue
+        # Format 3: "host:port"
+        match = _re.match(r'^([^:]+):(\d+)$', line)
+        if match:
+            parsed_ports.append((match.group(1), int(match.group(2))))
+            continue
+        # Format 4: just a port number
+        if line.isdigit():
+            parsed_ports.append((current_host, int(line)))
+    
+    if not parsed_ports:
+        # Fallback to raw display if parsing fails
+        return f'''
+        <div class="card open">
+            <div class="card-header"><span class="card-title section-title">Open Ports by Host</span></div>
+            <div class="card-content"><pre>{html.escape(content)}</pre></div>
+        </div>'''
+    
+    rows = ""
+    critical_count = 0
+    for host, port in sorted(parsed_ports, key=lambda x: (x[0], x[1])):
+        hint = PORT_HINTS.get(port)
+        if hint:
+            service, severity = hint
+        else:
+            service = "Unknown"
+            severity = "info" if port < 1024 else "warning"
+        
+        sev_class = {"critical": "tag-critical", "warning": "tag-medium", "info": "tag-low"}.get(severity, "tag-low")
+        alert = ""
+        if severity == "critical":
+            critical_count += 1
+            alert = f'<span style="color:var(--accent-red);font-size:11px;font-weight:600;">⚠ Porta de alto risco — validar exposição</span>'
+        elif port not in PORT_HINTS and port >= 1024:
+            alert = f'<span style="color:var(--accent-orange);font-size:11px;">⚠ Porta incomum</span>'
+        
+        rows += f'''<tr>
+            <td style="font-family:monospace;">{html.escape(host)}</td>
+            <td style="font-family:monospace;font-weight:bold;">{port}</td>
+            <td><span class="tag {sev_class}">{html.escape(service)}</span></td>
+            <td>{alert}</td>
+        </tr>'''
+    
+    badge = f'{len(parsed_ports)} ports'
+    if critical_count > 0:
+        badge += f' · <span style="color:var(--accent-red);">{critical_count} critical</span>'
+    
     return f'''
     <div class="card open">
         <div class="card-header">
             <span class="card-title section-title">Open Ports by Host</span>
+            <span class="card-badge">{badge}</span>
         </div>
-        <div class="card-content">
-            <pre>{html.escape(content)}</pre>
+        <div class="card-content" style="display:block;">
+            <div class="table-wrapper"><table>
+                <thead><tr><th>Host</th><th>Port</th><th>Serviço Sugerido</th><th>Alerta</th></tr></thead>
+                <tbody>{rows}</tbody>
+            </table></div>
         </div>
     </div>
     '''
@@ -2665,10 +3028,11 @@ def build_urls_content(subdomains: Dict, target: str) -> str:
     # Load status codes from httpx JSON output
     base = Path("output") / target
     urls_json_file = base / "urls" / "urls_200.json"
+    urls_all_file = base / "urls" / "urls_all.json"
     domain_urls_json = base / "domain" / "urls_200.json"
     
     status_map = {}  # url -> status_code
-    for jf in [urls_json_file, domain_urls_json]:
+    for jf in [urls_all_file, urls_json_file, domain_urls_json]:
         if jf.exists():
             try:
                 data = json.loads(jf.read_text(errors="ignore"))
@@ -2722,18 +3086,28 @@ def build_urls_content(subdomains: Dict, target: str) -> str:
     if not all_urls:
         return '<div class="empty-state"><p>No URLs found</p></div>'
         
+    # V12: Show all discovered URLs, including dead ones, for full coverage perception
+    # The user can filter by status code in the UI
+    pass
     all_urls = sorted(all_urls, key=lambda x: (x["host"], x["url"]))
     json_data = json.dumps(all_urls).replace("</", "<\\/")
-    
+
     # Build subdomain dropdown options
     url_hosts = sorted(set(u["host"] for u in all_urls))
     host_options = "".join(f'<option value="{html.escape(h)}">{html.escape(h)} ({sum(1 for u in all_urls if u["host"]==h)})</option>' for h in url_hosts)
-    
+
     return f'''
     <div style="margin-bottom:16px; display:flex; gap:12px; flex-wrap:wrap; align-items:center;">
         <select id="urlSubdomainFilter" onchange="window._filterUrls()" style="appearance:none;width:100%;max-width:340px;background:var(--bg-secondary) url('data:image/svg+xml;utf8,<svg fill=%22%23a0a0a0%22 height=%2224%22 viewBox=%220 0 24 24%22 width=%2224%22 xmlns=%22http://www.w3.org/2000/svg%22><path d=%22M7 10l5 5 5-5z%22/></svg>') no-repeat right 12px center;border:1px solid var(--border-color);border-radius:8px;padding:12px 16px;color:var(--text-primary);font-size:14px;font-weight:500;cursor:pointer;outline:none;transition:border-color 0.2s,box-shadow 0.2s;" onfocus="this.style.borderColor='var(--accent-blue)';this.style.boxShadow='0 0 0 3px rgba(88,166,255,0.2)';" onblur="this.style.borderColor='var(--border-color)';this.style.boxShadow='none';">
             <option value="">All Subdomains ({len(all_urls)} URLs)</option>
             {host_options}
+        </select>
+        <select id="urlStatusFilter" onchange="window._filterUrls()" class="status-filter-select" style="max-width:180px;">
+            <option value="">All Status</option>
+            <option value="2xx">2xx Success</option>
+            <option value="3xx">3xx Redirect</option>
+            <option value="4xx">4xx Client Error</option>
+            <option value="5xx">5xx Server Error</option>
         </select>
         <div style="position:relative;flex:1;min-width:250px;max-width:400px;">
             <svg style="position:absolute;left:12px;top:50%;transform:translateY(-50%);pointer-events:none;" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6e7681" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
@@ -2746,7 +3120,7 @@ def build_urls_content(subdomains: Dict, target: str) -> str:
             <span class="card-badge" id="urlCountBadge">{len(all_urls)} URLs</span>
         </div>
         <div style="padding:0 16px 10px 16px; color:var(--text-secondary); font-size:12px;">
-            Includes validated URLs (HTTP probe results) plus discovered crawler URLs. Not limited only to non-4xx responses.
+            URLs validadas pelo httpx (in-scope) mais URLs descobertas pelo crawler. Status vem de <code>urls_all.json</code> / <code>urls_200.json</code> quando disponível.
         </div>
         <div class="card-content" id="urls_container" style="display:block;"></div>
     </div>
@@ -2782,9 +3156,20 @@ def build_urls_content(subdomains: Dict, target: str) -> str:
         window._filterUrls = function() {{
             var host = document.getElementById("urlSubdomainFilter").value;
             var search = (document.getElementById("urlSearchInput").value || "").toLowerCase();
+            var statusF = (document.getElementById("urlStatusFilter") || {{}}).value || "";
             var filtered = _allUrlsData;
             if (host) filtered = filtered.filter(function(r){{ return r.host === host; }});
             if (search) filtered = filtered.filter(function(r){{ return r.url.toLowerCase().indexOf(search) !== -1; }});
+            if (statusF) {{
+                filtered = filtered.filter(function(r){{
+                    var sc = r.status_code || 0;
+                    if (statusF === '2xx') return sc >= 200 && sc < 300;
+                    if (statusF === '3xx') return sc >= 300 && sc < 400;
+                    if (statusF === '4xx') return sc >= 400 && sc < 500;
+                    if (statusF === '5xx') return sc >= 500 && sc < 600;
+                    return true;
+                }});
+            }}
             document.getElementById("urlCountBadge").textContent = filtered.length + " URLs";
             initPaginatedTable("urls_container", filtered, ["Host", "URL", "Status", "Tags", "Login"], window._urlRenderFn, 100);
         }};
@@ -2853,7 +3238,21 @@ def build_keys_content(target: str) -> str:
     html_parts = []
     secret_types = set()
     
+    valid_keys = []
     for key in keys_data:
+        # Filter false positives containing data:image
+        match_val = key.get("match", "").lower()
+        full_match = key.get("full_match", "").lower()
+        context_str = str(key.get("context", {})).lower()
+        
+        if "data:image/" in match_val or "data:image/" in full_match or "data:image/" in context_str:
+            continue
+        valid_keys.append(key)
+        
+    if not valid_keys:
+        return '<div class="empty-state"><p>No valid keys or secrets found</p></div>'
+
+    for key in valid_keys:
         risk = key.get("info", {}).get("risk", "UNKNOWN")
         risk_class = "tag-high" if risk == "CRITICAL" else "tag-medium" if risk == "HIGH" else "tag-low"
         
@@ -3042,8 +3441,16 @@ def build_login_pages_content(subdomains: Dict, target: str) -> str:
     import re
     
     base = Path("output") / target
-    login_urls = []
-    seen = set()
+    # Cross-reference tecnologias por host para a coluna extra
+    tech_data = read_json_file(base / "domain" / "technologies.json") or {}
+    tech_by_host = {}
+    for host_key, tdata in tech_data.items():
+        if isinstance(tdata, dict) and "technologies" in tdata:
+            names = [t["name"] for t in tdata["technologies"] if isinstance(t, dict) and "name" in t]
+            if names:
+                tech_by_host[host_key] = names
+
+    # Cross-reference screenshots por host
     screenshots_idx = read_json_file(base / "screenshots" / "screenshots_index.json") or []
     shot_by_host = {}
     for s in screenshots_idx:
@@ -3070,9 +3477,23 @@ def build_login_pages_content(subdomains: Dict, target: str) -> str:
             "heuristic": "tag-low",
         }.get(source, "tag-low")
         
+        # Buscar tecnologias deste host
+        host_techs = tech_by_host.get(item["host"], [])
+        tech_badges = ""
+        if host_techs:
+            for tn in host_techs:
+                badge_class = "tag-info"
+                # Highlight auth-related techs
+                if tn.lower() in ("portainer", "keycloak", "verdaccio", "gitlab", "grafana", "jenkins"):
+                    badge_class = "tag-critical"
+                tech_badges += f'<span class="tag {badge_class}" style="margin:2px;font-size:10px;">{html.escape(tn)}</span>'
+        else:
+            tech_badges = '<span style="color:var(--text-muted);font-size:11px;">—</span>'
+        
         rows += '<tr>'
         rows += f'<td><a href="{html.escape(item["url"])}" target="_blank" style="color:var(--accent-orange);font-weight:600;">{html.escape(item["url"][:80])}</a></td>'
         rows += f'<td>{html.escape(item["host"])}</td>'
+        rows += f'<td>{tech_badges}</td>'
         shot = shot_by_host.get(item["host"], "")
         shot_html = f' <a class="burp-btn" href="{html.escape(shot)}" target="_blank" style="margin-left:8px;">Print</a>' if shot else ""
         rows += f'<td><span class="tag {source_color}">{html.escape(item["signal"])}</span>{shot_html}</td>'
@@ -3088,7 +3509,7 @@ def build_login_pages_content(subdomains: Dict, target: str) -> str:
             <p style="color:var(--text-secondary); margin-bottom:12px;">All pages detected as authentication endpoints, login forms, or access portals. Sources: Domain Scanner, URL Keyword Match, Admin Panel Scan, Heuristic.</p>
             <div class="table-wrapper">
                 <table>
-                    <thead><tr><th>URL</th><th>Subdomain</th><th>Detection</th></tr></thead>
+                    <thead><tr><th>URL</th><th>Subdomain</th><th>Technology</th><th>Detection</th></tr></thead>
                     <tbody>{rows}</tbody>
                 </table>
             </div>
@@ -3124,6 +3545,7 @@ def build_files_content(target: str) -> str:
     
     # Parse files_by_extension.txt into structured data
     ext_data = {}
+    build_agent_files = set()
     current_ext = None
     for line in files_content.splitlines():
         line_s = line.strip()
@@ -3132,9 +3554,34 @@ def build_files_content(target: str) -> str:
             ext_data[current_ext] = []
         elif line_s and current_ext:
             ext_data[current_ext].append(line_s)
+            if "buildAgent" in line_s:
+                build_agent_files.add(line_s)
     
     if not ext_data:
         return sensitive_html + '<div class="empty-state"><p>No files categorized</p></div>'
+    
+    build_agent_html = ""
+    if build_agent_files:
+        items = "".join(f'<li><a href="{html.escape(f)}" target="_blank" style="color:var(--accent-purple);font-weight:bold;text-decoration:none;">{html.escape(f)}</a></li>' for f in sorted(build_agent_files))
+        build_agent_html = f'''
+        <div class="card open" style="border-left: 4px solid var(--accent-purple); margin-bottom: 20px;">
+            <div class="card-header">
+                <span class="card-title">🚨 Vazamento de CI/CD (buildAgent)</span>
+                <span class="card-badge tag-critical">{len(build_agent_files)} paths expostos</span>
+            </div>
+            <div class="card-content" style="display:block;">
+                <p style="color:var(--text-secondary);font-size:12px;margin-bottom:8px;">Caminhos referenciando <code>buildAgent</code> encontrados. Estes costumam conter variáveis de ambiente ou secrets cacheados.</p>
+                <ul style="list-style-type:none; padding:10px; background:rgba(163,113,247,0.05); border-radius:6px; font-family:monospace; font-size:11px; line-height:1.8; word-break:break-all;">
+                    {items}
+                </ul>
+            </div>
+        </div>
+        '''
+    
+    static_exts = {".js", ".css", ".png", ".jpg", ".jpeg", ".svg", ".woff", ".woff2", ".ttf", ".eot", ".gif", ".ico", ".webp"}
+    dynamic_exts = {".php", ".asp", ".aspx", ".jsp", ".do", ".action", ".py", ".rb"}
+    static_count = sum(len(urls) for ext, urls in ext_data.items() if ext.lower() in static_exts)
+    dynamic_count = sum(len(urls) for ext, urls in ext_data.items() if ext.lower() in dynamic_exts)
     
     ext_json = json.dumps(ext_data).replace("</", "<\\/")
     total_files = sum(len(v) for v in ext_data.values())
@@ -3164,8 +3611,17 @@ def build_files_content(target: str) -> str:
     
     return f"""
     {sensitive_html}
-    <div style="margin-bottom:16px;">
-        <select id="fileExtFilter" onchange="window._filterFilesByExt(this.value)" style="appearance:none;width:100%;max-width:400px;background:var(--bg-secondary) url('data:image/svg+xml;utf8,<svg fill=%22%23a0a0a0%22 height=%2224%22 viewBox=%220 0 24 24%22 width=%2224%22 xmlns=%22http://www.w3.org/2000/svg%22><path d=%22M7 10l5 5 5-5z%22/></svg>') no-repeat right 12px center;border:1px solid var(--border-color);border-radius:8px;padding:12px 16px;color:var(--text-primary);font-size:14px;font-weight:500;cursor:pointer;outline:none;transition:border-color 0.2s,box-shadow 0.2s;" onfocus="this.style.borderColor='var(--accent-blue)';this.style.boxShadow='0 0 0 3px rgba(88,166,255,0.2)';" onblur="this.style.borderColor='var(--border-color)';this.style.boxShadow='none';">
+    {build_agent_html}
+    <div style="display:flex; gap:12px; margin-bottom:16px; flex-wrap:wrap;">
+        <div style="flex:1; min-width:280px; background:var(--bg-secondary); padding:10px 16px; border-radius:8px; border:1px solid var(--border-color); display:flex; justify-content:space-between; align-items:center;">
+            <span style="font-size:11px; color:var(--text-muted); text-transform:uppercase; font-weight:600; letter-spacing:0.5px;">Analytics</span>
+            <div style="display:flex; gap:12px; font-size:12px;">
+                <span style="color:var(--text-secondary);"><b style="color:var(--accent-blue);">{static_count}</b> estáticos</span>
+                <span style="color:var(--text-muted);">|</span>
+                <span style="color:var(--text-secondary);"><b style="color:var(--accent-orange);">{dynamic_count}</b> dinâmicos (php/asp/etc)</span>
+            </div>
+        </div>
+        <select id="fileExtFilter" onchange="window._filterFilesByExt(this.value)" style="flex:1; min-width:280px; max-width:400px; background:var(--bg-secondary) url('data:image/svg+xml;utf8,<svg fill=%22%23a0a0a0%22 height=%2224%22 viewBox=%220 0 24 24%22 width=%2224%22 xmlns=%22http://www.w3.org/2000/svg%22><path d=%22M7 10l5 5 5-5z%22/></svg>') no-repeat right 12px center; border:1px solid var(--border-color); border-radius:8px; padding:12px 16px; color:var(--text-primary); font-size:13px; font-weight:500; cursor:pointer; outline:none; transition:border-color 0.2s,box-shadow 0.2s;" onfocus="this.style.borderColor='var(--accent-blue)';this.style.boxShadow='0 0 0 3px rgba(88,166,255,0.2)';" onblur="this.style.borderColor='var(--border-color)';this.style.boxShadow='none';">
             <option value="">All Extensions ({total_files} files)</option>
             {ext_options}
         </select>
@@ -3187,10 +3643,17 @@ def build_services_content(target: str) -> str:
     base = Path("output") / target
     services_dir = base / "services"
     
-    if not services_dir.exists():
-        return '<div class="empty-state"><p>No services scanned</p></div>'
+    # Start with interpreted ports table
+    ports_html = build_ports_content(target)
     
     html_parts = []
+    if ports_html and 'empty-state' not in ports_html:
+        html_parts.append(ports_html)
+    
+    if not services_dir.exists():
+        if not html_parts:
+            return '<div class="empty-state"><p>No services scanned</p></div>'
+        return "\n".join(html_parts)
     
     for service_file in sorted(services_dir.glob("*.txt")):
         content = read_file_raw(service_file)
@@ -3215,7 +3678,7 @@ def build_services_content(target: str) -> str:
         ''')
         
     
-    return "".join(html_parts) if html_parts else '<div class="empty-state"><p>No services scanned</p></div>'
+    return "\n".join(html_parts) if html_parts else '<div class="empty-state"><p>No services scanned</p></div>'
 
 
 def build_routes_content(target: str) -> str:
@@ -3279,26 +3742,38 @@ def build_routes_content(target: str) -> str:
             "method": r.get("method", "GET"),
             "path": r.get("path", ""),
             "url": url_val,
-            "source": r.get("source", "")
+            "source": r.get("source", "JS Extraction"),
+            "status": "Candidata"
         })
         
     # Add raw endpoints as well if they don't overlap completely
     # Transform valid raw eps to flat_routes
     valid_raw_eps = [ep for ep in raw_endpoints if is_in_scope(ep, target)]
     for ep in valid_raw_eps:
-        if not any(r["path"] == ep or r["url"] == ep for r in flat_routes):
+        # Check if already exists; if exists as Candidata, we could upgrade it to Confirmada, but for now we just append new ones or upgrade existing
+        existing = next((r for r in flat_routes if r["path"] == ep or r["url"] == ep), None)
+        if existing:
+            existing["status"] = "Confirmada"
+            existing["source"] = existing["source"] + " + Crawler"
+        else:
             flat_routes.append({
                 "subdomain": "Unknown",
                 "method": "GET",
                 "path": ep,
                 "url": ep,
-                "source": "raw"
+                "source": "Crawler",
+                "status": "Confirmada"
             })
             
     # Add Kiterunner endpoints
     for item in kiterunner_data:
         u = item.get("url", "")
-        if not any(r["path"] == u or r["url"] == u for r in flat_routes):
+        existing = next((r for r in flat_routes if r["path"] == u or r["url"] == u), None)
+        if existing:
+            existing["status"] = "Confirmada"
+            if "Kiterunner" not in existing["source"]:
+                existing["source"] = existing["source"] + " + Kiterunner"
+        else:
             subd = "Unknown"
             try: 
                 from urllib.parse import urlparse
@@ -3310,7 +3785,8 @@ def build_routes_content(target: str) -> str:
                 "method": item.get("method", "GET"),
                 "path": u,
                 "url": u,
-                "source": "kiterunner"
+                "source": "Fuzzing (Kiterunner)",
+                "status": "Confirmada"
             })
             
     # Filtrar o GQL tambem
@@ -3318,6 +3794,11 @@ def build_routes_content(target: str) -> str:
             
     flat_routes = sorted(flat_routes, key=lambda x: (x["subdomain"], x["path"]))
     route_hosts = sorted(set(r.get("subdomain", "Unknown") for r in flat_routes))
+    
+    # Calculate stats for the badges
+    confirmed_count = sum(1 for r in flat_routes if r["status"] == "Confirmada")
+    candidate_count = len(flat_routes) - confirmed_count
+    
     route_options = "".join(
         f'<option value="{html.escape(h)}">{html.escape(h)} ({sum(1 for r in flat_routes if r.get("subdomain")==h)})</option>'
         for h in route_hosts
@@ -3341,35 +3822,67 @@ def build_routes_content(target: str) -> str:
     json_data = json.dumps(flat_routes).replace("</", "<\\/")
     
     html_parts.append(f'''
-    <div style="margin-bottom:16px;">
-        <select id="routeSubFilter" onchange="window._filterRoutesByHost()" style="appearance:none;width:100%;max-width:360px;background:var(--bg-secondary);border:1px solid var(--border-color);border-radius:8px;padding:12px 16px;color:var(--text-primary);font-size:14px;">
+    <style>
+        .test-row-untested {{ }}
+        .test-row-clean td {{ background-color: rgba(63,185,80,0.05); }}
+        .test-row-vuln td {{ background-color: rgba(248,81,73,0.08); }}
+        .test-row-interesting td {{ background-color: rgba(210,153,34,0.08); }}
+    </style>
+    <div style="margin-bottom:16px;display:flex;gap:12px;align-items:center;">
+        <select id="routeSubFilter" onchange="window._filterRoutesByHost()" style="appearance:none;flex:1;max-width:360px;background:var(--bg-secondary);border:1px solid var(--border-color);border-radius:8px;padding:12px 16px;color:var(--text-primary);font-size:14px;">
             <option value="">All Subdomains ({len(flat_routes)} endpoints)</option>
             {route_options}
         </select>
-    </div>
-    <div class="card open" style="margin-top:20px;">
-        <div class="card-header">
-            <span class="card-title"> API Routes & Endpoints</span>
-            <span class="card-badge">{len(flat_routes)} endpoints</span>
+        <div style="display:flex;gap:8px;">
+            <span class="tag" style="background:rgba(63,185,80,0.1);color:var(--accent-green);border:1px solid rgba(63,185,80,0.2);">{confirmed_count} Confirmadas</span>
+            <span class="tag" style="background:rgba(210,153,34,0.1);color:var(--accent-orange);border:1px solid rgba(210,153,34,0.2);">{candidate_count} Candidatas (JS)</span>
         </div>
-        <div class="card-content" id="routes_container" style="display:block;"></div>
     </div>
+    
+    <div class="card open" style="margin-top:20px; border-left: 4px solid var(--accent-green);">
+        <div class="card-header">
+            <span class="card-title">✓ Rotas Confirmadas (Crawler / Fuzzer)</span>
+            <span class="card-badge tag-medium" data-tooltip="Endpoints descobertos de forma ativa e responsivos">{confirmed_count} confirmadas</span>
+        </div>
+        <div class="card-content" id="routes_confirmed_container" style="display:block;"></div>
+    </div>
+
+    <div class="card open" style="margin-top:20px; border-left: 4px solid var(--accent-orange);">
+        <div class="card-header">
+            <span class="card-title">? Strings Extraídas de JS (Candidatas)</span>
+            <span class="card-badge tag-low" data-tooltip="Caminhos encontrados em código-fonte, não validados">{candidate_count} candidatas</span>
+        </div>
+        <div class="card-content" id="routes_candidate_container" style="display:block;"></div>
+    </div>
+
     <script>
         var _allRoutesData = {json_data};
         setTimeout(function() {{
             window._renderRouteRow = function(row) {{
                     let method_class = ["POST", "PUT", "DELETE"].includes(row.method) ? "tag-medium" : "tag-low";
-                    return `<tr>
+                    
+                    return `<tr class="test-row-untested">
                         <td>${{escapeHtml(row.subdomain)}}</td>
                         <td><span class="tag ${{method_class}}">${{escapeHtml(row.method)}}</span></td>
                         <td style="word-break: break-all;"><a href="${{escapeHtml(row.url)}}" target="_blank">${{escapeHtml(row.path)}}</a></td>
-                        <td>${{escapeHtml(row.source)}}</td>
+                        <td style="font-size:11px;color:var(--text-muted);">${{escapeHtml(row.source)}}</td>
+                        <td style="text-align:center;width:150px;">
+                            <select onchange="this.closest('tr').className=''; this.closest('tr').classList.add(this.value);" style="background:var(--bg-secondary);border:1px solid var(--border-color);color:var(--text-primary);padding:4px 8px;border-radius:4px;font-size:11px;">
+                                <option value="test-row-untested">Não testado</option>
+                                <option value="test-row-clean">Testado - Limpo</option>
+                                <option value="test-row-vuln">Testado - Vulnerável</option>
+                                <option value="test-row-interesting">Testado - Interessante</option>
+                            </select>
+                        </td>
                     </tr>`;
                 }};
             window._filterRoutesByHost = function() {{
                 var host = (document.getElementById("routeSubFilter") || {{}}).value || "";
-                var data = host ? _allRoutesData.filter(function(r){{ return r.subdomain === host; }}) : _allRoutesData;
-                initPaginatedTable("routes_container", data, ["Subdomain", "Method", "Path", "Source"], window._renderRouteRow, 100);
+                var confirmed_data = _allRoutesData.filter(function(r){{ return r.status === "Confirmada" && (!host || r.subdomain === host); }});
+                var candidate_data = _allRoutesData.filter(function(r){{ return r.status === "Candidata" && (!host || r.subdomain === host); }});
+                
+                initPaginatedTable("routes_confirmed_container", confirmed_data, ["Subdomain", "Method", "Path", "Source", "Status de Teste"], window._renderRouteRow, 50);
+                initPaginatedTable("routes_candidate_container", candidate_data, ["Subdomain", "Method", "Path", "Source", "Status de Teste"], window._renderRouteRow, 50);
             }};
             window._filterRoutesByHost();
         }}, 0);
@@ -4049,7 +4562,9 @@ def build_security_content(target: str) -> str:
 
     # 4. New Plugins (Open Redirect, SSRF, Cache Deception)
     html_parts.append(build_open_redirect_content(target))
+    html_parts.append(build_nuclei_content(target))
     html_parts.append(build_ssrf_content(target))
+    html_parts.append(build_bypass403_content(target))
     html_parts.append(build_cache_deception_content(target))
     
     # 5. Hidden Plugins Prioritized (JWT, Kiterunner, Insecure Deserialization, GraphQL)
@@ -4090,6 +4605,7 @@ def build_kiterunner_content(target: str) -> str:
         </tr>
         '''
         
+    uid = uuid.uuid4().hex[:6]
     return f'''
     <div class="card open" style="border-left: 4px solid var(--accent-purple); margin-top: 15px;">
         <div class="card-header">
@@ -4100,8 +4616,17 @@ def build_kiterunner_content(target: str) -> str:
             <p style="font-size:13px; color:var(--text-secondary); margin-bottom:10px;">
                 Estas rotas de API não estavam visíveis nos crawlers ou links, mas foram descobertas via Fuzzing intensivo do Kiterunner.
             </p>
+            <div style="margin-bottom:10px;">
+                <select class="status-filter-select" onchange="_filterTableStatus('kiteTbl_{uid}', this.value, 2)">
+                    <option value="">All Status</option>
+                    <option value="2xx">2xx Success</option>
+                    <option value="3xx">3xx Redirect</option>
+                    <option value="4xx">4xx Client Error</option>
+                    <option value="5xx">5xx Server Error</option>
+                </select>
+            </div>
             <div class="table-wrapper">
-                <table>
+                <table id="kiteTbl_{uid}">
                     <thead><tr><th>Method</th><th>Endpoint URL</th><th>Status</th><th>Response Length</th></tr></thead>
                     <tbody>{rows}</tbody>
                 </table>
@@ -4112,86 +4637,118 @@ def build_kiterunner_content(target: str) -> str:
 def build_cors_content(target: str) -> str:
     path = Path("output") / target / "cors" / "cors_results.json"
     data = read_json_file(path)
-    if not data:
-        return ""
-
-    rows = ""
-    for item in data:
-        sev = item.get("severity", "info").lower()
-        sev_class = "tag-high" if sev in ("critical", "high") else "tag-medium" if sev == "medium" else "tag-low"
-        
-        creds = '<span class="tag tag-high">Credentials</span>' if item.get("credentials") else ""
-        
-        # Prepare Burp Data
-        req_b64 = base64.b64encode((item.get("request_raw") or "").encode("utf-8")).decode("utf-8")
-        res_b64 = base64.b64encode((item.get("response_raw") or "").encode("utf-8")).decode("utf-8")
-        row_id = f"cors_{uuid.uuid4().hex[:8]}"
-        
-        burp_script_data = f'<script>BURP_DATA["{row_id}"] = {{ "url": "{html.escape(item.get("url", ""))}", "req": "{req_b64}", "res": "{res_b64}" }};</script>'
-
-        rows += f'''
-        <tr>
-            <td><span class="tag {sev_class}">{sev.upper()}</span></td>
-            <td><a href="{html.escape(item.get("url", ""))}" target="_blank">{html.escape(item.get("url", ""))}</a></td>
-            <td>
-                {html.escape(item.get("issue", ""))}
-                {creds}
-            </td>
-            <td style="text-align:right;">
-                <button class="burp-btn" onclick="openBurp('{row_id}')">View HTTP</button>
-                {burp_script_data}
-            </td>
-        </tr>
-        '''
-
-    return f'''
-    <div class="card" style="border-left: 3px solid var(--accent-orange);">
-        <div class="card-header">
-            <span class="card-title"> CORS Misconfigurations</span>
-            <span class="card-badge warning">{len(data)} issues</span>
-        </div>
-        <div class="card-content" style="display:block;">
-            <div class="table-wrapper">
-                <table>
-                    <thead>
-                        <tr>
-                            <th width="80">Severity</th>
-                            <th>URL</th>
-                            <th>Issue</th>
-                            <th width="100" style="text-align:right;">Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {rows}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    </div>
-    '''
-
-    # Corsy Output Integration (V10.2)
+    
+    # Corsy Output Integration (fixed — was dead code after return)
+    corsy_html = ""
     corsy_file = Path("output") / target / "cors" / "corsy_output.txt"
     if corsy_file.exists():
         content = corsy_file.read_text(errors="ignore").strip()
         if content:
-            # Strip ANSI escape codes
-            import re
             ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
             clean_content = ansi_escape.sub('', content)
             
-            output += f'''
-            <div class="card" style="border-left: 3px solid #bf8700; margin-top: 15px;">
+            corsy_html = f'''
+            <div class="card" style="border-left: 3px solid #bf8700; margin-bottom: 15px;">
                 <div class="card-header">
-                    <span class="card-title"> Corsy Active Findings</span>
+                    <span class="card-title">🔍 Corsy Active Findings</span>
+                    <span class="card-badge">Specialist scanner</span>
                 </div>
                 <div class="card-content" style="display:block;">
+                    <div style="margin-bottom:8px;padding:6px 10px;background:rgba(191,135,0,0.08);border:1px solid rgba(191,135,0,0.2);border-radius:4px;font-size:11px;color:var(--text-secondary);">
+                        ℹ️ Resultados do scanner Corsy (especialista em edge-cases CORS). Cruze com os findings da engine nativa abaixo.
+                    </div>
                     <pre>{html.escape(clean_content)}</pre>
                 </div>
             </div>
             '''
     
-    return output
+    if not data and not corsy_html:
+        return ""
+    
+    # Severity explanation note
+    severity_note = '''
+    <div style="margin-bottom:14px;padding:10px 14px;background:rgba(210,153,34,0.08);border:1px solid rgba(210,153,34,0.2);border-radius:6px;font-size:12px;color:var(--text-secondary);line-height:1.6;">
+        <strong style="color:var(--accent-orange);">ℹ️ Nota sobre severidade:</strong> CORS issues com <code style="color:var(--accent-red);">Access-Control-Allow-Credentials: true</code> 
+        e origem refletida são candidatos a <strong>P2</strong>. Sem credentials, geralmente <strong>P4</strong> ou informativo.
+    </div>'''
+
+    rows = ""
+    if data:
+        for item in data:
+            sev = item.get("severity", "info").lower()
+            sev_class = "tag-critical" if sev == "critical" else "tag-high" if sev == "high" else "tag-medium" if sev == "medium" else "tag-low" if sev == "low" else "tag-info"
+            
+            creds_badge = '<span class="tag tag-high" style="font-size:10px;">✓ Credentials</span>' if item.get("credentials") else '<span style="font-size:10px;color:var(--text-muted);">—</span>'
+            
+            tested_origin = html.escape(item.get("tested_origin", "—"))
+            acao_val = html.escape(item.get("acao", "—"))
+            
+            # Highlight reflected origins
+            acao_style = ""
+            if item.get("acao") == item.get("tested_origin") and item.get("tested_origin") != "*":
+                acao_style = 'style="color:var(--accent-red);font-weight:600;"'
+            
+            # Prepare Burp Data
+            req_b64 = base64.b64encode((item.get("request_raw") or "").encode("utf-8")).decode("utf-8")
+            res_b64 = base64.b64encode((item.get("response_raw") or "").encode("utf-8")).decode("utf-8")
+            row_id = f"cors_{uuid.uuid4().hex[:8]}"
+            
+            burp_script_data = f'<script>BURP_DATA["{row_id}"] = {{ "url": "{html.escape(item.get("url", ""))}", "req": "{req_b64}", "res": "{res_b64}" }};</script>'
+
+            rows += f'''
+            <tr>
+                <td><span class="tag {sev_class}">{sev.upper()}</span></td>
+                <td style="word-break:break-all;"><a href="{html.escape(item.get("url", ""))}" target="_blank" style="font-size:12px;">{html.escape(item.get("url", ""))}</a></td>
+                <td style="font-size:11px;font-family:monospace;color:var(--accent-orange);">{tested_origin}</td>
+                <td style="font-size:11px;font-family:monospace;" {acao_style}>{acao_val}</td>
+                <td style="text-align:center;">{creds_badge}</td>
+                <td>{html.escape(item.get("issue", ""))}</td>
+                <td style="text-align:right;">
+                    <button class="burp-btn" onclick="openBurp('{row_id}')">View HTTP</button>
+                    {burp_script_data}
+                </td>
+            </tr>
+            '''
+
+    native_html = ""
+    if data:
+        crit_count = sum(1 for d in data if d.get("severity", "").lower() == "critical")
+        high_count = sum(1 for d in data if d.get("severity", "").lower() == "high")
+        badge_text = f"{len(data)} issues"
+        if crit_count > 0: badge_text += f" · {crit_count} critical"
+        if high_count > 0: badge_text += f" · {high_count} high"
+        
+        native_html = f'''
+        <div class="card" style="border-left: 3px solid var(--accent-orange);">
+            <div class="card-header">
+                <span class="card-title">🌐 CORS Misconfigurations</span>
+                <span class="card-badge warning">{badge_text}</span>
+            </div>
+            <div class="card-content" style="display:block;">
+                {severity_note}
+                <div class="table-wrapper">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th width="70">Severity</th>
+                                <th>Endpoint</th>
+                                <th>Origem Testada</th>
+                                <th>ACAO Retornado</th>
+                                <th width="85" style="text-align:center;">Credentials</th>
+                                <th>Issue</th>
+                                <th width="90" style="text-align:right;">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {rows}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        '''
+    
+    return corsy_html + native_html
 
 
 def build_headers_content(target: str) -> str:
@@ -4400,6 +4957,7 @@ def build_waf_content(target: str) -> str:
         </tr>
         '''
 
+    uid = uuid.uuid4().hex[:6]
     return f'''
     {stats_html}
     <div class="card">
@@ -4408,8 +4966,17 @@ def build_waf_content(target: str) -> str:
             <span class="card-badge">{len(data)} detected</span>
         </div>
         <div class="card-content" style="display:block;">
+            <div style="margin-bottom:10px;">
+                <select class="status-filter-select" onchange="_filterTableStatus('wafTbl_{uid}', this.value, 2)">
+                    <option value="">All Status</option>
+                    <option value="2xx">2xx Success</option>
+                    <option value="3xx">3xx Redirect</option>
+                    <option value="4xx">4xx Client Error</option>
+                    <option value="5xx">5xx Server Error</option>
+                </select>
+            </div>
             <div class="table-wrapper">
-                <table>
+                <table id="wafTbl_{uid}">
                     <thead>
                         <tr>
                             <th>WAF Name</th>
@@ -4549,15 +5116,25 @@ def build_admin_content(target: str) -> str:
             </td>
         </tr>'''
     
+    uid = uuid.uuid4().hex[:6]
     return f'''
     <div class="card open">
         <div class="card-header">
             <span class="card-title">Admin Panels Discovered</span>
             <span class="card-badge">{len(admin_data)} found</span>
         </div>
-        <div class="card-content">
+        <div class="card-content" style="display:block;">
+            <div style="margin-bottom:10px;">
+                <select class="status-filter-select" onchange="_filterTableStatus('adminTbl_{uid}', this.value, 1)">
+                    <option value="">All Status</option>
+                    <option value="2xx">2xx Success</option>
+                    <option value="3xx">3xx Redirect</option>
+                    <option value="4xx">4xx Client Error</option>
+                    <option value="5xx">5xx Server Error</option>
+                </select>
+            </div>
             <div class="table-wrapper">
-                <table>
+                <table id="adminTbl_{uid}">
                     <thead><tr><th>URL</th><th>Status</th><th>Title</th><th>CMS / Login / Actions</th></tr></thead>
                     <tbody>{rows}</tbody>
                 </table>
@@ -4856,13 +5433,28 @@ def build_jwt_content(target: str) -> str:
         full_token = html.escape(str(full_token_raw))
         source = html.escape(str(item.get("source", "")))
         
+        token_html = f'''
+        <details style="margin-bottom: 8px;">
+            <summary style="cursor: pointer; color: var(--accent-blue); font-weight: 600;">View Token ({len(str(full_token_raw))} chars)</summary>
+            <div style="margin-top: 8px; padding: 10px; background: rgba(0,0,0,0.2); border-radius: 6px; border: 1px solid var(--border-color); font-family: monospace; font-size: 11px; word-break: break-all; max-height: 200px; overflow-y: auto;">
+                {full_token}
+            </div>
+        </details>
+        '''
+        
         rows += f'''
         <tr>
-            <td><span class="tag {risk_class}">{risk}</span></td>
-            <td><strong>{html.escape(item.get("type", ""))}</strong></td>
-            <td style="font-size:11px; max-width:420px; word-break:break-all;"><code>{full_token}</code><br><span style="color:var(--text-muted);">{source}</span></td>
-            <td style="font-size:12px;">{html.escape(item.get("details", ""))}</td>
-            <td style="text-align:right;">{button_html}</td>
+            <td style="vertical-align: top;"><span class="tag {risk_class}">{risk}</span></td>
+            <td style="vertical-align: top;"><strong>{html.escape(item.get("type", ""))}</strong></td>
+            <td style="vertical-align: top; max-width:400px;">
+                {token_html}
+                <span style="color:var(--text-muted); font-size: 11px;">Source: {source}</span>
+            </td>
+            <td style="font-size:12px; vertical-align: top;">
+                <div style="margin-bottom:6px;">{html.escape(item.get("details", ""))}</div>
+                <div style="font-family:monospace; color:var(--text-muted); word-break: break-all;">URL: {html.escape(item.get("url", "N/A"))}</div>
+            </td>
+            <td style="text-align:right; vertical-align: top;">{button_html}</td>
         </tr>
         '''
     return f'''
@@ -4874,7 +5466,7 @@ def build_jwt_content(target: str) -> str:
         <div class="card-content" style="display:block;">
             <div class="table-wrapper">
                 <table>
-                    <thead><tr><th>Risk</th><th>Type</th><th>Token / Source</th><th>Details</th><th>Actions</th></tr></thead>
+                    <thead><tr><th>Risk</th><th>Type</th><th>Token Info</th><th>Details</th><th>Actions</th></tr></thead>
                     <tbody>{rows}</tbody>
                 </table>
             </div>
@@ -4884,57 +5476,11 @@ def build_jwt_content(target: str) -> str:
 
 
 def build_crlf_content(target: str) -> str:
-    path = Path("output") / target / "crlf_injection" / "crlf_results.json"
-    data = read_json_file(path)
+    data = read_json_file(Path("output") / target / "crlf" / "findings.json")
+    if not data:
+        data = read_json_file(Path("output") / target / "crlf_injection" / "crlf_results.json")
     if not data: return '<div class="empty-state"><p>No CRLF Injection vulnerabilities found.</p></div>'
-    
-    rows = ""
-    for item in data:
-        risk = item.get("risk", "LOW")
-        risk_class = f"tag-{risk.lower()}"
-        
-        req_b64 = base64.b64encode((item.get("request_raw") or "").encode("utf-8")).decode("utf-8")
-        res_b64 = base64.b64encode((item.get("response_raw") or "").encode("utf-8")).decode("utf-8")
-        row_id = f"crlf_{uuid.uuid4().hex[:8]}"
-        burp_script = f'<script>BURP_DATA["{row_id}"] = {{ "url": "{html.escape(item.get("url", ""))}", "req": "{req_b64}", "res": "{res_b64}" }};</script>'
-        button_html = f'<button class="burp-btn" onclick="openBurp(\'{row_id}\')">View HTTP</button>{burp_script}' if req_b64 else ''
-        
-        rows += f'''
-        <tr>
-            <td><span class="tag {risk_class}">{risk}</span></td>
-            <td><strong>{html.escape(item.get("type", ""))}</strong></td>
-            <td><a href="{html.escape(item.get("url", ""))}" target="_blank">{html.escape(item.get("url", ""))}</a></td>
-            <td><code>{html.escape(item.get("parameter", ""))}</code></td>
-            <td style="font-size:12px;">{html.escape(item.get("details", ""))}</td>
-            <td style="text-align:right;">{button_html}</td>
-        </tr>
-        '''
-    return f'''
-    <div class="card open" style="border-left: 4px solid var(--accent-red);">
-        <div class="card-header">
-            <span class="card-title"> CRLF Injection</span>
-            <span class="card-badge warning">{len(data)} vulnerabilities</span>
-        </div>
-        <div class="card-content" style="display:block;">
-            <div style="padding:15px; background:rgba(248,81,73,0.1); border:1px solid rgba(248,81,73,0.3); border-radius:6px; margin-bottom:15px;">
-                <h4 style="color:var(--accent-red); margin-bottom:8px; font-size:14px; font-weight:600;">What is CRLF Injection?</h4>
-                <p style="font-size:13px; color:var(--text-secondary); line-height:1.5;">
-                    <strong>Carriage Return Line Feed (CRLF) Injection</strong> occurs when a user manages to inject <code>%0d%0a</code> into an application's input and it is reflected directly in the HTTP headers of the response without proper sanitization. 
-                    <br><br>
-                    <strong>Impact:</strong> This allows an attacker to manipulate the HTTP response, potentially leading to <strong>HTTP Response Splitting</strong>, <strong>XSS</strong>, creating malicious <code>Set-Cookie</code> headers, or bypassing security filters.
-                    <br><br>
-                    <strong>What was tested:</strong> The analyzer injected <code>%0d%0a</code> payloads into the URLs below to check if the server reflected the payload by creating a new header line or changing the response body structure unlawfully. Use the <strong style="color:var(--text-primary)">View HTTP</strong> button to inspect the raw request block that triggered the vulnerability.
-                </p>
-            </div>
-            <div class="table-wrapper">
-                <table>
-                    <thead><tr><th>Risk</th><th>Type</th><th>URL</th><th>Parameter</th><th>Details</th><th>Actions</th></tr></thead>
-                    <tbody>{rows}</tbody>
-                </table>
-            </div>
-        </div>
-    </div>
-    '''
+    return _build_generic_security_card_from_data(data, "CRLF Injection", "💉", "--accent-red")
 
 
 def build_smuggling_content(target: str) -> str:
@@ -5095,72 +5641,363 @@ def build_oast_content(target: str) -> str:
     </div>
     '''
 
-def build_surfacemap_content(subdomains: Dict) -> str:
-    """Gera um mapa visual da superfície de ataque em formato de árvore."""
-    from urllib.parse import urlparse
-    if not subdomains:
-        return '<div class="empty-state"><p>No domains to map.</p></div>'
-
-    def add_to_tree(tree, path_parts, url, tags):
-        current = tree
-        for part in path_parts:
-            if not part: continue
-            if part not in current:
-                current[part] = {"_children": {}, "_url": None, "_tags": []}
-            current = current[part]["_children"]
-        # Last part is the actual page/file
-        # This is a bit simplified for URLs
-        pass
-
-    # Better tree builder
-    tree_data = {}
-
-    for host, host_data in subdomains.items():
-        if host not in tree_data:
-            tree_data[host] = {}
-        
-        urls = host_data.get("urls", [])
-        classifs = host_data.get("url_classifications", {})
-
-        for url in urls:
+def build_wp_plugins_content(target: str) -> str:
+    """Extract WordPress plugins and themes with versions from collected URLs."""
+    import re as _re
+    from pathlib import Path
+    
+    base = Path("output") / target
+    
+    # Collect all text from output files
+    all_text = ""
+    for pattern in ["urls/*.json", "urls/*.txt", "domain/**/*.txt", "domain/**/*.json",
+                     "jsscanner/**/*.txt", "jsscanner/**/*.json", "files/**/*.txt"]:
+        for f in base.glob(pattern):
             try:
-                parsed = urlparse(url)
-                path = parsed.path
-                if not path or path == "/":
-                    continue
-                
-                parts = [p for p in path.split("/") if p]
-                curr = tree_data[host]
-                for i, part in enumerate(parts):
-                    if part not in curr:
-                        curr[part] = {}
-                    curr = curr[part]
+                all_text += f.read_text(errors="ignore") + "\n"
             except:
                 continue
-
-    def render_tree(node, depth=0):
-        if not node: return ""
-        html_out = "<ul>"
-        for name, children in sorted(node.items()):
-            icon = "" if children else ""
-            html_out += f'<li><span class="{"tree-folder" if children else "tree-file"}">{icon} {html.escape(name)}</span>'
-            if children:
-                html_out += render_tree(children, depth + 1)
-            html_out += "</li>"
-        html_out += "</ul>"
-        return html_out
-
-    final_html = '<div class="card open"><div class="card-header"><span class="card-title"> Application Structure Map</span></div><div class="card-content"><div class="tree">'
-    for host, structure in sorted(tree_data.items()):
-        final_html += f'<div style="margin-bottom:20px;"><strong style="font-size:16px; color:var(--accent-green);"> {html.escape(host)}</strong>'
-        if structure:
-            final_html += render_tree(structure)
-        else:
-            final_html += '<p style="margin-left:25px; color:#666; font-size:12px;">No deep paths discovered</p>'
-        final_html += '</div>'
-    final_html += '</div></div></div>'
     
-    return final_html
+    if not all_text:
+        return ""
+    
+    # Extract plugins: wp-content/plugins/{slug}/...?ver={version}
+    plugin_pattern = _re.compile(r'wp-content/plugins/([^/]+)/[^\s"\']*\?ver=([0-9][0-9a-z.\-]*)', _re.IGNORECASE)
+    theme_pattern = _re.compile(r'wp-content/themes/([^/]+)/[^\s"\']*\?ver=([0-9][0-9a-z.\-]*)', _re.IGNORECASE)
+    
+    plugins = {}  # slug -> set of versions
+    themes = {}
+    
+    for match in plugin_pattern.finditer(all_text):
+        slug = match.group(1).lower()
+        version = match.group(2)
+        if slug not in plugins:
+            plugins[slug] = set()
+        plugins[slug].add(version)
+    
+    for match in theme_pattern.finditer(all_text):
+        slug = match.group(1).lower()
+        version = match.group(2)
+        if slug not in themes:
+            themes[slug] = set()
+        themes[slug].add(version)
+    
+    if not plugins and not themes:
+        return ""
+    
+    # Build table rows
+    rows = ""
+    for slug, versions in sorted(plugins.items()):
+        ver_list = ", ".join(sorted(versions, reverse=True))
+        rows += f'''<tr>
+            <td><span class="tag tag-medium">Plugin</span></td>
+            <td style="font-family:monospace;font-weight:600;color:var(--accent-blue);">{html.escape(slug)}</td>
+            <td style="font-family:monospace;">{html.escape(ver_list)}</td>
+            <td><a href="https://wpscan.com/plugin/{html.escape(slug)}" target="_blank" style="color:var(--accent-blue);text-decoration:none;font-size:12px;">🔍 WPScan</a></td>
+        </tr>'''
+    
+    for slug, versions in sorted(themes.items()):
+        ver_list = ", ".join(sorted(versions, reverse=True))
+        rows += f'''<tr>
+            <td><span class="tag tag-low">Theme</span></td>
+            <td style="font-family:monospace;font-weight:600;color:var(--accent-green);">{html.escape(slug)}</td>
+            <td style="font-family:monospace;">{html.escape(ver_list)}</td>
+            <td><a href="https://wpscan.com/theme/{html.escape(slug)}" target="_blank" style="color:var(--accent-blue);text-decoration:none;font-size:12px;">🔍 WPScan</a></td>
+        </tr>'''
+    
+    total = len(plugins) + len(themes)
+    
+    return f'''
+    <div class="card open" style="border-left: 4px solid var(--accent-blue); margin-bottom:16px;">
+        <div class="card-header" style="cursor:default;">
+            <span class="card-title section-title">🔌 WordPress Plugins & Themes Detectados</span>
+            <span class="card-badge">{len(plugins)} plugins · {len(themes)} themes</span>
+        </div>
+        <div class="card-content" style="display:block;">
+            <div style="margin-bottom:12px;padding:10px;background:rgba(210,153,34,0.08);border:1px solid rgba(210,153,34,0.2);border-radius:6px;">
+                <p style="font-size:12px;color:var(--text-secondary);margin:0;line-height:1.5;">
+                    ⚠ Versões extraídas passivamente de URLs. Para verificar CVEs conhecidas, execute:
+                    <pre style="margin:6px 0 0;padding:6px 8px;background:rgba(0,0,0,0.3);border-radius:4px;font-size:11px;color:var(--accent-green);cursor:pointer;" onclick="navigator.clipboard.writeText(this.textContent);this.style.borderColor='var(--accent-green)'" title="Clique para copiar">wpscan --url https://{html.escape(target)} --enumerate vp,vt --api-token YOUR_TOKEN</pre>
+                </p>
+            </div>
+            <div class="table-wrapper"><table>
+                <thead><tr><th>Tipo</th><th>Slug</th><th>Versão(ões)</th><th>Referência</th></tr></thead>
+                <tbody>{rows}</tbody>
+            </table></div>
+        </div>
+    </div>'''
+
+
+def build_screenshots_content(target: str) -> str:
+    """Build a thumbnail gallery of screenshots captured by gowitness/screenshots module."""
+    import base64
+    base = Path("output") / target / "screenshots" / "images"
+    
+    if not base.exists():
+        return '<div class="empty-state"><p>No screenshots captured. Run the screenshots module first.</p></div>'
+    
+    images = sorted(base.glob("*.jpeg")) + sorted(base.glob("*.jpg")) + sorted(base.glob("*.png"))
+    
+    if not images:
+        return '<div class="empty-state"><p>No screenshot images found.</p></div>'
+    
+    # Limit to 20 screenshots to avoid HTML bloat
+    total = len(images)
+    images = images[:20]
+    
+    gallery_items = ""
+    for img_path in images:
+        # Extract URL from filename (gowitness naming: https---host-port-path.jpeg)
+        name = img_path.stem.replace("---", "://").replace("-", "/", 1)
+        # Try to reconstruct readable URL
+        url_display = name[:80] + "..." if len(name) > 80 else name
+        
+        try:
+            img_data = base64.b64encode(img_path.read_bytes()).decode()
+            ext = img_path.suffix.lstrip(".")
+            mime = "image/jpeg" if ext in ("jpg", "jpeg") else "image/png"
+            
+            gallery_items += f'''
+            <div style="border:1px solid var(--border-color);border-radius:8px;overflow:hidden;background:var(--bg-secondary);">
+                <img src="data:{mime};base64,{img_data}" 
+                     alt="{html.escape(url_display)}"
+                     data-caption="{html.escape(url_display, quote=True)}"
+                     style="width:100%;height:180px;object-fit:cover;cursor:zoom-in;transition:transform 0.2s;" 
+                     onclick="eaOpenScreenshotLightbox(this)"
+                     onkeydown="if(event.key==='Enter')eaOpenScreenshotLightbox(this)"
+                     tabindex="0"
+                     title="Clique para ampliar · {html.escape(url_display)}"/>
+                <div style="padding:8px;font-size:11px;color:var(--text-muted);font-family:monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+                    {html.escape(url_display)}
+                </div>
+            </div>'''
+        except:
+            continue
+    
+    if not gallery_items:
+        return '<div class="empty-state"><p>Failed to load screenshot images.</p></div>'
+    
+    truncated = f'<p style="font-size:12px;color:var(--text-muted);margin-top:12px;font-style:italic;">Mostrando {len(images)} de {total} screenshots.</p>' if total > 20 else ""
+    
+    return f'''
+    <div class="card open">
+        <div class="card-header">
+            <span class="card-title section-title">📸 Screenshots Gallery</span>
+            <span class="card-badge">{total} captures</span>
+        </div>
+        <div class="card-content" style="display:block;">
+            <p style="font-size:12px;color:var(--text-secondary);margin:0 0 12px 0;">Clique na imagem para ampliar em tela cheia. <kbd>Esc</kbd> fecha.</p>
+            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;">
+                {gallery_items}
+            </div>
+            {truncated}
+            <div id="eaScreenshotLightbox" aria-modal="true" role="dialog" onclick="if(event.target===this)eaCloseScreenshotLightbox()">
+                <button type="button" id="eaScreenshotLightboxClose" onclick="event.stopPropagation();eaCloseScreenshotLightbox();" aria-label="Fechar">×</button>
+                <img id="eaScreenshotLightboxImg" src="" alt="" onclick="event.stopPropagation();" />
+                <div id="eaScreenshotLightboxCaption"></div>
+            </div>
+            <script>
+            (function() {{
+                function eaOpenScreenshotLightbox(el) {{
+                    var box = document.getElementById("eaScreenshotLightbox");
+                    var img = document.getElementById("eaScreenshotLightboxImg");
+                    var cap = document.getElementById("eaScreenshotLightboxCaption");
+                    if (!box || !img) return;
+                    img.src = el.src;
+                    img.alt = el.getAttribute("alt") || "";
+                    cap.textContent = el.getAttribute("data-caption") || "";
+                    box.classList.add("is-open");
+                    document.body.style.overflow = "hidden";
+                }}
+                function eaCloseScreenshotLightbox() {{
+                    var box = document.getElementById("eaScreenshotLightbox");
+                    var img = document.getElementById("eaScreenshotLightboxImg");
+                    if (box) box.classList.remove("is-open");
+                    if (img) img.src = "";
+                    document.body.style.overflow = "";
+                }}
+                window.eaOpenScreenshotLightbox = eaOpenScreenshotLightbox;
+                window.eaCloseScreenshotLightbox = eaCloseScreenshotLightbox;
+                if (!window._eaScreenshotEscBound) {{
+                    window._eaScreenshotEscBound = true;
+                    document.addEventListener("keydown", function(ev) {{
+                        if (ev.key === "Escape") {{
+                            var box = document.getElementById("eaScreenshotLightbox");
+                            if (box && box.classList.contains("is-open")) eaCloseScreenshotLightbox();
+                        }}
+                    }});
+                }}
+            }})();
+            </script>
+        </div>
+    </div>'''
+
+def build_surfacemap_content(subdomains: Dict, target: str = "") -> str:
+    """Gera um mapa dinâmico da superfície de ataque com accordion por subdomínio."""
+    from urllib.parse import urlparse
+
+    base = Path("output") / target
+
+    # Load status codes from httpx JSON
+    status_map = {}
+    for jf in [base / "urls" / "urls_all.json", base / "urls" / "urls_200.json", base / "domain" / "urls_200.json"]:
+        if jf.exists():
+            try:
+                data = json.loads(jf.read_text(errors="ignore"))
+                if isinstance(data, list):
+                    for item in data:
+                        url = item.get("url", "").strip()
+                        sc = item.get("status_code", 0)
+                        if url and sc:
+                            status_map[url] = sc
+            except:
+                pass
+
+    # Build per-host data from subdomains dict
+    host_data = {}
+    all_urls_set = set()
+
+    for h, hd in (subdomains or {}).items():
+        urls = hd.get("urls", [])
+        ports = hd.get("ports", [])
+        techs = hd.get("technologies", [])
+        url_entries = [{"url": u, "status": status_map.get(u, 0)} for u in urls]
+        host_data[h] = {"urls": url_entries, "ports": ports, "techs": techs}
+        all_urls_set.update(urls)
+
+    # Fallback: add URLs from urls_200.json that might not be in subdomains
+    if target:
+        for jf in [base / "urls" / "urls_200.json", base / "domain" / "extracted_routes.json"]:
+            extra_json = read_json_file(jf) or []
+            for item in extra_json:
+                u = item.get("url", "") if isinstance(item, dict) else str(item)
+                if u and u not in all_urls_set:
+                    try:
+                        h = urlparse(u).netloc.split(":")[0]
+                        sc = item.get("status_code", 0) if isinstance(item, dict) else 0
+                        if h not in host_data:
+                            host_data[h] = {"urls": [], "ports": [], "techs": []}
+                        host_data[h]["urls"].append({"url": u, "status": sc})
+                        all_urls_set.add(u)
+                    except:
+                        pass
+
+    if not host_data:
+        return '<div class="empty-state"><p>No URLs to map. Run URL discovery modules first.</p></div>'
+
+    # Build path tree per host
+    tree_data = {}
+    for url in all_urls_set:
+        try:
+            parsed = urlparse(url)
+            h = parsed.netloc.split(":")[0] if parsed.netloc else "unknown"
+            path = parsed.path
+            if not path or path == "/":
+                continue
+            if h not in tree_data:
+                tree_data[h] = {}
+            parts = [p for p in path.split("/") if p]
+            curr = tree_data[h]
+            for part in parts:
+                if part not in curr:
+                    curr[part] = {}
+                curr = curr[part]
+        except:
+            continue
+
+    def render_tree(node, host="", path_prefix=""):
+        if not node:
+            return ""
+        parts_out = []
+        for name, children in sorted(node.items()):
+            current_path = f"{path_prefix}/{name}"
+            if children:
+                inner = render_tree(children, host=host, path_prefix=current_path)
+                parts_out.append(
+                    f'<details class="surfacemap-folder" open>'
+                    f'<summary>📂 {html.escape(name)}</summary>'
+                    f'<div class="surfacemap-folder-inner" style="margin-left:18px; border-left:1px solid var(--border-color); padding-left:10px;">{inner}</div></details>'
+                )
+            else:
+                # Leaf node — construir URL completa e tornar clicável
+                full_url = f"https://{host}{current_path}" if host else current_path
+                parts_out.append(
+                    f'<div class="surfacemap-leaf" style="margin:4px 0; font-size:13px;">'
+                    f'<a href="{html.escape(full_url)}" target="_blank" '
+                    f'style="color:var(--accent-orange);text-decoration:none;" '
+                    f'onmouseover="this.style.textDecoration=\'underline\'" '
+                    f'onmouseout="this.style.textDecoration=\'none\'">'
+                    f'🔗 {html.escape(name)}</a></div>'
+                )
+        return "".join(parts_out)
+
+    def _sc_style(sc):
+        if sc >= 200 and sc < 300:
+            return "background:rgba(63,185,80,0.12);color:#3fb950;border:1px solid rgba(63,185,80,0.4);"
+        elif sc >= 300 and sc < 400:
+            return "background:rgba(88,166,255,0.12);color:#58a6ff;border:1px solid rgba(88,166,255,0.4);"
+        elif sc == 401 or sc == 403:
+            return "background:rgba(210,153,34,0.12);color:#d29922;border:1px solid rgba(210,153,34,0.4);"
+        elif sc >= 400:
+            return "background:rgba(248,81,73,0.12);color:#f85149;border:1px solid rgba(248,81,73,0.4);"
+        return "background:rgba(139,148,158,0.1);color:#6e7681;border:1px solid rgba(139,148,158,0.3);"
+
+    # Render hosts sorted by URL count descending
+    hosts_sorted = sorted(host_data.items(), key=lambda x: (-len(x[1]["urls"]), x[0]))
+    total_urls = len(all_urls_set)
+
+    body_html = '<p style="font-size:12px;color:var(--text-secondary);margin:0 0 14px 0;">Clique em cada subdomínio para expandir e ver URLs com status, tecnologias, ports e árvore de paths.</p>'
+
+    for h, hd in hosts_sorted:
+        urls = hd["urls"]
+        ports = hd["ports"]
+        techs = hd["techs"]
+
+        # Summary badges
+        url_badge = f'<span class="sm-badge sm-url">{len(urls)} URLs</span>'
+        port_badge = f'<span class="sm-badge sm-port">{len(ports)} ports</span>' if ports else ''
+        tech_badge = f'<span class="sm-badge sm-tech">{len(techs)} techs</span>' if techs else ''
+
+        inner_parts = []
+
+        # Ports section
+        if ports:
+            ports_str = ", ".join(sorted(set(ports), key=lambda p: int(p) if p.isdigit() else 0))
+            inner_parts.append(f'<div class="sm-section"><span class="sm-section-label">Ports:</span> <code>{html.escape(ports_str)}</code></div>')
+
+        # Technologies section
+        if techs:
+            tech_tags = " ".join(
+                f'<span class="sm-tech-tag">{html.escape(t["name"])}'
+                f'{" " + html.escape(str(t.get("version",""))) if t.get("version") else ""}</span>'
+                for t in techs[:15]
+            )
+            inner_parts.append(f'<div class="sm-section"><span class="sm-section-label">Stack:</span> {tech_tags}</div>')
+
+        # URLs with status
+        # Path tree (Main view)
+        host_tree = tree_data.get(h, {})
+        if host_tree:
+            tree_html = render_tree(host_tree, host=h)
+            inner_parts.append(
+                f'<div class="sm-tree-body" style="padding:10px; background:var(--bg-secondary); border-radius:8px;">{tree_html}</div>'
+            )
+
+        inner = "".join(inner_parts) if inner_parts else '<p style="margin:8px 0;font-size:12px;color:var(--text-muted);">Apenas raiz — sem paths profundos.</p>'
+
+        body_html += (
+            f'<details class="surfacemap-host">'
+            f'<summary>🌐 {html.escape(h)} <span class="sm-badges">{url_badge}{port_badge}{tech_badge}</span></summary>'
+            f'<div class="surfacemap-host-body">{inner}</div>'
+            f'</details>'
+        )
+
+    return (
+        f'<div class="card open"><div class="card-header">'
+        f'<span class="card-title">Application Structure Map</span>'
+        f'<span class="card-badge">{len(host_data)} hosts · {total_urls} URLs mapeadas</span>'
+        f'</div><div class="card-content" style="display:block;">{body_html}</div></div>'
+    )
 
 def build_sourcemaps_content(target: str) -> str:
     import html
@@ -5182,12 +6019,32 @@ def build_sourcemaps_content(target: str) -> str:
         map_url = item.get("map_url") or item.get("url", "")
         match = item.get("match") or evidence.get("matched_snippet", "")
         context = item.get("context") or item.get("description", "")
+        
+        context_preview = html.escape(str(context))
+        if len(context_preview) > 300:
+            context_preview = context_preview[:300] + "..."
+            
         rows += f'''
         <tr>
-            <td><span class="tag tag-high">{html.escape(issue_type)}</span></td>
-            <td style="font-size:12px;">{html.escape(str(source_file))} (line {line_num})<br><a href="{html.escape(str(map_url))}" target="_blank" style="color:var(--text-muted);font-size:10px;">{html.escape(str(map_url))}</a></td>
-            <td><code style="color:var(--accent-orange);background:#2d2d2d;padding:2px 6px;border-radius:4px;">{html.escape(str(match)[:80])}</code></td>
-            <td style="font-size:11px;color:var(--text-secondary);max-width:300px;word-wrap:break-word;">{html.escape(str(context)[:150])}</td>
+            <td style="vertical-align: top;"><span class="tag tag-high">{html.escape(issue_type)}</span></td>
+            <td style="vertical-align: top; font-size:12px; max-width: 250px; word-break: break-all;">
+                <strong>{html.escape(str(source_file))}</strong> <span style="color:var(--text-muted);">(line {line_num})</span>
+                <div style="margin-top: 6px; font-size: 10px; font-family: monospace;">
+                    <a href="{html.escape(str(map_url))}" target="_blank" style="color:var(--accent-blue);">{html.escape(str(map_url))}</a>
+                </div>
+            </td>
+            <td style="vertical-align: top; max-width: 400px;">
+                <div style="margin-bottom: 8px; font-size: 12px; font-weight: 600; color: var(--text-secondary);">Encontrado:</div>
+                <div style="background: rgba(0,0,0,0.2); border: 1px solid var(--border-color); border-radius: 4px; padding: 8px; font-family: monospace; font-size: 12px; color: var(--accent-orange); word-break: break-all;">
+                    {html.escape(str(match))}
+                </div>
+            </td>
+            <td style="vertical-align: top; font-size:11px; color:var(--text-secondary); max-width:300px; word-wrap:break-word;">
+                <div style="margin-bottom: 8px; font-size: 12px; font-weight: 600; color: var(--text-secondary);">Contexto Original:</div>
+                <div style="background: rgba(255,255,255,0.03); padding: 8px; border-radius: 4px; font-family: monospace; border-left: 2px solid var(--border-color);">
+                    {context_preview}
+                </div>
+            </td>
         </tr>
         '''
     return f'''
@@ -5204,12 +6061,12 @@ def build_sourcemaps_content(target: str) -> str:
                     <br><br>
                     <strong>Impacto:</strong> Quando implementados em produção, os source maps expõem <strong>todo o código-fonte original</strong> da sua aplicação frontend a qualquer indivíduo. Isso torna trivial para atacantes aplicar engenharia reversa na lógica de negócios, descobrir comentários ocultos de desenvolvedores, caminhos de APIs e segredos confidenciais hardcoded.
                     <br><br>
-                    <strong>O que foi encontrado:</strong> O analisador desempacotou os source maps expostos listados abaixo e executou padrões de Regex no código fonte original desminificado. A coluna <strong>Contexto</strong> mostra exatamente o fragmento ou linha de código extraído do source map original onde uma chave/segredo ou endpoint desautenticado foi isolado.
+                    <strong>O que foi encontrado:</strong> O analisador desempacotou os source maps expostos listados abaixo e executou padrões de Regex no código fonte original desminificado.
                 </p>
             </div>
             <div class="table-wrapper">
                 <table>
-                    <thead><tr><th>Tipo</th><th>Arquivo Fonte & Map</th><th>Encontrado</th><th>Contexto</th></tr></thead>
+                    <thead><tr><th>Tipo</th><th>Origem do Código</th><th>Match / Segredo</th><th>Contexto Desminificado</th></tr></thead>
                     <tbody>{rows}</tbody>
                 </table>
             </div>
@@ -5590,21 +6447,36 @@ def build_quick_wins_content(target: str) -> str:
     recon_intel_html = ""
     try:
         from plugins.intelligence.recon_intel import run_detectors, build_intel_card
-        # Coletar todo o HTML já gerado do report para alimentar os detectores
-        # Usamos os dados brutos dos arquivos de output como fonte
         base = Path("output") / target
+        
+        # OTIMIZAÇÃO V11.7: Em vez de ler TODOS os arquivos do output (o que congela a CPU por minutos 
+        # rodando BeautifulSoup/regex em 10MB+ de JSON), leremos apenas arquivos-chave de inteligência.
+        high_value_files = [
+            base / "fingerprint" / "wappalyzer.json",
+            base / "urls" / "patterns" / "apis.txt",
+            base / "urls" / "login_pages.txt",
+            base / "domain" / "subdomains.txt",
+            base / "domain" / "crawlers" / "katana_valid.txt",
+            base / "intelligence" / "quick_wins.json"
+        ]
+        
         raw_html_parts = []
-        for root, dirs, files in __import__('os').walk(str(base)):
-            for fname in files:
-                fpath = Path(root) / fname
-                if fpath.suffix in ('.json', '.txt', '.html') and fpath.stat().st_size < 500_000:
-                    try:
-                        raw_html_parts.append(fpath.read_text(errors='ignore'))
-                    except:
-                        pass
+        total_size = 0
+        for fpath in high_value_files:
+            if fpath.exists() and fpath.stat().st_size < 500_000:
+                try:
+                    text = fpath.read_text(errors='ignore')
+                    raw_html_parts.append(text)
+                    total_size += len(text)
+                    if total_size > 1_000_000:  # Hard limit 1MB para evitar hang no regex/bs4
+                        break
+                except:
+                    pass
+                    
         combined_text = '\n'.join(raw_html_parts)
-        findings = run_detectors(combined_text)
-        recon_intel_html = build_intel_card(findings)
+        if combined_text:
+            findings = run_detectors(combined_text)
+            recon_intel_html = build_intel_card(findings)
     except Exception as e:
         recon_intel_html = f'<!-- recon_intel error: {e} -->'
     
@@ -5757,26 +6629,32 @@ def build_wordlist_content(target: str) -> str:
     lines = [l.strip() for l in path.read_text(errors="ignore").splitlines() if l.strip()]
     if not lines:
         return '<div class="empty-state"><p>No extracted wordlists found.</p></div>'
-        
-    json_data = json.dumps([{"word": w} for w in lines])
+    
+    total = len(lines)
+    display_lines = lines[:50]
+    json_data = json.dumps([{"word": w} for w in display_lines])
+    truncated_note = f'<p style="font-size:12px;color:var(--text-muted);margin:8px 0 0;font-style:italic;">Mostrando {len(display_lines)} de {total} palavras. Baixe o arquivo completo acima.</p>' if total > 50 else ""
     
     return f'''
-    <div class="card open">
+    <div class="card collapsed">
         <div class="card-header">
             <span class="card-title"> Extracted Wordlist</span>
-            <span class="card-badge">{{len(lines)}} words</span>
+            <span class="card-badge">{total} words</span>
         </div>
         <div class="card-content">
-            <div style="margin-bottom:15px; padding:12px; background:rgba(46,160,67,0.1); border:1px solid rgba(46,160,67,0.3); border-radius:6px;">
+            <div style="margin-bottom:15px; padding:12px; background:rgba(46,160,67,0.05); border:1px solid rgba(46,160,67,0.2); border-radius:6px;">
                 <p style="font-size:13px; color:var(--text-secondary); margin:0; line-height: 1.5;">
                     Estas palavras foram passivamente extraídas do alvo (arquivos JS, parâmetros, diretórios). Elas são exclusivas do contexto da aplicação, perfeitas para <strong>Fuzzing focado</strong>.
                 </p>
-                <div style="margin-top:10px;">
-                    <a href="output/{target}/wordlist/combined.txt" target="_blank" style="display:inline-block; padding:6px 10px; background:var(--bg-tertiary); border-radius:4px; border:1px solid var(--border-color); color:var(--accent-blue); text-decoration:none; font-size:12px; font-weight: bold;"> Baixar dicionário (combined.txt)</a>
+                <div style="margin-top:12px;">
+                    <a href="output/{target}/wordlist/combined.txt" target="_blank" style="display:inline-block; padding:8px 14px; background:rgba(63,185,80,0.1); border-radius:6px; border:1px solid rgba(63,185,80,0.3); color:var(--accent-green); text-decoration:none; font-size:13px; font-weight: 600; transition:all 0.2s;">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px; margin-right:4px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Exportar Wordlist (.txt)
+                    </a>
                 </div>
             </div>
             
             <div id="wordlists_container"></div>
+            {truncated_note}
             
             <script>
             (function() {{
@@ -5887,7 +6765,6 @@ def build_network_graph_content(target: str) -> str:
         </div>
         <div class="card-content" style="display:block;">
             <div id="networkGraph" style="width:100%;height:500px;background:var(--bg-primary);border-radius:8px;border:1px solid var(--border-color);overflow:hidden;"></div>
-            <script src="https://d3js.org/d3.v7.min.js"></script>
             <script>
             (function() {{
                 const nodes = {nodes_json};
@@ -6056,23 +6933,35 @@ def build_response_headers_content(target: str) -> str:
     for entry in (data if isinstance(data, list) else [])[:30]:
         url = entry.get("url", "")
         raw_headers = entry.get("headers", {})
-        issues = entry.get("issues", [])
-        
         headers_html = ""
         for k, v in raw_headers.items() if isinstance(raw_headers, dict) else []:
             sec_color = "var(--accent-green)" if k.lower().startswith(("x-content", "x-frame", "strict-transport", "content-security")) else "var(--text-secondary)"
             headers_html += f'<div style="font-size:11px;margin:2px 0;"><span style="color:{sec_color};font-weight:600;">{html.escape(k)}:</span> <span style="color:var(--text-muted);">{html.escape(str(v)[:100])}</span></div>'
         
-        issue_count = len(issues) if issues else 0
+        # Support both 'issues' (old) and 'missing'/'warnings' (new headers plugin)
+        issues_list = entry.get("issues", [])
+        if not issues_list:
+            # Fallback to missing headers and warnings
+            for m in entry.get("missing", []):
+                issues_list.append(f"Missing {m.get('header')}")
+            for w in entry.get("warnings", []):
+                issues_list.append(w)
+        
+        issue_count = len(issues_list)
         badge_color = "var(--accent-red)" if issue_count > 3 else "var(--accent-orange)" if issue_count > 0 else "var(--accent-green)"
         
+        issues_html = ""
+        if issues_list:
+            issues_html = '<div style="margin-top:4px;">' + "".join([f'<div style="font-size:10px;color:var(--accent-orange);">⚠ {html.escape(str(i))}</div>' for i in issues_list[:5]]) + '</div>'
+
         cards += f'''
-        <div class="box" style="margin-bottom:8px;">
+        <div class="box" style="margin-bottom:12px; border-left: 2px solid {badge_color};">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
                 <code style="font-size:11px;color:var(--accent-blue);">{html.escape(url[:80])}</code>
                 <span style="font-size:10px;color:{badge_color};font-weight:700;">{issue_count} issues</span>
             </div>
             {headers_html}
+            {issues_html}
         </div>'''
     
     return f'''
@@ -6138,6 +7027,175 @@ def build_export_buttons_js() -> str:
     </script>'''
 
 
+def build_executive_summary_content(target: str, stats: Dict, tech_data: Dict, risk_label: str, risk_color: str) -> str:
+    """Build executive summary block for the dashboard."""
+    from datetime import datetime
+    now = datetime.now()
+    
+    # WAF info
+    waf_path = Path("output") / target / "waf" / "waf_results.json"
+    waf_data = read_json_file(waf_path) or []
+    waf_names = sorted(set(w.get("waf", "Unknown") for w in waf_data if w.get("waf")))
+    waf_text = ", ".join(waf_names) if waf_names else "Nenhum WAF detectado"
+    
+    # Tech list
+    tech_text = ", ".join(sorted(list(tech_data.keys()))[:6]) if tech_data else "Não identificada"
+    
+    # Build attention points
+    attention_items = []
+    cors_count = stats.get("cors_count", 0)
+    if cors_count > 0:
+        attention_items.append(f'<li><span style="color:var(--accent-orange);font-weight:600;">{cors_count}</span> configurações de CORS — requerem validação manual</li>')
+    
+    cloud_count = stats.get("cloud_buckets", 0)
+    if cloud_count > 0:
+        attention_items.append(f'<li><span style="color:var(--accent-orange);font-weight:600;">{cloud_count}</span> bucket(s) S3/GCS referenciados</li>')
+    
+    keys_count = stats.get("keys_found", 0)
+    if keys_count > 0:
+        attention_items.append(f'<li><span style="color:var(--accent-red);font-weight:600;">{keys_count}</span> chaves/segredos expostos</li>')
+    
+    takeover_count = stats.get("takeover_count", 0)
+    if takeover_count > 0:
+        attention_items.append(f'<li><span style="color:var(--accent-red);font-weight:600;">{takeover_count}</span> riscos de subdomain takeover</li>')
+    
+    cve_count = stats.get("cve_vulns", 0)
+    if cve_count > 0:
+        attention_items.append(f'<li><span style="color:var(--accent-red);font-weight:600;">{cve_count}</span> CVEs identificadas</li>')
+    
+    login_count = stats.get("login_pages", 0)
+    if login_count > 0:
+        attention_items.append(f'<li><span style="color:var(--accent-blue);font-weight:600;">{login_count}</span> páginas de login identificadas</li>')
+    
+    attention_html = ""
+    if attention_items:
+        attention_html = f'''
+        <div style="margin-top:14px;">
+            <ul style="margin:0;padding-left:16px;font-size:13px;color:var(--text-secondary);line-height:1.6;">
+                {"".join(attention_items)}
+            </ul>
+        </div>'''
+    else:
+        attention_html = '<div style="margin-top:14px;font-size:13px;color:var(--text-muted);">Nenhum ponto crítico de atenção automática.</div>'
+    
+    urls_count = max(stats.get("urls_valid", 0), stats.get("urls_200_count", 0))
+    
+    return f'''
+    <div class="card open" style="border-left: 4px solid var(--accent-blue); margin-bottom:16px;">
+        <div class="card-header" style="cursor:default;">
+            <span class="card-title section-title">📋 Resumo Executivo</span>
+            <span class="card-badge" style="color:{risk_color};border-color:{risk_color};">{risk_label}</span>
+        </div>
+        <div class="card-content" style="display:block;">
+            <div style="padding:14px;background:var(--bg-tertiary);border:1px solid var(--border-color);border-radius:6px;font-size:13px;color:var(--text-primary);line-height:1.8;font-family:monospace;">
+                <b>Alvo:</b> {html.escape(target)}<br>
+                <b>Data da varredura:</b> {now.strftime("%Y-%m-%d %H:%M")}<br>
+                <b>Superfície mapeada:</b> {urls_count} URLs válidas em {stats.get("subdomains", 0)} subdomínio(s)<br>
+                <b>Tecnologias detectadas:</b> {html.escape(tech_text)}<br>
+                <b>Proteção:</b> {html.escape(waf_text)}<br><br>
+                <b style="color:var(--accent-orange);">Pontos de atenção:</b>
+                {attention_html}
+            </div>
+        </div>
+    </div>
+    '''
+
+
+def build_next_steps_content(target: str, stats: Dict, all_techs: set) -> str:
+    """Build auto-generated next steps based on scan findings."""
+    # Each step: (label, color, description, command)
+    steps = []
+    
+    if stats.get("cors_count", 0) > 0:
+        steps.append(("CORS", "var(--accent-orange)",
+            "Validar endpoints CORS: testar Origin refletida + credentials",
+            f'curl -s -I -H "Origin: https://evil.com" https://{target} | grep -i access-control'))
+    
+    if stats.get("cloud_buckets", 0) > 0:
+        steps.append(("Cloud", "var(--accent-orange)",
+            "Verificar acesso público aos buckets: testar listagem e upload",
+            "aws s3 ls s3://BUCKET_NAME --no-sign-request"))
+    
+    if stats.get("keys_found", 0) > 0:
+        steps.append(("Keys", "var(--accent-red)",
+            "Validar chaves expostas: testar permissões de cada API key",
+            f"trufflehog filesystem output/{target}/ --only-verified"))
+    
+    if stats.get("login_pages", 0) > 0:
+        steps.append(("Auth", "var(--accent-blue)",
+            "Testar páginas de login: default credentials, rate limiting, 2FA bypass",
+            f"hydra -l admin -P /usr/share/wordlists/rockyou.txt {target} http-post-form '/wp-login.php:log=^USER^&pwd=^PASS^:incorrect'"))
+    
+    if stats.get("takeover_count", 0) > 0:
+        steps.append(("Takeover", "var(--accent-red)",
+            "Confirmar takeover candidates: verificar CNAME dangling",
+            f"dig CNAME subdomain.{target} +short"))
+    
+    if stats.get("cve_vulns", 0) > 0:
+        steps.append(("CVEs", "var(--accent-red)",
+            "Validar CVEs detectadas: verificar versão exata e testar exploits",
+            f"nuclei -u https://{target} -severity critical,high -silent"))
+    
+    # Tech-specific steps
+    tech_lower = {t.lower() for t in all_techs}
+    if any(t in tech_lower for t in ["wordpress", "wp"]):
+        steps.append(("WordPress", "var(--accent-blue)",
+            "Enumerar plugins, temas e usuários WordPress",
+            f"wpscan --url https://{target} --enumerate u,vp,vt --api-token YOUR_API_TOKEN"))
+    if any(t in tech_lower for t in ["django", "python"]):
+        steps.append(("Django", "var(--accent-green)",
+            "Testar <code>/admin/</code> e forçar erro 404/500 para debug mode",
+            f"curl -s https://{target}/admin/ -o /dev/null -w '%{{http_code}}'"))
+    if any(t in tech_lower for t in ["graphql"]):
+        steps.append(("GraphQL", "var(--accent-purple)",
+            "Testar introspection query e field suggestion",
+            f'curl -s -X POST https://{target}/graphql -H "Content-Type: application/json" -d \'{{\"query\":\"{{__schema{{types{{name}}}}}}\"}}\''))
+    if any(t in tech_lower for t in ["php", "laravel"]):
+        steps.append(("PHP", "var(--accent-orange)",
+            "Testar LFI via wrappers e configs expostas",
+            f"curl -s https://{target}/.env; curl -s https://{target}/phpinfo.php"))
+    
+    if stats.get("endpoints_count", 0) + stats.get("routes_found", 0) > 50:
+        steps.append(("API", "var(--accent-blue)",
+            "Fuzzing intensivo nos endpoints: testar IDOR e broken access control",
+            f"ffuf -u https://{target}/api/FUZZ -w /usr/share/seclists/Discovery/Web-Content/api/api-endpoints.txt -mc 200,301,403"))
+        
+    steps.append(("CI/CD", "var(--accent-purple)",
+        "Revisar artefatos de build em busca de secrets leakados",
+        f"grep -r 'buildAgent\\|password\\|secret\\|token' output/{target}/"))
+    
+    if not steps:
+        return ""
+    
+    items_html = ""
+    for i, (label, color, desc, cmd) in enumerate(steps[:10], 1):
+        escaped_cmd = html.escape(cmd)
+        items_html += f'''
+        <div class="priority-item">
+            <div class="p-rank" style="color:{color};border-color:{color};">{i}</div>
+            <div class="p-content">
+                <div class="p-title">{desc}</div>
+                <pre style="margin:6px 0 0 0;padding:8px 10px;background:rgba(0,0,0,0.3);border:1px solid var(--border-color);border-radius:4px;font-size:11px;color:var(--accent-green);overflow-x:auto;cursor:pointer;" onclick="navigator.clipboard.writeText(this.textContent);this.style.borderColor='var(--accent-green)';setTimeout(()=>this.style.borderColor='var(--border-color)',1000);" title="Clique para copiar">{escaped_cmd}</pre>
+            </div>
+            <span class="tag" style="font-size:9px;background:rgba(255,255,255,0.05);color:{color};border:1px solid {color};">{label}</span>
+        </div>'''
+    
+    return f'''
+    <div class="card open" style="border-left: 4px solid var(--accent-green); margin-bottom:16px;">
+        <div class="card-header" style="cursor:default;">
+            <span class="card-title section-title">🧭 Próximos Passos Sugeridos</span>
+            <span class="card-badge">{len(steps)} ações baseadas nos findings</span>
+        </div>
+        <div class="card-content" style="display:block;">
+            <div style="margin-bottom:10px;padding:8px 12px;background:rgba(63,185,80,0.08);border:1px solid rgba(63,185,80,0.2);border-radius:6px;font-size:11px;color:var(--text-secondary);">
+                ℹ️ Gerado automaticamente com base nos dados da varredura. Prioridade definida por impacto × exploitabilidade.
+            </div>
+            {items_html}
+        </div>
+    </div>
+    '''
+
+
 def run(context: Dict[str, Any]) -> List[str]:
     target = context.get("target")
     if not target:
@@ -6187,16 +7245,71 @@ def run(context: Dict[str, Any]) -> List[str]:
         
     risk_deg = (risk_score * 1.8) - 90
     
+    # Build risk breakdown table
+    breakdown_rows = ""
+    if ap_data:
+        count = 0
+        for item in ap_data:
+            mod = item.get("module", "unknown")
+            if mod.lower() == "unknown":
+                continue
+            score_contrib = int(item.get("score", 0) * 5)
+            breakdown_rows += f'<tr><td style="padding:4px 0;">{html.escape(mod)}</td><td style="text-align:right;color:var(--accent-red);padding:4px 0;font-weight:bold;">+{score_contrib}</td></tr>'
+            count += 1
+            if count >= 6:
+                break
+    
+    risk_breakdown_html = ""
+    if breakdown_rows:
+        risk_breakdown_html = f'''
+        <div style="border-top:1px solid var(--border-color);border-bottom:1px solid var(--border-color);margin:12px 0;padding:8px 0;">
+            <div style="font-size:10px;font-weight:600;color:var(--text-muted);text-transform:uppercase;margin-bottom:6px;">Fatores Contribuintes</div>
+            <table style="width:100%;font-size:11px;color:var(--text-secondary);">
+                {breakdown_rows}
+            </table>
+        </div>
+        '''
+    
     # Extract unique technologies from knowledge_tips
-    kb_path = Path("output") / target / "intelligence" / "knowledge_tips.json"
-    kb_data = read_json_file(kb_path) or {}
-    all_techs = set()
-    for kb_info in kb_data.values():
-        all_techs.update(kb_info.get("matched_technologies", []))
+    tech_data = {}
+    tech_path = Path("output") / target / "domain" / "technologies.json"
+    if tech_path.exists():
+        try:
+            tech_json = json.loads(tech_path.read_text())
+            for sub_data in tech_json.values():
+                for tech in sub_data.get("technologies", []):
+                    name = tech.get("name")
+                    conf = tech.get("confidence", 0)
+                    if name not in tech_data or conf > tech_data[name]:
+                        tech_data[name] = conf
+        except: pass
+    
+    # fallback to knowledge_tips if technologies.json empty
+    if not tech_data:
+        kb_path = Path("output") / target / "intelligence" / "knowledge_tips.json"
+        kb_data = read_json_file(kb_path) or {}
+        for kb_info in kb_data.values():
+            for name in kb_info.get("matched_technologies", []):
+                tech_data[name] = 100
         
     tech_chips_html = ""
-    for tech in sorted(list(all_techs))[:8]: # Max 8 chips
-        tech_chips_html += f'<span class="tech-chip" style="color:var(--accent-blue);border-color:rgba(88,166,255,0.35);background:rgba(88,166,255,0.08);">{html.escape(tech)}</span>'
+    for name, conf in sorted(tech_data.items(), key=lambda x: x[1], reverse=True)[:10]:
+        if conf >= 80:
+            badge_color = "var(--accent-green)"
+            conf_str = f"Certeza Alta ({conf}%)"
+        elif conf >= 50:
+            badge_color = "var(--accent-blue)"
+            conf_str = f"Provável ({conf}%)"
+        else:
+            badge_color = "var(--text-muted)"
+            conf_str = f"Possível ({conf}%)"
+            
+        tech_chips_html += f'''
+        <div style="display:inline-flex; align-items:center; border:1px solid rgba(139,148,158,0.2); background:rgba(139,148,158,0.05); border-radius:12px; padding:2px 8px; margin:0 6px 6px 0;">
+            <span style="font-size:12px; font-weight:600; color:var(--text-primary); margin-right:6px;">{html.escape(name)}</span>
+            <span style="font-size:10px; color:{badge_color};">{conf_str}</span>
+        </div>
+        '''
     if not tech_chips_html:
         tech_chips_html = '<span style="color:#666;font-size:12px;">Nenhuma stack detectada.</span>'
 
@@ -6205,10 +7318,14 @@ def run(context: Dict[str, Any]) -> List[str]:
     
     # Build template variables
     template_vars = {
+        "coverage_urls": stats.get("urls_valid", 0),
+        "coverage_subs": stats.get("subdomains", 0),
+        "coverage_js": stats.get("js_count", 0),
         "risk_score": risk_score,
         "risk_label": risk_label,
         "risk_color": risk_color,
         "risk_deg": risk_deg,
+        "risk_breakdown_html": risk_breakdown_html,
         "tech_chips": tech_chips_html,
         "target": html.escape(target),
         "date": now.strftime("%Y-%m-%d"),
@@ -6231,6 +7348,7 @@ def run(context: Dict[str, Any]) -> List[str]:
         "subdomains_content": build_subdomains_content(subdomains, target),
         "ports_content": build_ports_content(target),
         "urls_content": build_urls_content(subdomains, target),
+        "screenshots_content": build_screenshots_content(target),
         "login_pages_content": build_login_pages_content(subdomains, target),
         "technologies_content": build_technologies_content(target),
         "keys_content": build_keys_content(target),
@@ -6238,7 +7356,7 @@ def run(context: Dict[str, Any]) -> List[str]:
         "js_content": build_js_content(target),
         "files_content": build_files_content(target),
         "services_content": build_services_content(target),
-        "stats_urls_combined": max(stats["urls_valid"], stats.get("urls_200_count", 0)) + len(read_file_lines(Path("output") / target / "crawlers" / "katana_valid.txt") or read_file_lines(Path("output") / target / "domain" / "crawlers" / "katana_valid.txt") or read_file_lines(Path("output") / target / "domain" / "katana_valid.txt")),
+        "stats_urls_combined": len(read_json_file(Path("output") / target / "urls" / "urls_200.json") or []),
         "forms_content": build_forms_content(target),
         "stats_forms": len(read_json_file(Path("output") / target / "crawlers" / "katana_forms.json") or read_json_file(Path("output") / target / "domain" / "crawlers" / "katana_forms.json") or []),
         "params_content": build_params_content(target),
@@ -6255,6 +7373,8 @@ def run(context: Dict[str, Any]) -> List[str]:
         "git_content": build_git_content(target),
         "cloud_content": build_cloud_content(target),
         "cve_content": build_cve_content(subdomains),
+        "cors_content": build_cors_content(target),
+        "headers_content": build_headers_content(target),
         "security_content": build_security_content(target),
         "newsincode_content": "",
         "stats_newsincode": len(read_json_file(Path("output") / target / "crawlers" / "katana_new_in_code_validated.json") or read_json_file(Path("output") / target / "domain" / "crawlers" / "katana_new_in_code_validated.json") or read_json_file(Path("output") / target / "crawlers" / "katana_new_in_code.json") or read_json_file(Path("output") / target / "domain" / "crawlers" / "katana_new_in_code.json") or []),
@@ -6275,7 +7395,7 @@ def run(context: Dict[str, Any]) -> List[str]:
         "hvt_dashboard": build_attack_priority_content(target),
         "vuln_patterns_content": build_vuln_patterns_content(target),
         "knowledge_tips": build_knowledge_tips_content(target),
-        "surfacemap_content": build_surfacemap_content(subdomains),
+        "surfacemap_content": build_surfacemap_content(subdomains, target),
         # New modules
         "stats_jwt": len(read_json_file(Path("output") / target / "jwt_analyzer" / "jwt_results.json") or []),
         "jwt_content": build_jwt_content(target),
@@ -6322,13 +7442,17 @@ def run(context: Dict[str, Any]) -> List[str]:
         "asn_content": build_asn_content(target),
         "export_js": build_export_buttons_js(),
         "scan_timestamp": now.strftime("%Y-%m-%d %H:%M:%S"),
-        "tech_stack_summary": ", ".join(sorted(list(all_techs))[:12]) if all_techs else "Stack não detectada",
+        "tech_stack_summary": ", ".join(sorted(list(tech_data.keys()))[:12]) if tech_data else "Stack não detectada",
         "executive_summary": f"Scan de <b>{html.escape(target)}</b> em {now.strftime('%Y-%m-%d %H:%M')}. "
             f"Encontrados <b>{stats['subdomains']}</b> subdomínios, "
             f"<b>{max(stats['urls_valid'], stats.get('urls_200_count', 0))}</b> URLs, "
             f"<b>{stats['keys_found']}</b> chaves/segredos expostos, "
             f"<b>{stats['login_pages']}</b> páginas de login. "
             f"Severidade geral: <b style='color:{risk_color};'>{risk_label}</b>.",
+        # V12: Executive Summary & Next Steps
+        "executive_summary_content": build_executive_summary_content(target, stats, tech_data, risk_label, risk_color),
+        "next_steps_content": build_next_steps_content(target, stats, set(tech_data.keys())),
+        "wp_plugins_content": build_wp_plugins_content(target),
     }
     
 

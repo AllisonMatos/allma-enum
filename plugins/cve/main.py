@@ -5,6 +5,7 @@ Plugin CVE PASSIVE - Correlaciona tecnologias detectadas com SearchSploit
 import json
 import shutil
 import subprocess
+import re
 from pathlib import Path
 
 from menu import C
@@ -56,6 +57,21 @@ def run(context: dict):
         error("Erro ao ler technologies.json")
         return []
 
+    def _tech_tokens(td: dict) -> set[str]:
+        tok = set()
+        for d in td.values():
+            for tech in d.get("technologies") or []:
+                n = (tech.get("name") or "").strip().lower()
+                if not n:
+                    continue
+                tok.add(n)
+                for part in re.split(r"[^a-z0-9]+", n):
+                    if len(part) >= 4:
+                        tok.add(part)
+        return tok
+
+    all_tech_tokens = _tech_tokens(tech_data)
+
     vulns_found = {}
     
     info(f"{C.BLUE}🔍 Correlacionando tecnologias com ExploitDB...{C.END}")
@@ -81,9 +97,21 @@ def run(context: dict):
             if cache_key in vulns_found:
                 continue
                 
-            info(f"   🔎 Buscando exploits para: {C.YELLOW}{search_term}{C.END}")
-            exploits = run_searchsploit(search_term)
-            
+            nm = (name or "").strip().lower()
+            # V12: ExploitDB genérico em "WordPress X.Y" retorna plugins não instalados — só NVD/core.
+            if nm == "wordpress" or (nm.startswith("wordpress") and "plugin" not in nm):
+                info(f"   ⏭️  Pulando ExploitDB genérico para {name} {version} (use tecnologias de plugin detectadas)")
+                exploits = []
+            else:
+                info(f"   🔎 Buscando exploits para: {C.YELLOW}{search_term}{C.END}")
+                exploits = run_searchsploit(search_term)
+                core = re.split(r"\s+", nm)[0]
+                exploits = [
+                    e for e in exploits
+                    if core in (e.get("Title") or "").lower()
+                    or any(t in (e.get("Title") or "").lower() for t in all_tech_tokens if len(t) >= 6)
+                ]
+
             # Consultar NVD/NIST API
             nvd_results = query_nvd(name, version)
             

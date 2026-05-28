@@ -87,15 +87,32 @@ async def analyze_js_file_async(client, url, semaphore):
                 except Exception:
                     logic_data = {}
                     
-                return found_urls, found_keys, logic_data
+                # Bug Bounty: Extração de Versões de Bibliotecas para CVE
+                deps = {}
+                patterns = {
+                    "react": r"(?:React|react)\s*v?([0-9]+\.[0-9]+\.[0-9]+)",
+                    "jquery": r"(?:jQuery|jquery)\s*v?([0-9]+\.[0-9]+\.[0-9]+)",
+                    "axios": r"(?:axios|Axios)\s*v?([0-9]+\.[0-9]+\.[0-9]+)",
+                    "angular": r"(?:AngularJS|Angular|angular)\s*v?([0-9]+\.[0-9]+\.[0-9]+)",
+                    "vue": r"(?:Vue\.js|vue)\s*v?([0-9]+\.[0-9]+\.[0-9]+)",
+                    "lodash": r"(?:lodash|Lodash)\s*v?([0-9]+\.[0-9]+\.[0-9]+)",
+                    "moment": r"(?:moment\.js|moment)\s*v?([0-9]+\.[0-9]+\.[0-9]+)",
+                    "next": r"(?:Next\.js|next)\s*v?([0-9]+\.[0-9]+\.[0-9]+)"
+                }
+                for lib, pat in patterns.items():
+                    m = re.search(pat, txt[:50000]) # Search only in the first 50KB to avoid CPU spikes
+                    if m:
+                        deps[lib] = m.group(1)
+                        
+                return found_urls, found_keys, logic_data, deps
 
             try:
                 # Isolar carga intensa de CPU(Regex) do EventLoop 
                 if hasattr(asyncio, "to_thread"):
                     task = asyncio.to_thread(sync_analysis, text, url)
-                    found_urls, found_keys, logic_data = await asyncio.wait_for(task, timeout=12.0)
+                    found_urls, found_keys, logic_data, deps = await asyncio.wait_for(task, timeout=12.0)
                 else:
-                    found_urls, found_keys, logic_data = sync_analysis(text, url)
+                    found_urls, found_keys, logic_data, deps = sync_analysis(text, url)
             except asyncio.TimeoutError:
                 # Ignora arquivo se travar no regex
                 return None
@@ -108,7 +125,8 @@ async def analyze_js_file_async(client, url, semaphore):
                 "urls": found_urls[:100],
                 "keys": found_keys,
                 "routes": logic_data.get("routes", []),
-                "parameters": logic_data.get("parameters", [])
+                "parameters": logic_data.get("parameters", []),
+                "dependencies": deps
             }
         except Exception:
             return None
@@ -216,8 +234,10 @@ async def run_async_scan(target, outdir, report_file, raw_file):
     js_urls = gather_js_urls(target)
     info(f"   - {len(js_urls)} arquivos JS já conhecidos.")
 
-    # 2. Extrair JS de páginas HTML (Urls 200)
-    urls_200_path = Path("output") / target / "urls" / "urls_200.txt"
+    # 2. Extrair JS de páginas HTML (URLs vivas 2xx)
+    from core.url_sources import primary_urls_txt_for_scan
+
+    urls_200_path = primary_urls_txt_for_scan(target)
     if urls_200_path.exists():
         html_pages = [l.strip() for l in urls_200_path.read_text().splitlines() if l.strip()]
         if html_pages:
@@ -378,12 +398,48 @@ async def run_async_scan(target, outdir, report_file, raw_file):
     # Bug Bounty 2026: Export JSON structure for the UI Report
     js_routes_file = outdir / "js_routes.json"
     structured_data = []
-    if global_routes or global_parameters:
+    
+    # Global Dependencies
+    global_deps = {}
+    for item in results_data:
+        if item.get("dependencies"):
+            for lib, ver in item["dependencies"].items():
+                global_deps[lib] = ver
+
+    if global_routes or global_parameters or global_deps:
         structured_data.append({
             "source": "V10.5 Global Deduplication Pipeline",
             "routes": sorted(list(global_routes)),
-            "parameters": sorted(list(global_parameters))
+            "parameters": sorted(list(global_parameters)),
+            "dependencies": global_deps
         })
+        
+    if global_deps:
+        success(f"   📦 Dependências JS Detectadas: {', '.join([f'{k} v{v}' for k,v in global_deps.items()])}")
+        
+        # Save to domain/technologies.json so the CVE plugin can pick it up
+        tech_file = Path("output") / target / "domain" / "technologies.json"
+        if tech_file.exists():
+            try:
+                import json
+                tech_data = json.loads(tech_file.read_text(errors="ignore"))
+                # Get the first host or target host
+                host_keys = list(tech_data.keys())
+                target_key = target if target in tech_data else (host_keys[0] if host_keys else None)
+                if target_key:
+                    if "technologies" not in tech_data[target_key]:
+                        tech_data[target_key]["technologies"] = []
+                    existing_techs = [t.get("name", "").lower() for t in tech_data[target_key]["technologies"]]
+                    for lib, ver in global_deps.items():
+                        if lib.lower() not in existing_techs:
+                            tech_data[target_key]["technologies"].append({
+                                "name": lib.title(),
+                                "version": ver,
+                                "categories": ["JavaScript Libraries"]
+                            })
+                    tech_file.write_text(json.dumps(tech_data, indent=2))
+            except Exception:
+                pass
             
     if structured_data:
         import json
