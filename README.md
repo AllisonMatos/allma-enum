@@ -167,6 +167,3 @@ output/target.com/
 
 Uso exclusivo para fins de segurança defensiva, programas de Bug Bounty autorizados e Pentests profissionais com permissão explícita. O autor não se responsabiliza pelo uso indevido da ferramenta.
 
----
-
-**Enum-Allma — Precisão. Inteligência. Resultados. 🛡️**
